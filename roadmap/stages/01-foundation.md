@@ -1,0 +1,115 @@
+# Stage 1 — Foundation
+
+## Goal
+
+Create the Cargo workspace, crate skeleton, shared configuration, logging,
+error handling, and CI. No networking, no UI, no D-Bus yet. This stage proves
+the repository builds and the tooling is in place.
+
+## Scope
+
+- Workspace and crate layout exactly as described in `architecture.md`.
+- Shared error type and result alias.
+- Configuration loading from TOML with defaults and environment overrides.
+- `tracing` setup with configurable level and file/stdout output.
+- CI workflow running build, test, clippy, fmt, and audit.
+- Test harness and a couple of smoke tests.
+
+## Non-goals
+
+- No daemon process, D-Bus, systemd unit, or CLI behavior.
+- No identity, storage, discovery, transport, or UI code.
+- No protocol implementation beyond empty module placeholders.
+
+## Prerequisites
+
+None.
+
+## Deliverables
+
+- `Cargo.toml` workspace with members:
+  - `crates/core`
+  - `crates/net`
+  - `crates/media`
+  - `crates/desktop`
+  - `crates/daemon`
+  - `crates/ui`
+  - `crates/overlay`
+  - `crates/cli`
+- `crates/core/src/{lib.rs,error.rs,config.rs,logging.rs}`
+- `.github/workflows/ci.yml`
+- `README.md` with build and test commands.
+- `rust-toolchain.toml` pinned to a stable channel.
+
+## Setup
+
+- [ ] Run `cargo new --lib` for each crate or create manifests by hand.
+- [ ] Add workspace `[workspace.package]` for version, edition, license, authors.
+- [ ] Add `[workspace.dependencies]` for `tokio`, `serde`, `postcard`, `tracing`,
+  `thiserror`, `figment`, `directories`, and `anyhow` only where justified.
+- [ ] Pin Rust toolchain in `rust-toolchain.toml`.
+- [ ] Add `.gitignore` for `target/`, editor files, and local config.
+- [ ] Add `rustfmt.toml` and `clippy.toml` if non-default rules are wanted.
+
+## Implementation
+
+- [ ] `core::error` defines `Error` enum with `thiserror` and `Result<T>` alias.
+- [ ] `core::config` defines `Config` struct:
+  - [ ] `log_level` default `info`.
+  - [ ] `log_file` optional.
+  - [ ] `config_dir` override optional.
+  - [ ] `data_dir` override optional.
+- [ ] Config load order: built-in defaults, system file, user file, environment
+  variables prefixed `TICONNECT_`, explicit CLI override (hook only, CLI later).
+- [ ] `core::logging` initializes `tracing-subscriber` with `EnvFilter`.
+- [ ] Logging supports human-readable output and optional JSON output.
+- [ ] `core` exposes `version()` from `CARGO_PKG_VERSION`.
+- [ ] Each dependent crate has an empty `lib.rs` that compiles and depends on
+  `core` per the dependency direction rule.
+- [ ] No crate depends on a crate above it in the dependency graph.
+
+## Tests
+
+- [ ] Unit test: default config values are correct.
+- [ ] Unit test: environment override wins over file value.
+- [ ] Unit test: invalid config returns a typed error, not a panic.
+- [ ] Smoke test: every workspace crate builds and links.
+- [ ] Test that logging initialization is idempotent or safely guarded.
+
+## Security
+
+- [ ] Add `cargo audit` to CI.
+- [ ] Add `#![forbid(unsafe_code)]` to `core` and all crates unless a crate has
+  a documented reason to allow unsafe.
+- [ ] Confirm no dependency pulls in a duplicate runtime by accident.
+- [ ] No secrets or personal paths in committed files.
+
+## Docs and acceptance
+
+- [ ] `README.md` documents workspace layout and commands.
+- [ ] `docs/` or crate-level docs explain the dependency direction rule.
+- [ ] CI badge or status noted in `README.md`.
+
+## Acceptance criteria
+
+- `cargo build --workspace` succeeds.
+- `cargo test --workspace` passes.
+- `cargo clippy --workspace --all-targets -- -D warnings` passes.
+- `cargo fmt --all -- --check` passes.
+- A config file can be loaded and a log line is emitted at the configured level.
+
+## Demo
+
+1. `cargo run -p ticonnect-cli` is not required yet; use a unit test instead.
+2. Show `cargo test -p ticonnect-core config` passing.
+3. Show CI workflow file and local clippy/fmt results.
+
+## Risks and mitigations
+
+- Risk: workspace grows into feature code. Mitigation: keep placeholders empty
+  and enforce non-goals in review.
+- Risk: dependency bloat. Mitigation: workspace dependency table and audit.
+
+## Works without later stages
+
+The workspace builds and tests run with no daemon, network, or UI code present.
