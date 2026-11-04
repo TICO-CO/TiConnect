@@ -1,0 +1,13 @@
+[package]
+name = "ticonnect-daemon"
+description = "TiConnect background daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ticonnect-core.workspace = true
+ticonnect-net.workspace = true
+ticonnect-media.workspace = true
+ticonnect-desktop.workspace = true

@@ -1,0 +1,10 @@
+[package]
+name = "ticonnect-ui"
+description = "TiConnect GTK4 main window"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ticonnect-core.workspace = true

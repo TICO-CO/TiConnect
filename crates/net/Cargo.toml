@@ -1,0 +1,10 @@
+[package]
+name = "ticonnect-net"
+description = "LAN discovery and QUIC transport for TiConnect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+ticonnect-core.workspace = true

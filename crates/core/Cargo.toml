@@ -1,0 +1,15 @@
+[package]
+name = "ticonnect-core"
+description = "Shared protocol, identity, pairing, and crypto types for TiConnect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+figment.workspace = true
+directories.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true

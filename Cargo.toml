@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "GPL-3.0-or-later"
+
+[workspace.dependencies]
+ticonnect-core = { path = "crates/core" }
+ticonnect-net = { path = "crates/net" }
+ticonnect-media = { path = "crates/media" }
+ticonnect-desktop = { path = "crates/desktop" }
+ticonnect-daemon = { path = "crates/daemon" }
+ticonnect-ui = { path = "crates/ui" }
+ticonnect-overlay = { path = "crates/overlay" }
+ticonnect-cli = { path = "crates/cli" }
+
+tokio = "1"
+serde = { version = "1", features = ["derive"] }
+postcard = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+thiserror = "2"
+figment = { version = "0.10", features = ["toml"] }
+directories = "6"
