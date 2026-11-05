@@ -28,7 +28,8 @@ Stages 1, 2, and 6 complete.
 
 ## Deliverables
 
-- `crates/ui/src/main.rs`
+- `crates/ui/src/main.rs` — replace the Stage 1 stub with GTK application
+  startup and `anyhow` error reporting.
 - `crates/ui/src/app.rs` — relm4 application and components.
 - `crates/ui/src/client.rs` — D-Bus client wrapper.
 - `crates/ui/src/views/{peers.rs,chat.rs,settings.rs,pairing.rs}`

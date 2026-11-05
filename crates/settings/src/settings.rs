@@ -1,63 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use figment::{Figment, providers::Env as FigmentEnv};
-use serde::Deserialize;
-
-use crate::config::{Config, ConfigStore, default_data_dir};
-use crate::error::{Error, Result};
+use crate::changes::Changes;
+use crate::error::Result;
 use crate::log::{LogFormat, LogSettings};
-
-const ENV_PREFIX: &str = "TICONNECT_";
-
-#[derive(Debug, Clone, Default, Deserialize)]
-#[serde(default)]
-struct Overrides {
-    log_level: Option<String>,
-    log_file: Option<PathBuf>,
-    log_format: Option<LogFormat>,
-    data_dir: Option<PathBuf>,
-}
-
-impl Overrides {
-    fn load() -> Result<Self> {
-        Figment::new()
-            .merge(FigmentEnv::prefixed(ENV_PREFIX))
-            .extract()
-            .map_err(|error| Error::Config(error.to_string()))
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-struct Changes {
-    log_level: Option<String>,
-    log_file: Option<Option<PathBuf>>,
-    log_format: Option<LogFormat>,
-    data_dir: Option<Option<PathBuf>>,
-}
-
-impl Changes {
-    fn is_empty(&self) -> bool {
-        self.log_level.is_none()
-            && self.log_file.is_none()
-            && self.log_format.is_none()
-            && self.data_dir.is_none()
-    }
-
-    fn apply(&self, config: &mut Config) {
-        if let Some(level) = &self.log_level {
-            config.log_level = level.clone();
-        }
-        if let Some(file) = &self.log_file {
-            config.log_file = file.clone();
-        }
-        if let Some(format) = self.log_format {
-            config.log_format = format;
-        }
-        if let Some(dir) = &self.data_dir {
-            config.data_dir = dir.clone();
-        }
-    }
-}
+use crate::overrides::Overrides;
+use crate::storage::{FileStore, default_data_dir};
+use crate::values::Values;
 
 /// Effective TiConnect settings.
 ///
@@ -66,76 +14,53 @@ impl Changes {
 /// an internal detail.
 #[derive(Debug, Clone)]
 pub struct Settings {
-    store: ConfigStore,
-    persisted: Config,
-    overrides: Overrides,
+    store: FileStore,
+    baseline: Values,
+    active: Values,
     changes: Changes,
 }
 
 impl Settings {
     /// Load settings from the default location and environment.
     pub fn load() -> Result<Self> {
-        Self::from_store(ConfigStore::open_default()?)
+        Self::from_store(FileStore::open_default()?)
     }
 
     /// Load settings from an explicit file and the environment.
     pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
-        Self::from_store(ConfigStore::at(path.as_ref()))
+        Self::from_store(FileStore::at(path.as_ref()))
     }
 
-    fn from_store(store: ConfigStore) -> Result<Self> {
-        let persisted = store.load()?;
-        let overrides = Overrides::load()?;
+    fn from_store(store: FileStore) -> Result<Self> {
+        let baseline = store.load()?;
+        let mut active = baseline.clone();
+        Overrides::load()?.apply(&mut active);
 
         Ok(Self {
             store,
-            persisted,
-            overrides,
+            baseline,
+            active,
             changes: Changes::default(),
         })
     }
 
     pub fn log_level(&self) -> &str {
-        if let Some(level) = &self.changes.log_level {
-            return level;
-        }
-        if let Some(level) = &self.overrides.log_level {
-            return level;
-        }
-        &self.persisted.log_level
+        &self.active.log_level
     }
 
     pub fn log_file(&self) -> Option<&Path> {
-        if let Some(file) = &self.changes.log_file {
-            return file.as_deref();
-        }
-        if let Some(file) = &self.overrides.log_file {
-            return Some(file.as_path());
-        }
-        self.persisted.log_file.as_deref()
+        self.active.log_file.as_deref()
     }
 
     pub fn log_format(&self) -> LogFormat {
-        self.changes
-            .log_format
-            .or(self.overrides.log_format)
-            .unwrap_or(self.persisted.log_format)
+        self.active.log_format
     }
 
     pub fn data_dir(&self) -> Result<PathBuf> {
-        if let Some(dir) = &self.changes.data_dir {
-            return match dir {
-                Some(dir) => Ok(dir.clone()),
-                None => default_data_dir(),
-            };
-        }
-        if let Some(dir) = &self.overrides.data_dir {
-            return Ok(dir.clone());
-        }
-        if let Some(dir) = &self.persisted.data_dir {
-            return Ok(dir.clone());
-        }
-        default_data_dir()
+        self.active
+            .data_dir
+            .clone()
+            .map_or_else(default_data_dir, Ok)
     }
 
     /// Resolve effective logging settings.
@@ -148,23 +73,23 @@ impl Settings {
     }
 
     pub fn set_log_level(&mut self, level: impl Into<String>) {
-        self.changes.log_level = Some(level.into());
-        self.overrides.log_level = None;
+        self.active.log_level = level.into();
+        self.changes.log_level = true;
     }
 
     pub fn set_log_file(&mut self, file: Option<PathBuf>) {
-        self.changes.log_file = Some(file);
-        self.overrides.log_file = None;
+        self.active.log_file = file;
+        self.changes.log_file = true;
     }
 
     pub fn set_log_format(&mut self, format: LogFormat) {
-        self.changes.log_format = Some(format);
-        self.overrides.log_format = None;
+        self.active.log_format = format;
+        self.changes.log_format = true;
     }
 
     pub fn set_data_dir(&mut self, dir: Option<PathBuf>) {
-        self.changes.data_dir = Some(dir);
-        self.overrides.data_dir = None;
+        self.active.data_dir = dir;
+        self.changes.data_dir = true;
     }
 
     /// Persist explicit changes. Untouched environment values are not saved.
@@ -173,22 +98,24 @@ impl Settings {
             return Ok(());
         }
 
-        let mut next = self.persisted.clone();
-        self.changes.apply(&mut next);
+        let mut next = self.baseline.clone();
+        self.changes.apply(&self.active, &mut next);
         self.store.save(&next)?;
 
-        self.persisted = next;
-        self.changes = Changes::default();
+        self.baseline = next;
+        self.changes.clear();
         Ok(())
     }
 
     /// Remove the settings file and restore defaults. Environment stays active.
     pub fn reset(&mut self) -> Result<()> {
-        let overrides = Overrides::load()?;
+        let mut active = Values::default();
+        Overrides::load()?.apply(&mut active);
+
         self.store.reset()?;
-        self.persisted = Config::default();
-        self.overrides = overrides;
-        self.changes = Changes::default();
+        self.baseline = Values::default();
+        self.active = active;
+        self.changes.clear();
         Ok(())
     }
 }

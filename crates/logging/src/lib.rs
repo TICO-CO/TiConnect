@@ -7,8 +7,11 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 
-use ticonnect_core::error::{Error, Result};
 use ticonnect_settings::{LogFormat, LogSettings};
+
+mod error;
+
+pub use error::{Error, Result};
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
     fmt::{self, writer::BoxMakeWriter},
@@ -119,8 +122,7 @@ mod tests {
 
     use tracing_subscriber::fmt::writer::MakeWriter;
 
-    use super::Logging;
-    use ticonnect_core::error::Error;
+    use super::{Error, Logging};
     use ticonnect_settings::{LogFormat, LogSettings};
 
     #[derive(Clone)]

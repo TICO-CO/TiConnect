@@ -57,10 +57,18 @@ crates/
 ```
 
 Dependency direction: `settings` is a leaf crate. `logging` depends on
-`settings` and `core`. `core` depends on neither. `net`, `media`, `desktop`
-depend on `core`. `daemon` composes them. `ui`, `overlay`, `cli` depend only on
-`core` and D-Bus types, never on daemon internals. A future `runtime` crate can
-compose `settings` for the running application without pulling it into `core`.
+`settings` only. `core` depends on neither. `net`, `media`, `desktop` depend on
+`core`. `daemon` composes them. `ui`, `overlay`, `cli` depend only on `core` and
+D-Bus types, never on daemon internals. A future `runtime` crate can compose
+`settings` for the running application without pulling it into `core`.
+
+Each library crate owns its `Error` and `Result` types and maps failures from
+its dependencies into them. `core` exposes only shared protocol, identity,
+pairing, and crypto errors; there is no workspace-wide catch-all error enum.
+Binary entry points (`ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
+`ticonnect-ovl`) use `anyhow::Result` to report the full error chain once from
+`main` and exit failure. Only `src/main.rs` uses `anyhow`; library modules keep
+typed errors.
 
 ## 3. Stack
 

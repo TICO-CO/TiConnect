@@ -2,13 +2,14 @@ use std::fs;
 
 use figment::Jail;
 
-use super::{Config, ConfigStore};
+use super::store::FileStore;
 use crate::error::Error;
 use crate::log::LogFormat;
+use crate::values::Values;
 
 #[test]
 fn defaults_are_correct() {
-    let config = Config::default();
+    let config = Values::default();
 
     assert_eq!(config.log_level, "info");
     assert_eq!(config.log_file, None);
@@ -23,7 +24,7 @@ fn user_file_overrides_defaults() {
         jail.create_file("user.toml", "log_level = \"debug\"\n")?;
 
         let user = jail.directory().join("user.toml");
-        let config = ConfigStore::at(&user).load().expect("valid config");
+        let config = FileStore::at(&user).load().expect("valid settings");
 
         assert_eq!(config.log_level, "debug");
         Ok(())
@@ -37,11 +38,11 @@ fn invalid_config_returns_typed_error() {
         jail.create_file("invalid.toml", "log_level = [\n")?;
 
         let invalid = jail.directory().join("invalid.toml");
-        let error = ConfigStore::at(&invalid)
+        let error = FileStore::at(&invalid)
             .load()
-            .expect_err("invalid config must fail");
+            .expect_err("invalid settings must fail");
 
-        assert!(matches!(error, Error::Config(_)));
+        assert!(matches!(error, Error::Settings(_)));
         Ok(())
     });
 }
@@ -52,11 +53,11 @@ fn missing_files_are_skipped() {
         jail.clear_env();
 
         let missing = jail.directory().join("missing.toml");
-        let config = ConfigStore::at(&missing)
+        let config = FileStore::at(&missing)
             .load()
             .expect("missing files must not fail");
 
-        assert_eq!(config, Config::default());
+        assert_eq!(config, Values::default());
         Ok(())
     });
 }
@@ -69,8 +70,8 @@ fn environment_config_dir_controls_user_file() {
         jail.create_file("custom/config.toml", "log_level = \"debug\"\n")?;
         jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
 
-        let store = ConfigStore::open_default().expect("valid store");
-        let config = store.load().expect("valid config");
+        let store = FileStore::open_default().expect("valid store");
+        let config = store.load().expect("valid settings");
 
         assert_eq!(
             store.location().file().to_path_buf(),
@@ -92,13 +93,13 @@ fn save_writes_changed_fields_and_preserves_unknown_keys() {
         )?;
 
         let path = jail.directory().join("config.toml");
-        let store = ConfigStore::at(&path);
-        let mut config = store.load().expect("valid config");
+        let store = FileStore::at(&path);
+        let mut config = store.load().expect("valid settings");
         config.log_level = "warn".to_owned();
         config.log_format = LogFormat::Human;
         store.save(&config).expect("save");
 
-        let contents = fs::read_to_string(&path).expect("saved config");
+        let contents = fs::read_to_string(&path).expect("saved settings");
         let table: toml::Table = toml::from_str(&contents).expect("valid toml");
 
         assert_eq!(table["log_level"].as_str(), Some("warn"));
@@ -115,15 +116,15 @@ fn save_clears_optional_path() {
         jail.create_file("config.toml", "log_file = \"/tmp/ticonnect.log\"\n")?;
 
         let path = jail.directory().join("config.toml");
-        let store = ConfigStore::at(&path);
-        let mut config = store.load().expect("valid config");
+        let store = FileStore::at(&path);
+        let mut config = store.load().expect("valid settings");
         config.log_file = None;
         store.save(&config).expect("save");
 
-        let contents = fs::read_to_string(&path).expect("saved config");
+        let contents = fs::read_to_string(&path).expect("saved settings");
         assert!(!contents.contains("log_file"));
 
-        let reloaded = store.load().expect("valid config");
+        let reloaded = store.load().expect("valid settings");
         assert_eq!(reloaded.log_file, None);
         Ok(())
     });
@@ -134,15 +135,15 @@ fn save_creates_parent_directories() {
     Jail::expect_with(|jail| {
         jail.clear_env();
         let path = jail.directory().join("nested/deeper/config.toml");
-        let config = Config {
+        let config = Values {
             log_level: "warn".to_owned(),
-            ..Config::default()
+            ..Values::default()
         };
 
-        ConfigStore::at(&path).save(&config).expect("save");
+        FileStore::at(&path).save(&config).expect("save");
 
         assert!(path.exists());
-        let loaded = ConfigStore::at(&path).load().expect("valid config");
+        let loaded = FileStore::at(&path).load().expect("valid settings");
         assert_eq!(loaded.log_level, "warn");
         Ok(())
     });
@@ -154,9 +155,7 @@ fn save_without_changes_does_not_create_file() {
         jail.clear_env();
         let path = jail.directory().join("missing.toml");
 
-        ConfigStore::at(&path)
-            .save(&Config::default())
-            .expect("save");
+        FileStore::at(&path).save(&Values::default()).expect("save");
 
         assert!(!path.exists());
         Ok(())
@@ -174,17 +173,17 @@ fn concurrent_saves_leave_valid_toml() {
                 let path = path.clone();
                 scope.spawn(move || {
                     for _ in 0..20 {
-                        let config = Config {
+                        let config = Values {
                             log_level: level.to_owned(),
-                            ..Config::default()
+                            ..Values::default()
                         };
-                        ConfigStore::at(&path).save(&config).expect("save");
+                        FileStore::at(&path).save(&config).expect("save");
                     }
                 });
             }
         });
 
-        let contents = fs::read_to_string(&path).expect("saved config");
+        let contents = fs::read_to_string(&path).expect("saved settings");
         let table: toml::Table = toml::from_str(&contents).expect("valid toml");
         assert!(matches!(
             table["log_level"].as_str(),
@@ -204,13 +203,13 @@ fn save_removes_legacy_runtime_config_dir() {
         )?;
 
         let path = jail.directory().join("config.toml");
-        let store = ConfigStore::at(&path);
-        let config = store.load().expect("valid config");
+        let store = FileStore::at(&path);
+        let config = store.load().expect("valid settings");
         assert_eq!(config.log_level, "debug");
 
         store.save(&config).expect("save");
 
-        let contents = fs::read_to_string(&path).expect("saved config");
+        let contents = fs::read_to_string(&path).expect("saved settings");
         assert!(contents.contains("log_level = \"debug\""));
         assert!(!contents.contains("config_dir"));
         Ok(())
@@ -225,7 +224,7 @@ fn reset_removes_explicit_file() {
         let _ = jail.create_file("custom/config.toml", "log_level = \"warn\"\n")?;
         let path = dir.join("config.toml");
 
-        ConfigStore::at(&path).reset().expect("reset");
+        FileStore::at(&path).reset().expect("reset");
 
         assert!(!path.exists());
         Ok(())
@@ -238,7 +237,7 @@ fn reset_missing_file_is_ok() {
         jail.clear_env();
         let path = jail.directory().join("missing.toml");
 
-        ConfigStore::at(&path)
+        FileStore::at(&path)
             .reset()
             .expect("missing file must not fail");
         Ok(())
@@ -251,7 +250,7 @@ fn reset_does_not_create_parent_directories() {
         jail.clear_env();
         let path = jail.directory().join("nested/deeper/config.toml");
 
-        ConfigStore::at(&path).reset().expect("reset");
+        FileStore::at(&path).reset().expect("reset");
 
         assert!(!path.parent().expect("parent").exists());
         Ok(())
@@ -267,7 +266,7 @@ fn reset_uses_environment_config_dir() {
         jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
         let path = dir.join("config.toml");
 
-        ConfigStore::open_default()
+        FileStore::open_default()
             .expect("valid store")
             .reset()
             .expect("reset");

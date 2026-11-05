@@ -31,7 +31,8 @@ the UI, clicks fall back to notifications or are ignored.
 
 ## Deliverables
 
-- `crates/overlay/src/main.rs`
+- `crates/overlay/src/main.rs` — replace the Stage 1 stub with overlay startup
+  and `anyhow` error reporting.
 - `crates/overlay/src/card.rs`
 - `crates/overlay/src/layer_shell.rs`
 - `crates/overlay/src/x11_fallback.rs`

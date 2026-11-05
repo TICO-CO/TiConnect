@@ -66,7 +66,8 @@ Stages 1 and 2 complete.
 - [ ] Store timestamps as Unix milliseconds in `INTEGER`.
 - [ ] Add indexes on `messages(conversation_id, sent_at)` and
   `messages(conversation_id, sender_id, seq)`.
-- [ ] Add a storage error type mapping SQLite errors to `core::Error`.
+- [ ] Add a storage error type mapping SQLite errors to the daemon's storage
+  error.
 
 ## Settings
 

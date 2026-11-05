@@ -2,8 +2,8 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
-    #[error("configuration error: {0}")]
-    Config(String),
+    #[error("settings error: {0}")]
+    Settings(String),
 
     #[error(transparent)]
     Io(#[from] std::io::Error),

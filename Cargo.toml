@@ -9,6 +9,7 @@ rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
+anyhow = "1"
 ticonnect-core = { path = "crates/core" }
 ticonnect-logging = { path = "crates/logging" }
 ticonnect-settings = { path = "crates/settings" }

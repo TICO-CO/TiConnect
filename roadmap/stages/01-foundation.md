@@ -9,7 +9,8 @@ the repository builds and the tooling is in place.
 ## Scope
 
 - Workspace and crate layout exactly as described in `architecture.md`.
-- Shared error type and result alias.
+- Typed error and result alias per library crate.
+- Binary entry-point scaffolds using `anyhow` for top-level error reporting.
 - Configuration loading from TOML with defaults and environment overrides.
 - `tracing` setup with configurable level and file/stdout output.
 - CI workflow running build, test, clippy, fmt, and audit.
@@ -17,7 +18,8 @@ the repository builds and the tooling is in place.
 
 ## Non-goals
 
-- No daemon process, D-Bus, systemd unit, or CLI behavior.
+- No daemon process, D-Bus, systemd unit, or CLI behavior. The four binaries are
+  stubs that start and exit successfully.
 - No identity, storage, discovery, transport, or UI code.
 - No protocol implementation beyond empty module placeholders.
 
@@ -37,8 +39,12 @@ None.
   - `crates/overlay`
   - `crates/cli`
 - `crates/core/src/{lib.rs,error.rs}`
-- `crates/settings/src/{lib.rs,settings.rs,error.rs,log.rs,config/}`
-- `crates/logging/src/lib.rs`
+- `crates/settings/src/{lib.rs,error.rs,log.rs,settings/}`
+- `crates/logging/src/{lib.rs,error.rs}`
+- `crates/daemon/src/main.rs` (binary `ticonnectd`)
+- `crates/cli/src/main.rs` (binary `ticonnect-cli`)
+- `crates/ui/src/main.rs` (binary `ticonnect-ui`)
+- `crates/overlay/src/main.rs` (binary `ticonnect-ovl`)
 - `.github/workflows/ci.yml`
 - `README.md` with build and test commands.
 - `rust-toolchain.toml` pinned to a stable channel.
@@ -48,14 +54,22 @@ None.
 - [ ] Run `cargo new --lib` for each crate or create manifests by hand.
 - [ ] Add workspace `[workspace.package]` for version, edition, license, authors.
 - [ ] Add `[workspace.dependencies]` for `tokio`, `serde`, `postcard`, `tracing`,
-  `thiserror`, `figment`, `directories`, and `anyhow` only where justified.
+  `thiserror`, `figment`, and `directories`.
+- [ ] Add `anyhow` for binary entry points only, never for library APIs.
 - [ ] Pin Rust toolchain in `rust-toolchain.toml`.
 - [ ] Add `.gitignore` for `target/`, editor files, and local config.
 - [ ] Add `rustfmt.toml` and `clippy.toml` if non-default rules are wanted.
 
 ## Implementation
 
-- [ ] `core::error` defines `Error` enum with `thiserror` and `Result<T>` alias.
+- [ ] `core::error` defines a typed `Error` enum with `thiserror` and a `Result<T>`
+  alias for shared protocol, identity, pairing, and crypto errors.
+- [ ] Each library crate owns its own `Error` and `Result` types; there is no
+  workspace-wide catch-all error enum.
+- [ ] Each binary has `fn main() -> anyhow::Result<()>` and a placeholder
+  `run() -> anyhow::Result<()>`; only `src/main.rs` uses `anyhow`.
+- [ ] Binary targets are named `ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
+  and `ticonnect-ovl`.
 - [ ] `ticonnect-settings` is a leaf crate that embeds config privately and
   exposes only `Settings`, `LogSettings`, `LogFormat`, `Error`, and `Result`.
 - [ ] `Settings` defines persisted settings:
@@ -81,8 +95,10 @@ None.
   replace the file atomically.
 - [ ] `Settings` can load from, save, and reset an explicit file; missing files
   are a no-op.
-- [ ] `ticonnect-logging` depends on `ticonnect-settings` and initializes
-  `tracing-subscriber` with `EnvFilter`; `core` does not depend on either.
+- [ ] `ticonnect-logging` depends on `ticonnect-settings` only and initializes
+  `tracing-subscriber` with `EnvFilter`; it owns its own `Error`/`Result`.
+- [ ] `core` depends on neither `ticonnect-settings` nor `ticonnect-logging`
+  and never exposes logging-specific error variants.
 - [ ] Logging supports human-readable output and optional JSON output.
 - [ ] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
   settings and process lifecycle; it is not part of this stage.
@@ -107,7 +123,10 @@ None.
 - [ ] Unit test: concurrent saves leave valid TOML.
 - [ ] Unit test: invalid settings return a typed error, not a panic.
 - [ ] Smoke test: every workspace crate builds and links.
+- [ ] Smoke test: `cargo build --workspace --bins` succeeds.
+- [ ] Smoke test: each placeholder binary exits successfully.
 - [ ] Test that logging initialization is idempotent or safely guarded.
+- [ ] Unit test: invalid log filters return `ticonnect-logging`'s own typed error.
 
 ## Security
 
@@ -126,6 +145,7 @@ None.
 ## Acceptance criteria
 
 - `cargo build --workspace` succeeds.
+- `cargo build --workspace --bins` succeeds.
 - `cargo test --workspace` passes.
 - `cargo clippy --workspace --all-targets -- -D warnings` passes.
 - `cargo fmt --all -- --check` passes.
@@ -133,7 +153,8 @@ None.
 
 ## Demo
 
-1. `cargo run -p ticonnect-cli` is not required yet; use a unit test instead.
+1. Run each placeholder binary and confirm it exits successfully; no daemon,
+   CLI, UI, or overlay behavior exists yet.
 2. Show `cargo test -p ticonnect-core config` passing.
 3. Show CI workflow file and local clippy/fmt results.
 

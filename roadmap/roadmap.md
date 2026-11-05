@@ -34,7 +34,7 @@ be split.
 
 | # | Stage | Outcome | Depends on | Main risk |
 |---|---|---|---|---|
-| 1 | Foundation | Workspace builds, config/logging/errors ready, CI green | — | Scope creep into features |
+| 1 | Foundation | Workspace builds, config/logging ready, typed errors, CI green | — | Scope creep into features |
 | 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1 | D-Bus API churn |
 | 3 | Identity & storage | Ed25519 identity, SQLite schema, settings, peers | 1, 2 | Key handling mistakes |
 | 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 3 | mDNS availability on LANs |
@@ -49,7 +49,8 @@ be split.
 
 Future extraction: `ticonnect-runtime` will compose `ticonnect-settings` with
 process lifecycle and daemon wiring, keeping `ticonnect-core` free of settings
-and logging dependencies.
+and logging dependencies. Errors stay crate-local; `core` never depends on
+`settings` or `logging`, and no crate imports a catch-all workspace error enum.
 
 ## Dependency graph
 
@@ -81,6 +82,8 @@ and logging dependencies.
 - [ ] Public APIs and D-Bus interfaces are documented.
 - [ ] New config keys are documented with defaults.
 - [ ] New errors are typed and logged through `tracing`.
+- [ ] Library crates return typed `thiserror` errors; only binary entry points
+  use `anyhow` for top-level error reporting.
 - [ ] Stage demo steps run on both X11 and Wayland where applicable.
 - [ ] No secret, key, or credential is logged or committed.
 - [ ] Stage file checkboxes are fully checked.
