@@ -5,7 +5,7 @@ use figment::Jail;
 use super::store::FileStore;
 use crate::error::Error;
 use crate::log::LogFormat;
-use crate::values::Values;
+use crate::schema::Values;
 
 #[test]
 fn defaults_are_correct() {

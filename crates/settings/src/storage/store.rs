@@ -6,11 +6,10 @@ use std::sync::{Mutex, MutexGuard};
 
 use super::location::{Location, remove_settings_file, require_default_location};
 use crate::error::{Error, Result};
-use crate::values::Values;
+use crate::schema::Values;
 
 static SETTINGS_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
-const OPTIONAL_KEYS: [&str; 2] = ["log_file", "data_dir"];
 const LEGACY_KEYS: [&str; 1] = ["config_dir"];
 
 /// File-backed settings store.
@@ -116,9 +115,10 @@ fn write_changes(path: &Path, values: &Values) -> Result<()> {
     }
 
     let current = values_table(values)?;
-    for key in OPTIONAL_KEYS {
-        if !current.contains_key(key) {
-            table.remove(key);
+    let previous = values_table(&file_values)?;
+    for key in previous.keys() {
+        if !current.contains_key(key.as_str()) {
+            table.remove(key.as_str());
         }
     }
     table.extend(current);

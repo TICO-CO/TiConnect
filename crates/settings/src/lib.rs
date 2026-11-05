@@ -2,13 +2,15 @@
 
 //! Persisted and runtime settings for TiConnect.
 
-mod changes;
+#[macro_use]
+mod settings_macro;
+
 mod error;
 mod log;
 mod overrides;
+mod schema;
 mod settings;
 mod storage;
-mod values;
 
 pub use error::{Error, Result};
 pub use log::{LogFormat, LogSettings};

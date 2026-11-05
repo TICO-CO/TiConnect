@@ -1,11 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::changes::Changes;
 use crate::error::Result;
-use crate::log::{LogFormat, LogSettings};
-use crate::overrides::Overrides;
-use crate::storage::{FileStore, default_data_dir};
-use crate::values::Values;
+use crate::log::LogSettings;
+use crate::overrides;
+use crate::schema::{Changes, Values};
+use crate::storage::FileStore;
 
 /// Effective TiConnect settings.
 ///
@@ -16,8 +15,8 @@ use crate::values::Values;
 pub struct Settings {
     store: FileStore,
     baseline: Values,
-    active: Values,
-    changes: Changes,
+    pub(crate) active: Values,
+    pub(crate) changes: Changes,
 }
 
 impl Settings {
@@ -33,8 +32,7 @@ impl Settings {
 
     fn from_store(store: FileStore) -> Result<Self> {
         let baseline = store.load()?;
-        let mut active = baseline.clone();
-        Overrides::load()?.apply(&mut active);
+        let active = overrides::load(&baseline)?;
 
         Ok(Self {
             store,
@@ -44,25 +42,6 @@ impl Settings {
         })
     }
 
-    pub fn log_level(&self) -> &str {
-        &self.active.log_level
-    }
-
-    pub fn log_file(&self) -> Option<&Path> {
-        self.active.log_file.as_deref()
-    }
-
-    pub fn log_format(&self) -> LogFormat {
-        self.active.log_format
-    }
-
-    pub fn data_dir(&self) -> Result<PathBuf> {
-        self.active
-            .data_dir
-            .clone()
-            .map_or_else(default_data_dir, Ok)
-    }
-
     /// Resolve effective logging settings.
     pub fn log_settings(&self) -> LogSettings {
         LogSettings {
@@ -70,26 +49,6 @@ impl Settings {
             file: self.log_file().map(Path::to_path_buf),
             format: self.log_format(),
         }
-    }
-
-    pub fn set_log_level(&mut self, level: impl Into<String>) {
-        self.active.log_level = level.into();
-        self.changes.log_level = true;
-    }
-
-    pub fn set_log_file(&mut self, file: Option<PathBuf>) {
-        self.active.log_file = file;
-        self.changes.log_file = true;
-    }
-
-    pub fn set_log_format(&mut self, format: LogFormat) {
-        self.active.log_format = format;
-        self.changes.log_format = true;
-    }
-
-    pub fn set_data_dir(&mut self, dir: Option<PathBuf>) {
-        self.active.data_dir = dir;
-        self.changes.data_dir = true;
     }
 
     /// Persist explicit changes. Untouched environment values are not saved.
@@ -109,8 +68,7 @@ impl Settings {
 
     /// Remove the settings file and restore defaults. Environment stays active.
     pub fn reset(&mut self) -> Result<()> {
-        let mut active = Values::default();
-        Overrides::load()?.apply(&mut active);
+        let active = overrides::load(&Values::default())?;
 
         self.store.reset()?;
         self.baseline = Values::default();
