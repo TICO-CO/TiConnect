@@ -44,8 +44,6 @@ events fall back to system notifications.
 ```
 Cargo.toml                  workspace
 crates/
-  settings/                 persisted + runtime settings (leaf)
-  logging/                  tracing setup
   core/                     protocol types, identity, pairing, crypto
   net/                      mDNS discovery, QUIC transport, sessions
   media/                    cpal audio, opus, openh264, jitter buffer
@@ -56,11 +54,9 @@ crates/
   cli/                      command-line client
 ```
 
-Dependency direction: `settings` is a leaf crate. `logging` depends on
-`settings` and `core`. `core` depends on neither. `net`, `media`, `desktop`
-depend on `core`. `daemon` composes them. `ui`, `overlay`, `cli` depend only on
-`core` and D-Bus types, never on daemon internals. A future `runtime` crate can
-compose `settings` for the running application without pulling it into `core`.
+Dependency direction: `core` depends on nothing but utility crates. `net`,
+`media`, `desktop` depend on `core`. `daemon` composes them. `ui`, `overlay`,
+`cli` depend only on `core` and D-Bus types, never on daemon internals.
 
 ## 3. Stack
 
@@ -84,8 +80,8 @@ compose `settings` for the running application without pulling it into `core`.
 | Toast overlay | `gtk4-layer-shell` |
 | Notifications | `notify-rust` |
 | Tray | `ksni` (StatusNotifierItem) |
-| Settings | `figment` + TOML, `directories` |
-| Logging | `tracing` (`ticonnect-logging`) |
+| Config | `figment` + TOML, `directories` |
+| Logging | `tracing` |
 
 ### Transport rule
 

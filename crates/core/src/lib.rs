@@ -2,7 +2,9 @@
 
 //! Shared protocol, identity, pairing, and crypto types for TiConnect.
 
+pub mod config;
 pub mod error;
+pub mod logging;
 
 /// Return the TiConnect core crate version.
 pub fn version() -> &'static str {
