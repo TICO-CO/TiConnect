@@ -500,12 +500,7 @@ dependencies = [
 name = "ticonnect-core"
 version = "0.1.0"
 dependencies = [
- "directories",
- "figment",
- "serde",
  "thiserror",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -523,6 +518,16 @@ name = "ticonnect-desktop"
 version = "0.1.0"
 dependencies = [
  "ticonnect-core",
+]
+
+[[package]]
+name = "ticonnect-logging"
+version = "0.1.0"
+dependencies = [
+ "ticonnect-core",
+ "ticonnect-settings",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -544,6 +549,17 @@ name = "ticonnect-overlay"
 version = "0.1.0"
 dependencies = [
  "ticonnect-core",
+]
+
+[[package]]
+name = "ticonnect-settings"
+version = "0.1.0"
+dependencies = [
+ "directories",
+ "figment",
+ "serde",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

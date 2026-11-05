@@ -47,6 +47,10 @@ be split.
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 
+Future extraction: `ticonnect-runtime` will compose `ticonnect-settings` with
+process lifecycle and daemon wiring, keeping `ticonnect-core` free of settings
+and logging dependencies.
+
 ## Dependency graph
 
 ```

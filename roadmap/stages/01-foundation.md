@@ -36,7 +36,9 @@ None.
   - `crates/ui`
   - `crates/overlay`
   - `crates/cli`
-- `crates/core/src/{lib.rs,error.rs,config.rs,logging.rs}`
+- `crates/core/src/{lib.rs,error.rs}`
+- `crates/settings/src/{lib.rs,settings.rs,error.rs,log.rs,config/}`
+- `crates/logging/src/lib.rs`
 - `.github/workflows/ci.yml`
 - `README.md` with build and test commands.
 - `rust-toolchain.toml` pinned to a stable channel.
@@ -54,15 +56,36 @@ None.
 ## Implementation
 
 - [ ] `core::error` defines `Error` enum with `thiserror` and `Result<T>` alias.
-- [ ] `core::config` defines `Config` struct:
+- [ ] `ticonnect-settings` is a leaf crate that embeds config privately and
+  exposes only `Settings`, `LogSettings`, `LogFormat`, `Error`, and `Result`.
+- [ ] `Settings` defines persisted settings:
   - [ ] `log_level` default `info`.
   - [ ] `log_file` optional.
-  - [ ] `config_dir` override optional.
-  - [ ] `data_dir` override optional.
-- [ ] Config load order: built-in defaults, system file, user file, environment
-  variables prefixed `TICONNECT_`, explicit CLI override (hook only, CLI later).
-- [ ] `core::logging` initializes `tracing-subscriber` with `EnvFilter`.
+  - [ ] `log_format` default human-readable, with optional JSON output.
+  - [ ] `data_dir` optional.
+- [ ] `Settings` owns file behavior internally: default location, read, write,
+  save, reset. `Config` and its store are not exported.
+- [ ] `TICONNECT_CONFIG_DIR` is bootstrap-only: it selects the user settings file
+  location and is never merged into, or persisted as, a setting.
+- [ ] `Settings` applies `TICONNECT_*` overrides internally. Callers see one
+  effective value per setting, with no exposed runtime/persisted distinction.
+- [ ] Load order for effective values: built-in defaults, user file, environment
+  variables prefixed `TICONNECT_`. Environment always wins until explicitly set.
+- [ ] Explicit `Settings::set_*` calls change the effective value immediately and
+  are persisted only by `Settings::save`.
+- [ ] `Settings::save` persists explicit changes only; untouched environment
+  values are never persisted implicitly.
+- [ ] Saves preserve unknown keys, remove legacy runtime-only `config_dir`, and
+  skip writing when nothing changed.
+- [ ] Settings writes take an in-process mutex and an OS advisory lock, and
+  replace the file atomically.
+- [ ] `Settings` can load from, save, and reset an explicit file; missing files
+  are a no-op.
+- [ ] `ticonnect-logging` depends on `ticonnect-settings` and initializes
+  `tracing-subscriber` with `EnvFilter`; `core` does not depend on either.
 - [ ] Logging supports human-readable output and optional JSON output.
+- [ ] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
+  settings and process lifecycle; it is not part of this stage.
 - [ ] `core` exposes `version()` from `CARGO_PKG_VERSION`.
 - [ ] Each dependent crate has an empty `lib.rs` that compiles and depends on
   `core` per the dependency direction rule.
@@ -70,9 +93,19 @@ None.
 
 ## Tests
 
-- [ ] Unit test: default config values are correct.
-- [ ] Unit test: environment override wins over file value.
-- [ ] Unit test: invalid config returns a typed error, not a panic.
+- [ ] Unit test: default settings values are correct.
+- [ ] Unit test: environment override wins for effective settings values.
+- [ ] Unit test: explicit `Settings::set_*` changes the effective value and is
+  not written until `save`.
+- [ ] Unit test: `config_dir` selects the user settings file without becoming
+  settings data.
+- [ ] Unit test: `data_dir` environment override is not persisted.
+- [ ] Unit test: reset removes the user settings file and restores defaults.
+- [ ] Unit test: save persists explicit changes but not environment values.
+- [ ] Unit test: save preserves unknown keys, clears optional fields, and removes
+  legacy `config_dir`.
+- [ ] Unit test: concurrent saves leave valid TOML.
+- [ ] Unit test: invalid settings return a typed error, not a panic.
 - [ ] Smoke test: every workspace crate builds and links.
 - [ ] Test that logging initialization is idempotent or safely guarded.
 
