@@ -3,7 +3,7 @@ macro_rules! settings_schema {
         $(
             $(#[$field_attr:meta])*
             $field:ident : $ty:ty = $default:expr => {
-                get (&self) $(-> $get_ret:ty)? as $get_active:ident $get_body:block;
+                get (&self) $(-> $get_ret:ty)? as $get_active:ident $(, $get_storage:ident)? $get_body:block;
                 set (&mut self $(, $arg_name:ident : $arg_ty:ty)*) as $set_active:ident $set_body:block;
             };
         )*
@@ -56,6 +56,7 @@ macro_rules! settings_schema {
             $(
                 pub fn $field(&self) $(-> $get_ret)? {
                     let $get_active = &self.active;
+                    $(let $get_storage = &self.storage;)?
                     $get_body
                 }
 

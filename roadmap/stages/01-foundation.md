@@ -93,8 +93,7 @@ None.
   are persisted only by `Settings::save`.
 - [ ] `Settings::save` persists explicit changes only; untouched environment
   values are never persisted implicitly.
-- [ ] Saves preserve unknown keys, remove legacy runtime-only `config_dir`, and
-  skip writing when nothing changed.
+- [ ] Saves preserve unknown keys and skip writing when nothing changed.
 - [ ] Settings writes take an in-process mutex and an OS advisory lock, and
   replace the file atomically.
 - [ ] `Settings` can load from, save, and reset an explicit file; missing files
@@ -128,8 +127,7 @@ None.
 - [ ] Unit test: `data_dir` environment override is not persisted.
 - [ ] Unit test: reset removes the user settings file and restores defaults.
 - [ ] Unit test: save persists explicit changes but not environment values.
-- [ ] Unit test: save preserves unknown keys, clears optional fields, and removes
-  legacy `config_dir`.
+- [ ] Unit test: save preserves unknown keys and clears optional fields.
 - [ ] Unit test: concurrent saves leave valid TOML.
 - [ ] Unit test: invalid settings return a typed error, not a panic.
 - [ ] Smoke test: every workspace crate builds and links.

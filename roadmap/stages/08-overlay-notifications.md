@@ -86,8 +86,8 @@ the UI, clicks fall back to notifications or are ignored.
 
 - [ ] Overlay subscribes directly to `org.ticonnect.Daemon` signals.
 - [ ] Overlay does not depend on the UI process.
-- [ ] Config key `overlay.enabled` read from daemon settings at start and on
-  change.
+- [ ] Config key `overlay.enabled` read from TOML settings at start and after
+  config reload changes.
 - [ ] Autostart entry starts the overlay after login.
 - [ ] Single-instance guard for the overlay.
 

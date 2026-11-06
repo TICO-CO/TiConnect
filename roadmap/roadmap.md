@@ -36,7 +36,7 @@ be split.
 |---|---|---|---|---|
 | 1 | Foundation | Workspace builds, config/logging ready, typed errors, CI green | — | Scope creep into features |
 | 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1 | D-Bus API churn |
-| 3 | Identity & storage | Ed25519 identity, SQLite schema, settings, peers | 1, 2 | Key handling mistakes |
+| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, peers | 1, 2 | Key handling mistakes |
 | 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 3 | mDNS availability on LANs |
 | 5 | Pairing & transport | SPAKE2 pairing, QUIC/TLS with pinning, trust table | 1, 3, 4 | Cryptographic correctness |
 | 6 | Messaging | Signed replica messages, outbox, gap sync, receipts, policy, tray | 1, 3, 5 | Ordering and expiry edge cases |

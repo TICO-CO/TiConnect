@@ -2,7 +2,7 @@ use std::fs;
 
 use figment::Jail;
 
-use super::store::Storage;
+use super::{Storage, io};
 use crate::error::Error;
 use crate::settings::schema::SettingsValues;
 
@@ -67,12 +67,44 @@ fn environment_config_dir_controls_user_file() {
 
         let storage = Storage::open_default().expect("valid storage");
 
-        assert_eq!(
-            storage.location().file().to_path_buf(),
-            dir.join("config.toml")
-        );
-        assert_eq!(storage.location().dir().to_path_buf(), dir);
+        assert_eq!(storage.config_file().to_path_buf(), dir.join("config.toml"));
+        assert_eq!(storage.config_dir().to_path_buf(), dir);
         assert_eq!(storage.saved().log_level, "debug");
+        Ok(())
+    });
+}
+
+#[test]
+fn data_dir_uses_configured_path() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let storage = Storage::at(jail.directory().join("config.toml")).expect("valid storage");
+        let configured = jail.directory().join("custom-data");
+
+        assert_eq!(
+            storage
+                .data_dir(Some(&configured))
+                .expect("configured data dir"),
+            configured
+        );
+        Ok(())
+    });
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn data_dir_falls_back_to_platform_default() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let data_home =
+            fs::canonicalize(jail.create_dir("data-home")?).expect("canonical data home");
+        jail.set_env("XDG_DATA_HOME", data_home.display());
+        let storage = Storage::at(jail.directory().join("config.toml")).expect("valid storage");
+
+        assert_eq!(
+            storage.data_dir(None).expect("default data dir"),
+            data_home.join("ticonnect")
+        );
         Ok(())
     });
 }
@@ -147,6 +179,26 @@ fn save_creates_parent_directories() {
 }
 
 #[test]
+fn save_does_not_materialize_defaults() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.create_file("config.toml", "log_file = \"/tmp/ticonnect.log\"\n")?;
+
+        let path = jail.directory().join("config.toml");
+        let mut storage = Storage::at(&path).expect("valid settings");
+        let mut config = storage.saved().clone();
+        config.log_file = Some("/tmp/updated.log".into());
+        storage.save(&config).expect("save");
+
+        let contents = fs::read_to_string(&path).expect("saved settings");
+        assert!(!contents.contains("log_level"));
+        assert!(!contents.contains("log_format"));
+        assert!(contents.contains("/tmp/updated.log"));
+        Ok(())
+    });
+}
+
+#[test]
 fn save_without_changes_does_not_create_file() {
     Jail::expect_with(|jail| {
         jail.clear_env();
@@ -197,29 +249,6 @@ fn concurrent_saves_leave_valid_toml() {
 }
 
 #[test]
-fn save_removes_legacy_runtime_config_dir() {
-    Jail::expect_with(|jail| {
-        jail.clear_env();
-        jail.create_file(
-            "config.toml",
-            "log_level = \"debug\"\nconfig_dir = \"/tmp/legacy\"\n",
-        )?;
-
-        let path = jail.directory().join("config.toml");
-        let mut storage = Storage::at(&path).expect("valid settings");
-        let config = storage.saved().clone();
-        assert_eq!(config.log_level, "debug");
-
-        storage.save(&config).expect("save");
-
-        let contents = fs::read_to_string(&path).expect("saved settings");
-        assert!(contents.contains("log_level = \"debug\""));
-        assert!(!contents.contains("config_dir"));
-        Ok(())
-    });
-}
-
-#[test]
 fn reset_removes_explicit_file() {
     Jail::expect_with(|jail| {
         jail.clear_env();
@@ -263,6 +292,23 @@ fn reset_does_not_create_parent_directories() {
             .expect("reset");
 
         assert!(!path.parent().expect("parent").exists());
+        Ok(())
+    });
+}
+
+#[test]
+fn write_atomic_reports_cleanup_failure() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.create_dir("config.toml.tmp")?;
+        jail.create_file("config.toml.tmp/child", "x")?;
+
+        let path = jail.directory().join("config.toml");
+        let error =
+            io::write_atomic(&path, b"log_level = \"warn\"\n").expect_err("write must fail");
+
+        assert!(matches!(error, Error::Settings(_)));
+        assert!(error.to_string().contains("config.toml.tmp"));
         Ok(())
     });
 }

@@ -8,7 +8,7 @@ use std::path::Path;
 use self::schema::{SettingsChanges, SettingsValues};
 use crate::error::Result;
 use crate::overrides;
-use crate::storage::store::Storage;
+use crate::storage::Storage;
 
 #[derive(Debug, Clone)]
 pub struct Settings {

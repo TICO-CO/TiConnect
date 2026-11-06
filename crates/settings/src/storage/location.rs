@@ -5,10 +5,9 @@ use directories::ProjectDirs;
 
 use crate::error::{Error, Result};
 
-const APP_NAME: &str = "ticonnect";
+const DIR_NAME: &str = "ticonnect";
 const CONFIG_DIR_ENV: &str = "TICONNECT_CONFIG_DIR";
 
-/// Resolved location of the user settings file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Location {
     dir: PathBuf,
@@ -20,19 +19,21 @@ impl Location {
         Self { dir, file }
     }
 
-    /// Resolve the settings location from the environment or user directories.
     pub fn discover() -> Result<Self> {
-        if let Some(dir) = env::var_os(CONFIG_DIR_ENV) {
-            return Ok(Self::from_config_dir(PathBuf::from(dir)));
+        if let Some(override_dir) = env::var_os(CONFIG_DIR_ENV) {
+            return Ok(Self::from_config_dir(PathBuf::from(override_dir)));
         }
 
-        let dirs = project_dirs()?;
+        let dirs = Self::project_dirs()?;
         Ok(Self::from_config_dir(dirs.config_dir().to_path_buf()))
     }
 
-    fn from_config_dir(dir: PathBuf) -> Self {
-        let file = dir.join("config.toml");
-        Self { dir, file }
+    pub fn default_data_dir() -> Result<PathBuf> {
+        Ok(Self::project_dirs()?.data_dir().to_path_buf())
+    }
+
+    pub fn file(&self) -> &Path {
+        &self.file
     }
 
     #[cfg(test)]
@@ -40,16 +41,13 @@ impl Location {
         &self.dir
     }
 
-    pub fn file(&self) -> &Path {
-        &self.file
+    fn project_dirs() -> Result<ProjectDirs> {
+        ProjectDirs::from("", "", DIR_NAME)
+            .ok_or_else(|| Error::Settings("could not determine user directories".to_owned()))
     }
-}
 
-pub fn default_data_dir() -> Result<PathBuf> {
-    Ok(project_dirs()?.data_dir().to_path_buf())
-}
-
-fn project_dirs() -> Result<ProjectDirs> {
-    ProjectDirs::from("", "", APP_NAME)
-        .ok_or_else(|| Error::Settings("could not determine user directories".to_owned()))
+    fn from_config_dir(dir: PathBuf) -> Self {
+        let file = dir.join("config.toml");
+        Self { dir, file }
+    }
 }

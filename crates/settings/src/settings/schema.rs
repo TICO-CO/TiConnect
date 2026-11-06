@@ -2,7 +2,6 @@ use std::path::{Path, PathBuf};
 
 use super::Settings;
 use crate::error::Result;
-use crate::storage::location::default_data_dir;
 
 settings_schema! {
     log_level: String = "info".to_owned() => {
@@ -35,8 +34,8 @@ settings_schema! {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     data_dir: Option<PathBuf> = None => {
-        get(&self) -> Result<PathBuf> as active {
-            active.data_dir.clone().map_or_else(default_data_dir, Ok)
+        get(&self) -> Result<PathBuf> as active, storage {
+            storage.data_dir(active.data_dir.as_deref())
         };
         set(&mut self, dir: Option<PathBuf>) as active {
             active.data_dir = dir;
