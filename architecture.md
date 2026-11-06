@@ -44,8 +44,9 @@ events fall back to system notifications.
 ```
 Cargo.toml                  workspace
 crates/
-  settings/                 persisted + runtime settings (leaf)
-  logging/                  tracing setup
+  settings/                 persisted + effective settings (leaf)
+  logging/                  tracing setup (leaf)
+  runtime/                  future: composition root, settings + logging + lifecycle
   core/                     protocol types, identity, pairing, crypto
   net/                      mDNS discovery, QUIC transport, sessions
   media/                    cpal audio, opus, openh264, jitter buffer
@@ -56,19 +57,31 @@ crates/
   cli/                      command-line client
 ```
 
-Dependency direction: `settings` is a leaf crate. `logging` depends on
-`settings` only. `core` depends on neither. `net`, `media`, `desktop` depend on
-`core`. `daemon` composes them. `ui`, `overlay`, `cli` depend only on `core` and
-D-Bus types, never on daemon internals. A future `runtime` crate can compose
-`settings` for the running application without pulling it into `core`.
+Dependency direction: `settings` and `logging` are leaf crates. `logging` is a
+pure tracing wrapper and depends on neither `settings` nor `core`. `core`
+depends on neither. `net`, `media`, `desktop` depend on `core`. `daemon`
+composes them. `ui`, `overlay`, `cli` depend only on `core` and D-Bus types,
+never on daemon internals.
 
-Each library crate owns its `Error` and `Result` types and maps failures from
-its dependencies into them. `core` exposes only shared protocol, identity,
-pairing, and crypto errors; there is no workspace-wide catch-all error enum.
+Interim composition: each binary loads `Settings`, builds `LogSettings` with
+`LogSettings::from_parts`, and initializes `Logging` in its entrypoint. This
+glue is intentionally duplicated across the four entrypoints for now. A future
+`ticonnect-runtime` crate will own this composition, plus process lifecycle;
+binaries will then depend on `runtime` instead of wiring `settings` and
+`logging` individually. Runtime is a composition root: it consumes `settings`
+and `logging` as leaves and does not own the settings model. `core` stays free
+of both.
+
+Each fallible library crate owns its `Error` and `Result` types and maps
+failures from its dependencies into them. `core` exposes domain types only and
+defines no crate-wide error type; fallible `core` modules define local errors
+when they need them. There is no workspace-wide catch-all error enum.
+
 Binary entry points (`ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
 `ticonnect-ovl`) use `anyhow::Result` to report the full error chain once from
-`main` and exit failure. Only `src/main.rs` uses `anyhow`; library modules keep
-typed errors.
+`main` and exit failure. They add context around each startup step and let
+`anyhow` aggregate crate errors. Only `src/main.rs` uses `anyhow`; library
+modules keep typed errors.
 
 ## 3. Stack
 

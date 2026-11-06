@@ -4,41 +4,46 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard};
 
-use super::location::{Location, remove_settings_file, require_default_location};
+use super::location::Location;
 use crate::error::{Error, Result};
-use crate::schema::Values;
+use crate::state::SettingsValues;
 
 static SETTINGS_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 const LEGACY_KEYS: [&str; 1] = ["config_dir"];
 
-/// File-backed settings store.
+/// File-backed settings storage.
 ///
-/// Owns the resolved settings location and all filesystem access. The [`Values`]
-/// type itself stays a passive data model.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct FileStore {
+/// Owns the resolved settings location, the values last loaded from or saved to
+/// disk, and all filesystem access. The [`SettingsValues`] type itself stays a passive
+/// data model.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Storage {
     location: Location,
+    saved: SettingsValues,
 }
 
-impl FileStore {
-    /// Build a store for an explicit settings file.
-    pub(crate) fn at(path: impl Into<PathBuf>) -> Self {
+impl Storage {
+    /// Open storage for an explicit settings file and load its values.
+    pub(crate) fn at(path: impl Into<PathBuf>) -> Result<Self> {
         let file = path.into();
         let dir = file
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .map_or_else(PathBuf::new, Path::to_path_buf);
 
-        Self {
-            location: Location::new(dir, file),
-        }
+        Self::from_location(Location::new(dir, file))
     }
 
+    /// Open storage at the default location and load its values.
     pub(crate) fn open_default() -> Result<Self> {
-        Ok(Self {
-            location: require_default_location()?,
-        })
+        Self::from_location(Location::discover()?)
+    }
+
+    fn from_location(location: Location) -> Result<Self> {
+        let saved = load_values(&location)?;
+
+        Ok(Self { location, saved })
     }
 
     #[cfg(test)]
@@ -46,45 +51,68 @@ impl FileStore {
         &self.location
     }
 
-    /// Load persisted settings. Missing or empty files yield defaults.
-    pub(crate) fn load(&self) -> Result<Values> {
-        let contents = match fs::read_to_string(self.location.file()) {
-            Ok(contents) => contents,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Values::default()),
-            Err(error) => return Err(error.into()),
-        };
-
-        if contents.trim().is_empty() {
-            return Ok(Values::default());
-        }
-
-        toml::from_str(&contents)
-            .map_err(|error| Error::Settings(format!("invalid settings file: {error}")))
+    /// Settings values currently persisted on disk.
+    pub(crate) fn saved(&self) -> &SettingsValues {
+        &self.saved
     }
 
     /// Persist settings, preserving unknown keys in the existing file.
-    pub(crate) fn save(&self, values: &Values) -> Result<()> {
+    pub(crate) fn save(&mut self, values: &SettingsValues) -> Result<()> {
         let path = self.location.file();
         create_parent(path)?;
         let _lock = acquire_write_lock(path)?;
-        write_changes(path, values)
+        write_changes(path, values)?;
+
+        self.saved = values.clone();
+        Ok(())
     }
 
     /// Remove the settings file so built-in defaults apply.
     ///
     /// A missing file is not an error. No directories are created.
-    pub(crate) fn reset(&self) -> Result<()> {
+    pub(crate) fn reset(&mut self) -> Result<()> {
         let path = self.location.file();
-        if !path.exists() {
-            return Ok(());
+        if path.exists() {
+            let _lock = acquire_write_lock(path)?;
+            self.remove_file()?;
         }
 
-        let _lock = acquire_write_lock(path)?;
-        remove_settings_file(path)
+        self.saved = SettingsValues::default();
+        Ok(())
+    }
+
+    fn remove_file(&self) -> Result<()> {
+        let path = self.location.file();
+        match fs::remove_file(path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(Error::Settings(format!(
+                "could not reset {}: {error}",
+                path.display()
+            ))),
+        }
     }
 }
 
-fn write_changes(path: &Path, values: &Values) -> Result<()> {
+/// Load persisted settings. Missing or empty files yield defaults.
+fn load_values(location: &Location) -> Result<SettingsValues> {
+    let contents = match fs::read_to_string(location.file()) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(SettingsValues::default());
+        }
+        Err(error) => return Err(error.into()),
+    };
+
+    if contents.trim().is_empty() {
+        return Ok(SettingsValues::default());
+    }
+
+    toml::from_str(&contents)
+        .map_err(|error| Error::Settings(format!("invalid settings file: {error}")))
+}
+
+fn write_changes(path: &Path, values: &SettingsValues) -> Result<()> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => Some(contents),
         Err(error) if error.kind() == io::ErrorKind::NotFound => None,
@@ -101,12 +129,12 @@ fn write_changes(path: &Path, values: &Values) -> Result<()> {
         _ => toml::Table::new(),
     };
 
-    let file_values: Values = if non_empty {
+    let file_values: SettingsValues = if non_empty {
         toml::Value::Table(table.clone())
             .try_into()
             .map_err(|error| Error::Settings(format!("invalid settings file: {error}")))?
     } else {
-        Values::default()
+        SettingsValues::default()
     };
 
     let legacy_present = LEGACY_KEYS.iter().any(|key| table.contains_key(*key));
@@ -132,7 +160,7 @@ fn write_changes(path: &Path, values: &Values) -> Result<()> {
     write_atomic(path, serialized.as_bytes())
 }
 
-fn values_table(values: &Values) -> Result<toml::Table> {
+fn values_table(values: &SettingsValues) -> Result<toml::Table> {
     match toml::Value::try_from(values)
         .map_err(|error| Error::Settings(format!("could not serialize values: {error}")))?
     {

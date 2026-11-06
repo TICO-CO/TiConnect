@@ -2,18 +2,17 @@ use std::fs;
 
 use figment::Jail;
 
-use super::store::FileStore;
+use super::store::Storage;
 use crate::error::Error;
-use crate::log::LogFormat;
-use crate::schema::Values;
+use crate::state::SettingsValues;
 
 #[test]
 fn defaults_are_correct() {
-    let config = Values::default();
+    let config = SettingsValues::default();
 
     assert_eq!(config.log_level, "info");
     assert_eq!(config.log_file, None);
-    assert_eq!(config.log_format, LogFormat::Human);
+    assert_eq!(config.log_format, "human");
     assert_eq!(config.data_dir, None);
 }
 
@@ -24,9 +23,9 @@ fn user_file_overrides_defaults() {
         jail.create_file("user.toml", "log_level = \"debug\"\n")?;
 
         let user = jail.directory().join("user.toml");
-        let config = FileStore::at(&user).load().expect("valid settings");
+        let storage = Storage::at(&user).expect("valid settings");
 
-        assert_eq!(config.log_level, "debug");
+        assert_eq!(storage.saved().log_level, "debug");
         Ok(())
     });
 }
@@ -38,9 +37,7 @@ fn invalid_config_returns_typed_error() {
         jail.create_file("invalid.toml", "log_level = [\n")?;
 
         let invalid = jail.directory().join("invalid.toml");
-        let error = FileStore::at(&invalid)
-            .load()
-            .expect_err("invalid settings must fail");
+        let error = Storage::at(&invalid).expect_err("invalid settings must fail");
 
         assert!(matches!(error, Error::Settings(_)));
         Ok(())
@@ -53,11 +50,9 @@ fn missing_files_are_skipped() {
         jail.clear_env();
 
         let missing = jail.directory().join("missing.toml");
-        let config = FileStore::at(&missing)
-            .load()
-            .expect("missing files must not fail");
+        let storage = Storage::at(&missing).expect("missing files must not fail");
 
-        assert_eq!(config, Values::default());
+        assert_eq!(storage.saved(), &SettingsValues::default());
         Ok(())
     });
 }
@@ -70,15 +65,14 @@ fn environment_config_dir_controls_user_file() {
         jail.create_file("custom/config.toml", "log_level = \"debug\"\n")?;
         jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
 
-        let store = FileStore::open_default().expect("valid store");
-        let config = store.load().expect("valid settings");
+        let storage = Storage::open_default().expect("valid storage");
 
         assert_eq!(
-            store.location().file().to_path_buf(),
+            storage.location().file().to_path_buf(),
             dir.join("config.toml")
         );
-        assert_eq!(store.location().dir().to_path_buf(), dir);
-        assert_eq!(config.log_level, "debug");
+        assert_eq!(storage.location().dir().to_path_buf(), dir);
+        assert_eq!(storage.saved().log_level, "debug");
         Ok(())
     });
 }
@@ -93,11 +87,11 @@ fn save_writes_changed_fields_and_preserves_unknown_keys() {
         )?;
 
         let path = jail.directory().join("config.toml");
-        let store = FileStore::at(&path);
-        let mut config = store.load().expect("valid settings");
+        let mut storage = Storage::at(&path).expect("valid settings");
+        let mut config = storage.saved().clone();
         config.log_level = "warn".to_owned();
-        config.log_format = LogFormat::Human;
-        store.save(&config).expect("save");
+        config.log_format = "human".to_owned();
+        storage.save(&config).expect("save");
 
         let contents = fs::read_to_string(&path).expect("saved settings");
         let table: toml::Table = toml::from_str(&contents).expect("valid toml");
@@ -116,16 +110,16 @@ fn save_clears_optional_path() {
         jail.create_file("config.toml", "log_file = \"/tmp/ticonnect.log\"\n")?;
 
         let path = jail.directory().join("config.toml");
-        let store = FileStore::at(&path);
-        let mut config = store.load().expect("valid settings");
+        let mut storage = Storage::at(&path).expect("valid settings");
+        let mut config = storage.saved().clone();
         config.log_file = None;
-        store.save(&config).expect("save");
+        storage.save(&config).expect("save");
 
         let contents = fs::read_to_string(&path).expect("saved settings");
         assert!(!contents.contains("log_file"));
 
-        let reloaded = store.load().expect("valid settings");
-        assert_eq!(reloaded.log_file, None);
+        let reloaded = Storage::at(&path).expect("valid settings");
+        assert_eq!(reloaded.saved().log_file, None);
         Ok(())
     });
 }
@@ -135,16 +129,19 @@ fn save_creates_parent_directories() {
     Jail::expect_with(|jail| {
         jail.clear_env();
         let path = jail.directory().join("nested/deeper/config.toml");
-        let config = Values {
+        let config = SettingsValues {
             log_level: "warn".to_owned(),
-            ..Values::default()
+            ..SettingsValues::default()
         };
 
-        FileStore::at(&path).save(&config).expect("save");
+        Storage::at(&path)
+            .expect("valid storage")
+            .save(&config)
+            .expect("save");
 
         assert!(path.exists());
-        let loaded = FileStore::at(&path).load().expect("valid settings");
-        assert_eq!(loaded.log_level, "warn");
+        let loaded = Storage::at(&path).expect("valid settings");
+        assert_eq!(loaded.saved().log_level, "warn");
         Ok(())
     });
 }
@@ -155,7 +152,10 @@ fn save_without_changes_does_not_create_file() {
         jail.clear_env();
         let path = jail.directory().join("missing.toml");
 
-        FileStore::at(&path).save(&Values::default()).expect("save");
+        Storage::at(&path)
+            .expect("valid storage")
+            .save(&SettingsValues::default())
+            .expect("save");
 
         assert!(!path.exists());
         Ok(())
@@ -173,11 +173,14 @@ fn concurrent_saves_leave_valid_toml() {
                 let path = path.clone();
                 scope.spawn(move || {
                     for _ in 0..20 {
-                        let config = Values {
+                        let config = SettingsValues {
                             log_level: level.to_owned(),
-                            ..Values::default()
+                            ..SettingsValues::default()
                         };
-                        FileStore::at(&path).save(&config).expect("save");
+                        Storage::at(&path)
+                            .expect("valid storage")
+                            .save(&config)
+                            .expect("save");
                     }
                 });
             }
@@ -203,11 +206,11 @@ fn save_removes_legacy_runtime_config_dir() {
         )?;
 
         let path = jail.directory().join("config.toml");
-        let store = FileStore::at(&path);
-        let config = store.load().expect("valid settings");
+        let mut storage = Storage::at(&path).expect("valid settings");
+        let config = storage.saved().clone();
         assert_eq!(config.log_level, "debug");
 
-        store.save(&config).expect("save");
+        storage.save(&config).expect("save");
 
         let contents = fs::read_to_string(&path).expect("saved settings");
         assert!(contents.contains("log_level = \"debug\""));
@@ -224,7 +227,10 @@ fn reset_removes_explicit_file() {
         let _ = jail.create_file("custom/config.toml", "log_level = \"warn\"\n")?;
         let path = dir.join("config.toml");
 
-        FileStore::at(&path).reset().expect("reset");
+        Storage::at(&path)
+            .expect("valid storage")
+            .reset()
+            .expect("reset");
 
         assert!(!path.exists());
         Ok(())
@@ -237,7 +243,8 @@ fn reset_missing_file_is_ok() {
         jail.clear_env();
         let path = jail.directory().join("missing.toml");
 
-        FileStore::at(&path)
+        Storage::at(&path)
+            .expect("valid storage")
             .reset()
             .expect("missing file must not fail");
         Ok(())
@@ -250,7 +257,10 @@ fn reset_does_not_create_parent_directories() {
         jail.clear_env();
         let path = jail.directory().join("nested/deeper/config.toml");
 
-        FileStore::at(&path).reset().expect("reset");
+        Storage::at(&path)
+            .expect("valid storage")
+            .reset()
+            .expect("reset");
 
         assert!(!path.parent().expect("parent").exists());
         Ok(())
@@ -266,8 +276,8 @@ fn reset_uses_environment_config_dir() {
         jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
         let path = dir.join("config.toml");
 
-        FileStore::open_default()
-            .expect("valid store")
+        Storage::open_default()
+            .expect("valid storage")
             .reset()
             .expect("reset");
 

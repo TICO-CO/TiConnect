@@ -2,8 +2,6 @@
 
 //! Shared protocol, identity, pairing, and crypto types for TiConnect.
 
-pub mod error;
-
 /// Return the TiConnect core crate version.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

@@ -1,17 +1,16 @@
 #![forbid(unsafe_code)]
 
-//! Persisted and runtime settings for TiConnect.
+//! Persisted and effective settings for TiConnect.
 
-#[macro_use]
-mod settings_macro;
-
+mod api;
 mod error;
-mod log;
 mod overrides;
-mod schema;
-mod settings;
+mod state;
 mod storage;
 
+#[cfg(test)]
+#[allow(clippy::result_large_err)]
+mod tests;
+
+pub use api::Settings;
 pub use error::{Error, Result};
-pub use log::{LogFormat, LogSettings};
-pub use settings::Settings;

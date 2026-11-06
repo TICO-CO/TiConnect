@@ -47,10 +47,12 @@ be split.
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 
-Future extraction: `ticonnect-runtime` will compose `ticonnect-settings` with
-process lifecycle and daemon wiring, keeping `ticonnect-core` free of settings
-and logging dependencies. Errors stay crate-local; `core` never depends on
-`settings` or `logging`, and no crate imports a catch-all workspace error enum.
+Future extraction: binaries currently duplicate the `ticonnect-settings` +
+`ticonnect-logging` bootstrap in their entrypoints. `ticonnect-runtime` will
+own that composition, process lifecycle, and daemon wiring, so binaries depend
+on `runtime` instead. This keeps `ticonnect-core` free of settings and logging
+dependencies. Errors stay crate-local; `core` never depends on `settings` or
+`logging`, and no crate imports a catch-all workspace error enum.
 
 ## Dependency graph
 

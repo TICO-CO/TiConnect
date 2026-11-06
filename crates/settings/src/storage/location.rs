@@ -1,6 +1,4 @@
 use std::env;
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
@@ -22,6 +20,21 @@ impl Location {
         Self { dir, file }
     }
 
+    /// Resolve the settings location from the environment or user directories.
+    pub(super) fn discover() -> Result<Self> {
+        if let Some(dir) = env::var_os(CONFIG_DIR_ENV) {
+            return Ok(Self::from_config_dir(PathBuf::from(dir)));
+        }
+
+        let dirs = project_dirs()?;
+        Ok(Self::from_config_dir(dirs.config_dir().to_path_buf()))
+    }
+
+    fn from_config_dir(dir: PathBuf) -> Self {
+        let file = dir.join("config.toml");
+        Self { dir, file }
+    }
+
     #[cfg(test)]
     pub(crate) fn dir(&self) -> &Path {
         &self.dir
@@ -32,23 +45,6 @@ impl Location {
     }
 }
 
-pub(super) fn default_location() -> Result<Option<Location>> {
-    if let Some(dir) = env::var_os(CONFIG_DIR_ENV) {
-        let dir = PathBuf::from(dir);
-        return Ok(Some(Location::new(dir.clone(), settings_file(&dir))));
-    }
-
-    Ok(project_dirs().ok().map(|dirs| {
-        let dir = dirs.config_dir().to_path_buf();
-        Location::new(dir.clone(), settings_file(&dir))
-    }))
-}
-
-pub(super) fn require_default_location() -> Result<Location> {
-    default_location()?
-        .ok_or_else(|| Error::Settings("could not determine user directories".to_owned()))
-}
-
 pub(crate) fn default_data_dir() -> Result<PathBuf> {
     Ok(project_dirs()?.data_dir().to_path_buf())
 }
@@ -56,19 +52,4 @@ pub(crate) fn default_data_dir() -> Result<PathBuf> {
 fn project_dirs() -> Result<ProjectDirs> {
     ProjectDirs::from("", "", APP_NAME)
         .ok_or_else(|| Error::Settings("could not determine user directories".to_owned()))
-}
-
-fn settings_file(config_dir: &Path) -> PathBuf {
-    config_dir.join("config.toml")
-}
-
-pub(super) fn remove_settings_file(path: &Path) -> Result<()> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(Error::Settings(format!(
-            "could not reset {}: {error}",
-            path.display()
-        ))),
-    }
 }

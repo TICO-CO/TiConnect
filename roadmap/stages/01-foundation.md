@@ -62,16 +62,20 @@ None.
 
 ## Implementation
 
-- [ ] `core::error` defines a typed `Error` enum with `thiserror` and a `Result<T>`
-  alias for shared protocol, identity, pairing, and crypto errors.
-- [ ] Each library crate owns its own `Error` and `Result` types; there is no
-  workspace-wide catch-all error enum.
+- [ ] `core` exposes domain types only and defines no crate-wide `Error` type;
+  fallible `core` modules define local errors when they land.
+- [ ] Each fallible library crate owns its own `Error` and `Result` types and
+  maps dependency failures into them; there is no workspace-wide catch-all
+  error enum.
 - [ ] Each binary has `fn main() -> anyhow::Result<()>` and a placeholder
   `run() -> anyhow::Result<()>`; only `src/main.rs` uses `anyhow`.
+- [ ] Entry points convert crate errors to `anyhow` and add context around each
+  startup step.
 - [ ] Binary targets are named `ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
   and `ticonnect-ovl`.
 - [ ] `ticonnect-settings` is a leaf crate that embeds config privately and
-  exposes only `Settings`, `LogSettings`, `LogFormat`, `Error`, and `Result`.
+  exposes only `Settings`, `Error`, and `Result`. Logging domain types stay in
+  `ticonnect-logging`.
 - [ ] `Settings` defines persisted settings:
   - [ ] `log_level` default `info`.
   - [ ] `log_file` optional.
@@ -95,13 +99,19 @@ None.
   replace the file atomically.
 - [ ] `Settings` can load from, save, and reset an explicit file; missing files
   are a no-op.
-- [ ] `ticonnect-logging` depends on `ticonnect-settings` only and initializes
-  `tracing-subscriber` with `EnvFilter`; it owns its own `Error`/`Result`.
+- [ ] `ticonnect-logging` depends on neither `ticonnect-settings` nor
+  `ticonnect-core`; it owns its own `Error`/`Result`, plus `LogSettings` and
+  `LogFormat` validation, and initializes `tracing-subscriber` with `EnvFilter`.
+- [ ] Each binary entrypoint loads `Settings`, builds `LogSettings`, and calls
+  `Logging::init`. This composition is duplicated across the four entrypoints
+  for now; `ticonnect-runtime` will centralize it in a later stage.
 - [ ] `core` depends on neither `ticonnect-settings` nor `ticonnect-logging`
   and never exposes logging-specific error variants.
 - [ ] Logging supports human-readable output and optional JSON output.
 - [ ] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
-  settings and process lifecycle; it is not part of this stage.
+  `settings` + `logging` and process lifecycle. Binaries currently instantiate
+  logging directly; migration to `runtime` is the intended direction and is not
+  part of this stage.
 - [ ] `core` exposes `version()` from `CARGO_PKG_VERSION`.
 - [ ] Each dependent crate has an empty `lib.rs` that compiles and depends on
   `core` per the dependency direction rule.

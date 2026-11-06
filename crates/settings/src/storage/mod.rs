@@ -3,7 +3,7 @@ mod store;
 
 #[cfg(test)]
 #[allow(clippy::result_large_err)]
-mod store_tests;
+mod tests;
 
 pub(crate) use location::default_data_dir;
-pub(crate) use store::FileStore;
+pub(crate) use store::Storage;

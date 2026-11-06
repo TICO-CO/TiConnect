@@ -4,11 +4,11 @@ use figment::{
 };
 
 use crate::error::{Error, Result};
-use crate::schema::Values;
+use crate::state::SettingsValues;
 
 const ENV_PREFIX: &str = "TICONNECT_";
 
-pub(crate) fn load(baseline: &Values) -> Result<Values> {
+pub(crate) fn load(baseline: &SettingsValues) -> Result<SettingsValues> {
     Figment::new()
         .merge(Serialized::defaults(baseline.clone()))
         .merge(FigmentEnv::prefixed(ENV_PREFIX))

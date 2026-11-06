@@ -13,3 +13,5 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 ticonnect-core.workspace = true
+ticonnect-logging.workspace = true
+ticonnect-settings.workspace = true

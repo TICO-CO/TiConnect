@@ -7,10 +7,10 @@ use std::io;
 use std::path::Path;
 use std::sync::Mutex;
 
-use ticonnect_settings::{LogFormat, LogSettings};
-
+mod config;
 mod error;
 
+pub use config::{LogFormat, LogSettings};
 pub use error::{Error, Result};
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
@@ -122,8 +122,7 @@ mod tests {
 
     use tracing_subscriber::fmt::writer::MakeWriter;
 
-    use super::{Error, Logging};
-    use ticonnect_settings::{LogFormat, LogSettings};
+    use super::{Error, LogFormat, LogSettings, Logging};
 
     #[derive(Clone)]
     struct Buffer(Arc<Mutex<Vec<u8>>>);

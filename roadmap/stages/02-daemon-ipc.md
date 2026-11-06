@@ -51,7 +51,7 @@ Stage 1 complete.
 - [ ] Method `Shutdown()` stops the daemon cleanly.
 - [ ] Property `Version` (read).
 - [ ] Signal `DaemonStarted()`, `DaemonStopping()`.
-- [ ] D-Bus errors mapped from daemon and core errors to stable error names.
+- [ ] D-Bus errors mapped from daemon and dependency errors to stable error names.
 
 ## Setup
 
