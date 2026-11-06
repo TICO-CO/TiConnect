@@ -10,10 +10,10 @@ macro_rules! settings_schema {
     ) => {
         #[derive(Debug, Clone, PartialEq, serde::Deserialize, serde::Serialize)]
         #[serde(default)]
-        pub(crate) struct SettingsValues {
+        pub struct SettingsValues {
             $(
                 $(#[$field_attr])*
-                pub(crate) $field: $ty,
+                pub $field: $ty,
             )*
         }
 
@@ -28,22 +28,22 @@ macro_rules! settings_schema {
         }
 
         #[derive(Debug, Clone, Default)]
-        pub(super) struct SettingsChanges {
+        pub struct SettingsChanges {
             $(
                 $field: bool,
             )*
         }
 
         impl SettingsChanges {
-            pub(super) fn is_empty(&self) -> bool {
+            pub fn is_empty(&self) -> bool {
                 $( !self.$field && )* true
             }
 
-            pub(super) fn clear(&mut self) {
+            pub fn clear(&mut self) {
                 *self = Self::default();
             }
 
-            pub(super) fn apply(&self, from: &SettingsValues, to: &mut SettingsValues) {
+            pub fn apply(&self, from: &SettingsValues, to: &mut SettingsValues) {
                 $(
                     if self.$field {
                         to.$field = from.$field.clone();
@@ -52,15 +52,15 @@ macro_rules! settings_schema {
             }
         }
 
-        impl SettingsState {
+        impl Settings {
             $(
-                pub(crate) fn $field(&self) $(-> $get_ret)? {
+                pub fn $field(&self) $(-> $get_ret)? {
                     let $get_active = &self.active;
                     $get_body
                 }
 
                 ::paste::paste! {
-                    pub(crate) fn [<set_ $field>](&mut self $(, $arg_name: $arg_ty)*) {
+                    pub fn [<set_ $field>](&mut self $(, $arg_name: $arg_ty)*) {
                         self.changes.$field = true;
                         let $set_active = &mut self.active;
                         $set_body

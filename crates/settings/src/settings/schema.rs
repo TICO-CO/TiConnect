@@ -1,13 +1,9 @@
 use std::path::{Path, PathBuf};
 
-use super::SettingsState;
+use super::Settings;
 use crate::error::Result;
-use crate::storage::default_data_dir;
+use crate::storage::location::default_data_dir;
 
-// Settings values, whether active or stored on disk.
-//
-// This declaration is the single source of truth for persisted settings,
-// their defaults, environment overrides, change tracking, and accessors.
 settings_schema! {
     log_level: String = "info".to_owned() => {
         get(&self) -> &str as active {

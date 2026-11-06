@@ -4,7 +4,7 @@ use figment::Jail;
 
 use super::store::Storage;
 use crate::error::Error;
-use crate::state::SettingsValues;
+use crate::settings::schema::SettingsValues;
 
 #[test]
 fn defaults_are_correct() {

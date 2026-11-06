@@ -1,34 +1,32 @@
 #[macro_use]
 mod macros;
 
-mod schema;
+pub mod schema;
 
 use std::path::Path;
 
-use self::schema::SettingsChanges;
+use self::schema::{SettingsChanges, SettingsValues};
 use crate::error::Result;
 use crate::overrides;
-use crate::storage::Storage;
-
-pub(crate) use self::schema::SettingsValues;
+use crate::storage::store::Storage;
 
 #[derive(Debug, Clone)]
-pub(crate) struct SettingsState {
+pub struct Settings {
     storage: Storage,
     active: SettingsValues,
     changes: SettingsChanges,
 }
 
-impl SettingsState {
-    pub(crate) fn load() -> Result<Self> {
+impl Settings {
+    pub fn load() -> Result<Self> {
         Self::from_storage(Storage::open_default()?)
     }
 
-    pub(crate) fn load_from(path: &Path) -> Result<Self> {
-        Self::from_storage(Storage::at(path)?)
+    pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
+        Self::from_storage(Storage::at(path.as_ref().to_path_buf())?)
     }
 
-    pub(crate) fn save(&mut self) -> Result<()> {
+    pub fn save(&mut self) -> Result<()> {
         if self.changes.is_empty() {
             return Ok(());
         }
@@ -40,7 +38,7 @@ impl SettingsState {
         Ok(())
     }
 
-    pub(crate) fn reset(&mut self) -> Result<()> {
+    pub fn reset(&mut self) -> Result<()> {
         let active = overrides::load(&SettingsValues::default())?;
 
         self.storage.reset()?;

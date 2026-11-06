@@ -6,7 +6,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use super::location::Location;
 use crate::error::{Error, Result};
-use crate::state::SettingsValues;
+use crate::settings::schema::SettingsValues;
 
 static SETTINGS_WRITE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -18,14 +18,14 @@ const LEGACY_KEYS: [&str; 1] = ["config_dir"];
 /// disk, and all filesystem access. The [`SettingsValues`] type itself stays a passive
 /// data model.
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Storage {
+pub struct Storage {
     location: Location,
     saved: SettingsValues,
 }
 
 impl Storage {
     /// Open storage for an explicit settings file and load its values.
-    pub(crate) fn at(path: impl Into<PathBuf>) -> Result<Self> {
+    pub fn at(path: impl Into<PathBuf>) -> Result<Self> {
         let file = path.into();
         let dir = file
             .parent()
@@ -36,7 +36,7 @@ impl Storage {
     }
 
     /// Open storage at the default location and load its values.
-    pub(crate) fn open_default() -> Result<Self> {
+    pub fn open_default() -> Result<Self> {
         Self::from_location(Location::discover()?)
     }
 
@@ -47,17 +47,17 @@ impl Storage {
     }
 
     #[cfg(test)]
-    pub(crate) fn location(&self) -> &Location {
+    pub fn location(&self) -> &Location {
         &self.location
     }
 
     /// Settings values currently persisted on disk.
-    pub(crate) fn saved(&self) -> &SettingsValues {
+    pub fn saved(&self) -> &SettingsValues {
         &self.saved
     }
 
     /// Persist settings, preserving unknown keys in the existing file.
-    pub(crate) fn save(&mut self, values: &SettingsValues) -> Result<()> {
+    pub fn save(&mut self, values: &SettingsValues) -> Result<()> {
         let path = self.location.file();
         create_parent(path)?;
         let _lock = acquire_write_lock(path)?;
@@ -70,7 +70,7 @@ impl Storage {
     /// Remove the settings file so built-in defaults apply.
     ///
     /// A missing file is not an error. No directories are created.
-    pub(crate) fn reset(&mut self) -> Result<()> {
+    pub fn reset(&mut self) -> Result<()> {
         let path = self.location.file();
         if path.exists() {
             let _lock = acquire_write_lock(path)?;

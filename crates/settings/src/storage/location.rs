@@ -10,18 +10,18 @@ const CONFIG_DIR_ENV: &str = "TICONNECT_CONFIG_DIR";
 
 /// Resolved location of the user settings file.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Location {
+pub struct Location {
     dir: PathBuf,
     file: PathBuf,
 }
 
 impl Location {
-    pub(crate) fn new(dir: PathBuf, file: PathBuf) -> Self {
+    pub fn new(dir: PathBuf, file: PathBuf) -> Self {
         Self { dir, file }
     }
 
     /// Resolve the settings location from the environment or user directories.
-    pub(super) fn discover() -> Result<Self> {
+    pub fn discover() -> Result<Self> {
         if let Some(dir) = env::var_os(CONFIG_DIR_ENV) {
             return Ok(Self::from_config_dir(PathBuf::from(dir)));
         }
@@ -36,16 +36,16 @@ impl Location {
     }
 
     #[cfg(test)]
-    pub(crate) fn dir(&self) -> &Path {
+    pub fn dir(&self) -> &Path {
         &self.dir
     }
 
-    pub(crate) fn file(&self) -> &Path {
+    pub fn file(&self) -> &Path {
         &self.file
     }
 }
 
-pub(crate) fn default_data_dir() -> Result<PathBuf> {
+pub fn default_data_dir() -> Result<PathBuf> {
     Ok(project_dirs()?.data_dir().to_path_buf())
 }
 
