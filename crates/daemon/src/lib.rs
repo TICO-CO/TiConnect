@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! TiConnect background daemon.
-
 #[cfg(test)]
 mod tests {
     #[test]

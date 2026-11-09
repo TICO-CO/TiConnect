@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
 
+use super::io;
 use crate::error::{Error, Result};
 
 const DIR_NAME: &str = "ticonnect";
@@ -12,11 +13,16 @@ const CONFIG_DIR_ENV: &str = "TICONNECT_CONFIG_DIR";
 pub struct Location {
     dir: PathBuf,
     file: PathBuf,
+    private: bool,
 }
 
 impl Location {
     pub fn new(dir: PathBuf, file: PathBuf) -> Self {
-        Self { dir, file }
+        Self {
+            dir,
+            file,
+            private: false,
+        }
     }
 
     pub fn discover() -> Result<Self> {
@@ -36,6 +42,14 @@ impl Location {
         &self.file
     }
 
+    pub fn prepare_dir(&self) -> Result<()> {
+        if self.private {
+            io::create_private_dir(&self.dir)
+        } else {
+            io::create_parent(&self.file)
+        }
+    }
+
     #[cfg(test)]
     pub fn dir(&self) -> &Path {
         &self.dir
@@ -48,6 +62,10 @@ impl Location {
 
     fn from_config_dir(dir: PathBuf) -> Self {
         let file = dir.join("config.toml");
-        Self { dir, file }
+        Self {
+            dir,
+            file,
+            private: true,
+        }
     }
 }

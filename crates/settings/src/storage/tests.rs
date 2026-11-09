@@ -359,3 +359,70 @@ fn reset_uses_environment_config_dir() {
         Ok(())
     });
 }
+
+#[cfg(unix)]
+#[test]
+fn save_creates_private_config_dir_and_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let dir = jail.directory().join("config-home");
+        jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
+        let config = SettingsValues {
+            log_level: "warn".to_owned(),
+            ..SettingsValues::default()
+        };
+
+        Storage::open()
+            .expect("valid storage")
+            .save(&config)
+            .expect("save");
+
+        let dir_mode = fs::metadata(&dir)
+            .expect("config dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        let file_mode = fs::metadata(dir.join("config.toml"))
+            .expect("config file metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        assert_eq!(dir_mode, 0o700);
+        assert_eq!(file_mode, 0o600);
+        Ok(())
+    });
+}
+
+#[cfg(unix)]
+#[test]
+fn save_tightens_existing_config_dir() {
+    use std::os::unix::fs::PermissionsExt;
+
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let dir = jail.create_dir("config-home")?;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o755)).expect("set config dir mode");
+        jail.set_env("TICONNECT_CONFIG_DIR", dir.display());
+        let config = SettingsValues {
+            log_level: "warn".to_owned(),
+            ..SettingsValues::default()
+        };
+
+        Storage::open()
+            .expect("valid storage")
+            .save(&config)
+            .expect("save");
+
+        let dir_mode = fs::metadata(&dir)
+            .expect("config dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        assert_eq!(dir_mode, 0o700);
+        Ok(())
+    });
+}

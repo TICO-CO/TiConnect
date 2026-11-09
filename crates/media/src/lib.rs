@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! Audio and video codecs for TiConnect.
-
 #[cfg(test)]
 mod tests {
     #[test]

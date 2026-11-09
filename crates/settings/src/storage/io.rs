@@ -1,6 +1,6 @@
 use std::ffi::OsString;
-use std::fs;
-use std::io;
+use std::fs::{self, OpenOptions};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use crate::error::{Error, Result};
@@ -21,10 +21,6 @@ pub fn remove_file(path: &Path) -> Result<()> {
     }
 }
 
-pub fn exists(path: &Path) -> bool {
-    path.exists()
-}
-
 pub fn create_parent(path: &Path) -> Result<()> {
     if let Some(parent) = path
         .parent()
@@ -36,9 +32,48 @@ pub fn create_parent(path: &Path) -> Result<()> {
     Ok(())
 }
 
+pub fn create_private_dir(dir: &Path) -> Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+
+        fs::DirBuilder::new()
+            .recursive(true)
+            .mode(0o700)
+            .create(dir)?;
+        fs::set_permissions(dir, fs::Permissions::from_mode(0o700))?;
+    }
+
+    #[cfg(not(unix))]
+    fs::create_dir_all(dir)?;
+
+    Ok(())
+}
+
+fn write_private(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(true).write(true);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        options.mode(0o600);
+        let mut file = options.open(path)?;
+        file.write_all(contents)?;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600))
+    }
+
+    #[cfg(not(unix))]
+    {
+        let mut file = options.open(path)?;
+        file.write_all(contents)
+    }
+}
+
 pub fn write_atomic(path: &Path, contents: &[u8]) -> Result<()> {
     let temporary = sidecar(path, ".tmp");
-    let result = fs::write(&temporary, contents).and_then(|()| fs::rename(&temporary, path));
+    let result = write_private(&temporary, contents).and_then(|()| fs::rename(&temporary, path));
 
     let Err(error) = result else {
         return Ok(());

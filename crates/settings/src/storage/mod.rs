@@ -6,7 +6,9 @@ mod store;
 
 pub use location::Location;
 pub use lock::acquire_write_lock;
-pub use persist::{load_values, save_values};
+#[cfg(test)]
+pub use persist::save_values;
+pub use persist::{load_values, update_values};
 pub use store::Storage;
 
 #[cfg(test)]

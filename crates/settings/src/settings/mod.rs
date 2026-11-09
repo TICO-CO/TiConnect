@@ -31,9 +31,7 @@ impl Settings {
             return Ok(());
         }
 
-        let mut next = self.storage.stored().clone();
-        self.changes.apply(&self.active, &mut next);
-        self.storage.save(&next)?;
+        self.storage.update(&self.active, &self.changes)?;
         self.changes.clear();
         Ok(())
     }

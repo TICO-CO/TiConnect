@@ -4,7 +4,7 @@ macro_rules! settings_schema {
             $(#[$field_attr:meta])*
             $field:ident : $ty:ty = $default:expr => {
                 get (&self) $(-> $get_ret:ty)? as $get_active:ident $(, $get_storage:ident)? $get_body:block;
-                set (&mut self $(, $arg_name:ident : $arg_ty:ty)*) as $set_active:ident $set_body:block;
+                set (&mut self $(, $arg_name:ident : $arg_ty:ty)*) -> $setter:ident as $set_active:ident $set_body:block;
             };
         )*
     ) => {
@@ -60,12 +60,10 @@ macro_rules! settings_schema {
                     $get_body
                 }
 
-                ::paste::paste! {
-                    pub fn [<set_ $field>](&mut self $(, $arg_name: $arg_ty)*) {
-                        self.changes.$field = true;
-                        let $set_active = &mut self.active;
-                        $set_body
-                    }
+                pub fn $setter(&mut self $(, $arg_name: $arg_ty)*) {
+                    self.changes.$field = true;
+                    let $set_active = &mut self.active;
+                    $set_body
                 }
             )*
         }

@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! LAN discovery and QUIC transport for TiConnect.
-
 #[cfg(test)]
 mod tests {
     #[test]

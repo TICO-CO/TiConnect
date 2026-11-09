@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use super::{Location, acquire_write_lock, io, load_values, save_values};
+#[cfg(test)]
+use super::save_values;
+use super::{Location, acquire_write_lock, load_values, update_values};
 use crate::error::{Error, Result};
-use crate::settings::schema::SettingsValues;
+use crate::settings::schema::{SettingsChanges, SettingsValues};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Storage {
@@ -33,9 +35,22 @@ impl Storage {
         &self.stored
     }
 
+    pub fn update(&mut self, active: &SettingsValues, changes: &SettingsChanges) -> Result<()> {
+        if changes.is_empty() {
+            return Ok(());
+        }
+
+        let path = self.location.file();
+        self.location.prepare_dir()?;
+        let _lock = acquire_write_lock(path)?;
+        self.stored = update_values(path, active, changes)?;
+        Ok(())
+    }
+
+    #[cfg(test)]
     pub fn save(&mut self, values: &SettingsValues) -> Result<()> {
         let path = self.location.file();
-        io::create_parent(path)?;
+        self.location.prepare_dir()?;
         let _lock = acquire_write_lock(path)?;
         save_values(path, values)?;
 
@@ -45,7 +60,7 @@ impl Storage {
 
     pub fn reset(&mut self) -> Result<()> {
         let path = self.location.file();
-        if io::exists(path) {
+        if parent_exists(path) {
             let _lock = acquire_write_lock(path)?;
             self.remove_file()?;
         }
@@ -72,8 +87,14 @@ impl Storage {
 
     fn remove_file(&self) -> Result<()> {
         let path = self.location.file();
-        io::remove_file(path).map_err(|error| {
+        super::io::remove_file(path).map_err(|error| {
             Error::Settings(format!("could not reset {}: {error}", path.display()))
         })
     }
+}
+
+fn parent_exists(path: &Path) -> bool {
+    path.parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .is_none_or(Path::exists)
 }

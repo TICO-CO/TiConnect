@@ -50,7 +50,9 @@ pub fn format(settings: &LogSettings) -> LogFormat {
 mod tests {
     use std::path::Path;
 
-    use super::LogSettings;
+    use tracing::level_filters::LevelFilter;
+
+    use super::{LogSettings, env_filter};
     use crate::config::{LogFormat, LogLevel};
     use crate::error::Error;
 
@@ -80,5 +82,25 @@ mod tests {
             LogSettings::new("verbose", None, "human").expect_err("invalid level must fail");
 
         assert!(matches!(error, Error::Logging(_)));
+    }
+
+    #[test]
+    fn env_filter_honors_level() {
+        let settings = LogSettings::new("info", None, "human").expect("valid settings");
+
+        assert_eq!(
+            env_filter(&settings).max_level_hint(),
+            Some(LevelFilter::INFO)
+        );
+    }
+
+    #[test]
+    fn env_filter_off_disables_all() {
+        let settings = LogSettings::new("off", None, "human").expect("valid settings");
+
+        assert_eq!(
+            env_filter(&settings).max_level_hint(),
+            Some(LevelFilter::OFF)
+        );
     }
 }

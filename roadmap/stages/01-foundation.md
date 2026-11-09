@@ -38,9 +38,9 @@ None.
   - `crates/ui`
   - `crates/overlay`
   - `crates/cli`
-- `crates/core/src/{lib.rs,error.rs}`
-- `crates/settings/src/{lib.rs,error.rs,log.rs,settings/}`
-- `crates/logging/src/{lib.rs,error.rs}`
+- `crates/core/src/lib.rs`
+- `crates/settings/src/{lib.rs,error.rs,overrides.rs,settings/,storage/}`
+- `crates/logging/src/{lib.rs,error.rs,config.rs,settings.rs,logging.rs,output.rs,types.rs}`
 - `crates/daemon/src/main.rs` (binary `ticonnectd`)
 - `crates/cli/src/main.rs` (binary `ticonnect-cli`)
 - `crates/ui/src/main.rs` (binary `ticonnect-ui`)
@@ -51,106 +51,109 @@ None.
 
 ## Setup
 
-- [ ] Run `cargo new --lib` for each crate or create manifests by hand.
-- [ ] Add workspace `[workspace.package]` for version, edition, license, authors.
-- [ ] Add `[workspace.dependencies]` for `tokio`, `serde`, `postcard`, `tracing`,
+- [x] Run `cargo new --lib` for each crate or create manifests by hand.
+- [x] Add workspace `[workspace.package]` for version, edition, license, authors.
+- [x] Add `[workspace.dependencies]` for `tokio`, `serde`, `postcard`, `tracing`,
   `thiserror`, `figment`, and `directories`.
-- [ ] Add `anyhow` for binary entry points only, never for library APIs.
-- [ ] Pin Rust toolchain in `rust-toolchain.toml`.
-- [ ] Add `.gitignore` for `target/`, editor files, and local config.
-- [ ] Add `rustfmt.toml` and `clippy.toml` if non-default rules are wanted.
+- [x] Add `anyhow` for binary entry points only, never for library APIs.
+- [x] Pin Rust toolchain in `rust-toolchain.toml`.
+- [x] Add `.gitignore` for `target/`, editor files, and local config.
+- [x] Use default `rustfmt` and `clippy` rules; add config only for non-default
+  rules.
 
 ## Implementation
 
-- [ ] `core` exposes domain types only and defines no crate-wide `Error` type;
+- [x] `core` exposes domain types only and defines no crate-wide `Error` type;
   fallible `core` modules define local errors when they land.
-- [ ] Each fallible library crate owns its own `Error` and `Result` types and
+- [x] Each fallible library crate owns its own `Error` and `Result` types and
   maps dependency failures into them; there is no workspace-wide catch-all
   error enum.
-- [ ] Each binary has `fn main() -> anyhow::Result<()>` and a placeholder
+- [x] Each binary has `fn main() -> anyhow::Result<()>` and a placeholder
   `run() -> anyhow::Result<()>`; only `src/main.rs` uses `anyhow`.
-- [ ] Entry points convert crate errors to `anyhow` and add context around each
+- [x] Entry points convert crate errors to `anyhow` and add context around each
   startup step.
-- [ ] Binary targets are named `ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
+- [x] Binary targets are named `ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
   and `ticonnect-ovl`.
-- [ ] `ticonnect-settings` is a leaf crate that embeds config privately and
+- [x] `ticonnect-settings` is a leaf crate that embeds config privately and
   exposes only `Settings`, `Error`, and `Result`. Logging domain types stay in
   `ticonnect-logging`.
-- [ ] `Settings` defines persisted settings:
-  - [ ] `log_level` default `info`.
-  - [ ] `log_file` optional.
-  - [ ] `log_format` default human-readable, with optional JSON output.
-  - [ ] `data_dir` optional.
-- [ ] `Settings` owns file behavior internally: default location, read, write,
+- [x] `Settings` defines persisted settings:
+  - [x] `log_level` default `info`.
+  - [x] `log_file` optional.
+  - [x] `log_format` default human-readable, with optional JSON output.
+  - [x] `data_dir` optional.
+- [x] `Settings` owns file behavior internally: default location, read, write,
   save, reset. `Config` and its store are not exported.
-- [ ] `TICONNECT_CONFIG_DIR` is bootstrap-only: it selects the user settings file
+- [x] `TICONNECT_CONFIG_DIR` is bootstrap-only: it selects the user settings file
   location and is never merged into, or persisted as, a setting.
-- [ ] `Settings` applies `TICONNECT_*` overrides internally. Callers see one
+- [x] `Settings` applies `TICONNECT_*` overrides internally. Callers see one
   effective value per setting, with no exposed runtime/persisted distinction.
-- [ ] Load order for effective values: built-in defaults, user file, environment
+- [x] Load order for effective values: built-in defaults, user file, environment
   variables prefixed `TICONNECT_`. Environment always wins until explicitly set.
-- [ ] Explicit `Settings::set_*` calls change the effective value immediately and
+- [x] Explicit `Settings::set_*` calls change the effective value immediately and
   are persisted only by `Settings::save`.
-- [ ] `Settings::save` persists explicit changes only; untouched environment
+- [x] `Settings::save` persists explicit changes only; untouched environment
   values are never persisted implicitly.
-- [ ] Saves preserve unknown keys and skip writing when nothing changed.
-- [ ] Settings writes take an in-process mutex and an OS advisory lock, and
+- [x] Saves preserve unknown keys and skip writing when nothing changed.
+- [x] Settings writes take an in-process mutex and an OS advisory lock, and
   replace the file atomically.
-- [ ] `Settings` can load from, save, and reset an explicit file; missing files
+- [x] `Settings` can load from, save, and reset an explicit file; missing files
   are a no-op.
-- [ ] `ticonnect-logging` depends on neither `ticonnect-settings` nor
+- [x] `ticonnect-logging` depends on neither `ticonnect-settings` nor
   `ticonnect-core`; it owns its own `Error`/`Result`, parses the log level into
   `LogLevel` and validates `LogFormat` at `LogSettings::new`, and initializes
   `tracing-subscriber` with `EnvFilter`.
-- [ ] Each binary entrypoint loads `Settings`, builds `LogSettings`, and calls
+- [x] Each binary entrypoint loads `Settings`, builds `LogSettings`, and calls
   `Logging::init`. This composition is duplicated across the four entrypoints
   for now; `ticonnect-runtime` will centralize it in a later stage.
-- [ ] `core` depends on neither `ticonnect-settings` nor `ticonnect-logging`
+- [x] `core` depends on neither `ticonnect-settings` nor `ticonnect-logging`
   and never exposes logging-specific error variants.
-- [ ] Logging supports human-readable output and optional JSON output.
-- [ ] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
+- [x] Logging supports human-readable output and optional JSON output.
+- [x] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
   `settings` + `logging` and process lifecycle. Binaries currently instantiate
   logging directly; migration to `runtime` is the intended direction and is not
   part of this stage.
-- [ ] `core` exposes `version()` from `CARGO_PKG_VERSION`.
-- [ ] Each dependent crate has an empty `lib.rs` that compiles and depends on
+- [x] `core` exposes `version()` from `CARGO_PKG_VERSION`.
+- [x] Each dependent crate has an empty `lib.rs` that compiles and depends on
   `core` per the dependency direction rule.
-- [ ] No crate depends on a crate above it in the dependency graph.
+- [x] No crate depends on a crate above it in the dependency graph.
 
 ## Tests
 
-- [ ] Unit test: default settings values are correct.
-- [ ] Unit test: environment override wins for effective settings values.
-- [ ] Unit test: explicit `Settings::set_*` changes the effective value and is
+- [x] Unit test: default settings values are correct.
+- [x] Unit test: environment override wins for effective settings values.
+- [x] Unit test: explicit `Settings::set_*` changes the effective value and is
   not written until `save`.
-- [ ] Unit test: `config_dir` selects the user settings file without becoming
+- [x] Unit test: `config_dir` selects the user settings file without becoming
   settings data.
-- [ ] Unit test: `data_dir` environment override is not persisted.
-- [ ] Unit test: reset removes the user settings file and restores defaults.
-- [ ] Unit test: save persists explicit changes but not environment values.
-- [ ] Unit test: save preserves unknown keys and clears optional fields.
-- [ ] Unit test: concurrent saves leave valid TOML.
-- [ ] Unit test: invalid settings return a typed error, not a panic.
-- [ ] Smoke test: every workspace crate builds and links.
-- [ ] Smoke test: `cargo build --workspace --bins` succeeds.
-- [ ] Smoke test: each placeholder binary exits successfully.
-- [ ] Test that logging initialization is idempotent or safely guarded.
-- [ ] Unit test: invalid log levels or formats return `ticonnect-logging`'s own
+- [x] Unit test: `data_dir` environment override is not persisted.
+- [x] Unit test: reset removes the user settings file and restores defaults.
+- [x] Unit test: save persists explicit changes but not environment values.
+- [x] Unit test: save preserves unknown keys and clears optional fields.
+- [x] Unit test: concurrent saves leave valid TOML.
+- [x] Unit test: invalid settings return a typed error, not a panic.
+- [x] Smoke test: every workspace crate builds and links.
+- [x] Smoke test: `cargo build --workspace --bins` succeeds.
+- [x] Smoke test: each placeholder binary exits successfully.
+- [x] Test that logging initialization is idempotent or safely guarded.
+- [x] Unit test: invalid log levels or formats return `ticonnect-logging`'s own
   typed error from `LogSettings::new`.
 
 ## Security
 
-- [ ] Add `cargo audit` to CI.
-- [ ] Add `#![forbid(unsafe_code)]` to `core` and all crates unless a crate has
+- [x] Add `cargo audit` to CI.
+- [x] Add `#![forbid(unsafe_code)]` to `core` and all crates unless a crate has
   a documented reason to allow unsafe.
-- [ ] Confirm no dependency pulls in a duplicate runtime by accident.
-- [ ] No secrets or personal paths in committed files.
+- [x] Confirm no dependency pulls in a duplicate runtime by accident.
+- [x] No secrets or personal paths in committed files.
 
 ## Docs and acceptance
 
-- [ ] `README.md` documents workspace layout and commands.
-- [ ] `docs/` or crate-level docs explain the dependency direction rule.
-- [ ] CI badge or status noted in `README.md`.
+- [x] `README.md` documents workspace layout and commands.
+- [x] `docs/dependency-direction.md` explains the dependency direction rule.
+- [x] CI badge or status noted in `README.md`.
+- [x] No rustdoc comments in source; user-facing docs live in `README.md` and
+  `docs/`.
 
 ## Acceptance criteria
 
@@ -165,7 +168,7 @@ None.
 
 1. Run each placeholder binary and confirm it exits successfully; no daemon,
    CLI, UI, or overlay behavior exists yet.
-2. Show `cargo test -p ticonnect-core config` passing.
+2. Show `cargo test -p ticonnect-settings` passing.
 3. Show CI workflow file and local clippy/fmt results.
 
 ## Risks and mitigations

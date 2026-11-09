@@ -8,7 +8,7 @@ settings_schema! {
         get(&self) -> &str as active {
             active.log_level.as_str()
         };
-        set(&mut self, level: impl Into<String>) as active {
+        set(&mut self, level: impl Into<String>) -> set_log_level as active {
             active.log_level = level.into();
         };
     };
@@ -18,7 +18,7 @@ settings_schema! {
         get(&self) -> Option<&Path> as active {
             active.log_file.as_deref()
         };
-        set(&mut self, file: Option<PathBuf>) as active {
+        set(&mut self, file: Option<PathBuf>) -> set_log_file as active {
             active.log_file = file;
         };
     };
@@ -27,7 +27,7 @@ settings_schema! {
         get(&self) -> &str as active {
             active.log_format.as_str()
         };
-        set(&mut self, format: impl Into<String>) as active {
+        set(&mut self, format: impl Into<String>) -> set_log_format as active {
             active.log_format = format.into();
         };
     };
@@ -37,7 +37,7 @@ settings_schema! {
         get(&self) -> Result<PathBuf> as active, storage {
             storage.data_dir(active.data_dir.as_deref())
         };
-        set(&mut self, dir: Option<PathBuf>) as active {
+        set(&mut self, dir: Option<PathBuf>) -> set_data_dir as active {
             active.data_dir = dir;
         };
     };

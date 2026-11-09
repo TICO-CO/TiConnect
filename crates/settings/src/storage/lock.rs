@@ -21,12 +21,17 @@ pub fn acquire_write_lock(path: &Path) -> Result<WriteLock> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
 
-    let file = OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .read(true)
-        .write(true)
-        .open(io::sidecar(path, ".lock"))?;
+    let mut options = OpenOptions::new();
+    options.create(true).truncate(false).read(true).write(true);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        options.mode(0o600);
+    }
+
+    let file = options.open(io::sidecar(path, ".lock"))?;
 
     file.lock()?;
 

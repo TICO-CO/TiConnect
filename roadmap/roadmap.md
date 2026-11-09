@@ -81,7 +81,8 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 - [ ] `cargo test --workspace` passes; new code has unit or integration tests.
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 - [ ] `cargo fmt --all -- --check` is clean.
-- [ ] Public APIs and D-Bus interfaces are documented.
+- [ ] User-facing behavior, configuration, and D-Bus interfaces are documented
+  in `README.md` and `docs/`. Rustdoc comments are not used.
 - [ ] New config keys are documented with defaults.
 - [ ] New errors are typed and logged through `tracing`.
 - [ ] Library crates return typed `thiserror` errors; only binary entry points
@@ -109,7 +110,7 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 - [ ] Key files created with mode `0600`; directory `0700`.
 - [ ] No feature reachable before pairing.
 - [ ] Remote desktop consent, indicator, and kill switch reviewed.
-- [ ] Dependency audit (`cargo audit`) runs in CI from Stage 1.
+- [x] Dependency audit (`cargo audit`) runs in CI from Stage 1.
 
 ### Testing
 
@@ -151,7 +152,7 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 
 ## Overall progress
 
-- [ ] Stage 1 — Foundation
+- [x] Stage 1 — Foundation
 - [ ] Stage 2 — Daemon & IPC
 - [ ] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery

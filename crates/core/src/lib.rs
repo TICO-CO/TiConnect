@@ -1,8 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! Shared protocol, identity, pairing, and crypto types for TiConnect.
-
-/// Return the TiConnect core crate version.
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
