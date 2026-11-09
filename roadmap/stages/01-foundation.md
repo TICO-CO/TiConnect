@@ -52,7 +52,7 @@ None.
 ## Setup
 
 - [x] Run `cargo new --lib` for each crate or create manifests by hand.
-- [x] Add workspace `[workspace.package]` for version, edition, license, authors.
+- [x] Add workspace `[workspace.package]` for version, edition, license.
 - [x] Add `[workspace.dependencies]` for `tokio`, `serde`, `postcard`, `tracing`,
   `thiserror`, `figment`, and `directories`.
 - [x] Add `anyhow` for binary entry points only, never for library APIs.
