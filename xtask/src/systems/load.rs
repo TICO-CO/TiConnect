@@ -71,7 +71,7 @@ pub fn files_under(root: &Path) -> Result<Vec<PathBuf>> {
         let path = entry.path();
         if path.is_dir() {
             files.extend(files_under(&path)?);
-        } else if path.extension().is_some_and(|extension| extension == "md") {
+        } else {
             files.push(path);
         }
     }
@@ -82,6 +82,13 @@ pub fn files_under(root: &Path) -> Result<Vec<PathBuf>> {
 mod tests {
     use super::*;
     use crate::systems::model::{BuildDep, GraphFragment, System};
+
+    #[test]
+    fn unknown_graph_field_is_rejected() {
+        let error = toml::from_str::<GraphFragment>("version = 1\nunknown = true\n")
+            .expect_err("unknown field");
+        assert!(error.to_string().contains("unknown field"));
+    }
 
     #[test]
     fn merge_preserves_version_and_appends() {

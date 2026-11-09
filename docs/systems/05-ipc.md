@@ -2,7 +2,7 @@
 
 # IPC — D-Bus control plane
 
-- Owner: `ticonnect-ipc`
+- Owner: `ticonnect-core`
 - Stage: 2
 - Layer: `domain`
 - Component graph: [generated/components/ipc.md](generated/components/ipc.md)
@@ -23,13 +23,13 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `IPC.client` | Client proxy | `module` | `crates/ipc/src/client.rs` |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/client.rs |
+| `IPC.client` | Client proxy | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 | `IPC.dispatch` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` |  | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.dto` | DTO mapping | `module` | `crates/ipc/src/dto.rs` |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/dto.rs |
-| `IPC.errors` | Error mapping | `module` | `crates/ipc/src/errors.rs` |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/errors.rs |
-| `IPC.schema` | Interface schema | `module` | `crates/ipc/src/schema.rs` | interface version | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/schema.rs |
+| `IPC.dto` | DTO mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.errors` | Error mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.schema` | Interface schema | `module` | `crates/core/src/ipc.rs` | interface version | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 | `IPC.signal-bus` | Signal bus | `module` | `crates/daemon/src/service.rs` | signal subscriptions | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.version` | Compatibility version | `module` | `crates/ipc/src/schema.rs` |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/version.rs |
+| `IPC.version` | Compatibility version | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 
 ## Interfaces
 
@@ -83,5 +83,4 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 
 ## Open decisions
 
-- separate ticonnect-ipc crate or core::ipc
 - interface version negotiation

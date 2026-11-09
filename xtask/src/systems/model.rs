@@ -103,7 +103,6 @@ pub enum EdgeKind {
     Gates,
     Speaks,
     Observes,
-    BuildDep,
 }
 
 impl EdgeKind {
@@ -119,7 +118,6 @@ impl EdgeKind {
             Self::Gates => "gates",
             Self::Speaks => "speaks",
             Self::Observes => "observes",
-            Self::BuildDep => "build-dep",
         }
     }
 }
@@ -130,7 +128,6 @@ pub enum EdgeMode {
     Sync,
     Async,
     Event,
-    Build,
 }
 
 impl EdgeMode {
@@ -143,12 +140,12 @@ impl EdgeMode {
             Self::Sync => "sync",
             Self::Async => "async",
             Self::Event => "event",
-            Self::Build => "build",
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct System {
     pub id: String,
     pub name: String,
@@ -169,6 +166,7 @@ pub struct System {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Component {
     pub id: String,
     pub system: String,
@@ -183,6 +181,7 @@ pub struct Component {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Store {
     pub id: String,
     pub system: String,
@@ -193,6 +192,7 @@ pub struct Store {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Edge {
     pub id: String,
     pub from: String,
@@ -208,6 +208,7 @@ pub struct Edge {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Invariant {
     pub id: String,
     pub statement: String,
@@ -217,12 +218,14 @@ pub struct Invariant {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BuildDep {
     pub from: String,
     pub to: String,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BuildRule {
     pub id: String,
     #[serde(default)]
@@ -253,6 +256,7 @@ impl BuildRule {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MachineState {
     pub name: String,
     #[serde(default)]
@@ -260,6 +264,7 @@ pub struct MachineState {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Transition {
     pub from: String,
     pub event: String,
@@ -271,6 +276,7 @@ pub struct Transition {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Machine {
     pub id: String,
     pub owner: String,
@@ -280,6 +286,7 @@ pub struct Machine {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct GraphFragment {
     pub version: Option<u32>,
     #[serde(default)]
@@ -299,6 +306,7 @@ pub struct GraphFragment {
 }
 
 #[derive(Debug, Deserialize, Default)]
+#[serde(deny_unknown_fields)]
 pub struct MachinesFile {
     #[serde(default)]
     pub machines: Vec<Machine>,

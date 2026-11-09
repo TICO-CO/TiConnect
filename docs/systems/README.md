@@ -24,16 +24,19 @@ owned state. If splitting it creates no new contract, it is a function.
 ## Relation kinds
 
 `owns`, `calls`, `invokes`, `emits`, `consumes`, `persists`, `config-read`,
-`gates`, `speaks`, `observes`, `build-dep`.
+`gates`, `speaks`, `observes`.
 
 ## Modes
 
-`sync`, `async`, `event`, `build`.
+`sync`, `async`, `event`.
 
 Build graphs must be acyclic. Runtime cycles are allowed only through `async`
 or `event` edges. Every persistent store has exactly one `owns` edge. Forbidden
 build dependencies live in `graph/build-rules.toml`; every real workspace
 dependency must also be declared in `graph/build-deps.toml`.
+
+Stage rule: every edge endpoint must be introduced at or before the edge stage.
+A stage demo may not depend on a component introduced in a later stage.
 
 ## Graph views
 
@@ -55,8 +58,8 @@ cargo xtask systems --check
 ```
 
 `cargo xtask systems` regenerates all system docs, registry, graphs, and state
-machine docs. `--check` fails when generated output is stale or a relation
-violates the rules.
+machine docs, then removes stale generated files. `--check` fails when
+generated output is stale or a relation violates the rules.
 
 ## Updating contracts
 

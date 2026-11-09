@@ -22,8 +22,11 @@ pub fn run(mode: RunMode) -> Result<()> {
 
     match mode {
         RunMode::Write => {
-            output::write(&root, &outputs)?;
+            let removed = output::write(&root, &outputs)?;
             println!("generated {} architecture documents", outputs.len());
+            if removed > 0 {
+                println!("removed {removed} stale generated documents");
+            }
         }
         RunMode::Check => {
             output::check(&root, &outputs)?;

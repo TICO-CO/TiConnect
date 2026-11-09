@@ -15,7 +15,7 @@
 | `DOM` | Domain model | `ticonnect-core` | `domain` | 1 | [04-domain.md](../04-domain.md) |
 | `DT` | Desktop capture and input | `ticonnect-desktop` | `services` | 11 | [17-desktop.md](../17-desktop.md) |
 | `ID` | Identity and trust | `ticonnect-core` | `services` | 3 | [06-identity-trust.md](../06-identity-trust.md) |
-| `IPC` | D-Bus control plane | `ticonnect-ipc` | `domain` | 2 | [05-ipc.md](../05-ipc.md) |
+| `IPC` | D-Bus control plane | `ticonnect-core` | `domain` | 2 | [05-ipc.md](../05-ipc.md) |
 | `LOG` | Observability | `ticonnect-logging` | `leaves` | 1 | [03-observability.md](../03-observability.md) |
 | `MSG` | Messaging | `ticonnect-daemon` | `daemon` | 6 | [12-messaging.md](../12-messaging.md) |
 | `OVL` | Overlay | `ticonnect-overlay` | `clients` | 8 | [21-overlay.md](../21-overlay.md) |
@@ -35,7 +35,7 @@
 |---|---|---|---|---|---|---|---|---|
 | `ASR.bench` | `ASR` | Benchmarks | `module` | `scripts/bench/` | 12 | benchmark results | docs/systems/24-assurance.md#components | planned: benchmarks |
 | `ASR.ci` | `ASR` | CI gates | `module` | `.github/workflows/ci.yml` | 1 |  | docs/systems/24-assurance.md#components | CI |
-| `ASR.dep-check` | `ASR` | Dependency direction check | `module` | `xtask/src/systems.rs` | 1 |  | docs/systems/24-assurance.md#components | cargo xtask systems --check |
+| `ASR.dep-check` | `ASR` | Dependency direction check | `module` | `xtask/src/systems/validate/build.rs` | 1 |  | docs/systems/24-assurance.md#components | cargo xtask systems --check |
 | `ASR.fake-clock` | `ASR` | Fake clock | `module` | `crates/testkit/src/clock.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/clock.rs |
 | `ASR.fake-devices` | `ASR` | Fake audio devices | `module` | `crates/testkit/src/devices.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/devices.rs |
 | `ASR.fake-portal` | `ASR` | Fake portal | `module` | `crates/testkit/src/portal.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/portal.rs |
@@ -131,13 +131,13 @@
 | `ID.permissions` | `ID` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/identity.rs |
 | `ID.revoke` | `ID` | Revocation | `module` | `crates/daemon/src/trust.rs` | 5 |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
 | `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted peer table | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
-| `IPC.client` | `IPC` | Client proxy | `module` | `crates/ipc/src/client.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/client.rs |
+| `IPC.client` | `IPC` | Client proxy | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 | `IPC.dispatch` | `IPC` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/ipc/src/dto.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/dto.rs |
-| `IPC.errors` | `IPC` | Error mapping | `module` | `crates/ipc/src/errors.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/errors.rs |
-| `IPC.schema` | `IPC` | Interface schema | `module` | `crates/ipc/src/schema.rs` | 2 | interface version | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/schema.rs |
+| `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.errors` | `IPC` | Error mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.schema` | `IPC` | Interface schema | `module` | `crates/core/src/ipc.rs` | 2 | interface version | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 | `IPC.signal-bus` | `IPC` | Signal bus | `module` | `crates/daemon/src/service.rs` | 2 | signal subscriptions | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.version` | `IPC` | Compatibility version | `module` | `crates/ipc/src/schema.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/ipc/tests/version.rs |
+| `IPC.version` | `IPC` | Compatibility version | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
 | `LOG.parse` | `LOG` | Level and format parser | `module` | `crates/logging/src/config.rs` | 1 |  | docs/systems/03-observability.md#components | crates/logging/src/config.rs |
 | `LOG.redaction` | `LOG` | Redaction | `module` | `crates/logging/src/logging.rs` | 1 |  | docs/systems/03-observability.md#components | planned: crates/logging/tests/redaction.rs |
 | `LOG.sinks` | `LOG` | Output sinks | `module` | `crates/logging/src/output.rs` | 1 | stdout or file sink | docs/systems/03-observability.md#components | crates/logging/src/output.rs |

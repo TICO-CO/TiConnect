@@ -9,7 +9,20 @@ pub fn cell(value: &str) -> String {
 }
 
 pub fn label(value: &str) -> String {
-    value.replace('"', "'").replace(['\n', '\r'], " ")
+    let value = value.replace("<br/>", "\u{0}").replace("<br>", "\u{0}");
+    let mut out = String::with_capacity(value.len());
+    for character in value.chars() {
+        match character {
+            '\u{0}' => out.push_str("<br/>"),
+            '"' => out.push('\''),
+            '|' => out.push('/'),
+            '{' => out.push('('),
+            '}' => out.push(')'),
+            '<' | '>' | '\n' | '\r' => out.push(' '),
+            _ => out.push(character),
+        }
+    }
+    out
 }
 
 pub fn id(prefix: &str, value: &str) -> String {
@@ -51,6 +64,11 @@ mod tests {
     #[test]
     fn mermaid_labels_escape_quotes_and_newlines() {
         assert_eq!(label("a\"b\nc"), "a'b c");
+    }
+
+    #[test]
+    fn mermaid_labels_escape_structural_characters() {
+        assert_eq!(label("a|b{\"c\"}<br/>d"), "a/b('c')<br/>d");
     }
 
     #[test]

@@ -35,6 +35,6 @@ flowchart LR
 | `TRAY.menu` | calls | sync | `TRAY.policy` | policy menu |  |  | 6 |
 | `TRAY.menu` | calls | sync | `TRAY.activate` | open app action |  |  | 6 |
 | `TRAY.policy` | calls | sync | `POL.store` | set peer policy | POL.store |  | 6 |
-| `TRAY.activate` | calls | sync | `UI.activate` | Activate view |  |  | 6 |
+| `TRAY.activate` | calls | sync | `UI.activate` | Activate view |  |  | 7 |
 | `TRAY.fallback` | calls | sync | `TRAY.item` | tray unavailable |  |  | 6 |
 | `TRAY.item` | emits | event | `IPC.signal-bus` | tray status |  |  | 6 |

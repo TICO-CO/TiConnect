@@ -75,4 +75,4 @@ flowchart LR
 | `UI.shell` | calls | sync | `UI.peers` | peer list view |  |  | 7 |
 | `UI.peers` | calls | sync | `UI.pairing` | open pairing |  |  | 7 |
 | `OVL.activate` | calls | sync | `UI.activate` | Activate view |  |  | 8 |
-| `TRAY.activate` | calls | sync | `UI.activate` | Activate view |  |  | 6 |
+| `TRAY.activate` | calls | sync | `UI.activate` | Activate view |  |  | 7 |

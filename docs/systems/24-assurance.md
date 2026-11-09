@@ -26,7 +26,7 @@ Cross-cutting verification. Observes and tests all systems. Ships no runtime fea
 |---|---|---|---|---|---|---|
 | `ASR.bench` | Benchmarks | `module` | `scripts/bench/` | benchmark results | docs/systems/24-assurance.md#components | planned: benchmarks |
 | `ASR.ci` | CI gates | `module` | `.github/workflows/ci.yml` |  | docs/systems/24-assurance.md#components | CI |
-| `ASR.dep-check` | Dependency direction check | `module` | `xtask/src/systems.rs` |  | docs/systems/24-assurance.md#components | cargo xtask systems --check |
+| `ASR.dep-check` | Dependency direction check | `module` | `xtask/src/systems/validate/build.rs` |  | docs/systems/24-assurance.md#components | cargo xtask systems --check |
 | `ASR.fake-clock` | Fake clock | `module` | `crates/testkit/src/clock.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/clock.rs |
 | `ASR.fake-devices` | Fake audio devices | `module` | `crates/testkit/src/devices.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/devices.rs |
 | `ASR.fake-portal` | Fake portal | `module` | `crates/testkit/src/portal.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/portal.rs |

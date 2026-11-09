@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use cargo_metadata::MetadataCommand;
+use cargo_metadata::{DependencyKind, MetadataCommand};
 
 use super::super::model::Model;
 
@@ -56,17 +56,35 @@ fn actual_dependencies(root: &Path) -> Result<BTreeMap<String, BTreeSet<String>>
         .exec()
         .map_err(|error| format!("cargo metadata failed: {error}"))?;
 
+    let workspace: BTreeSet<_> = metadata.workspace_members.iter().collect();
+    let workspace_names: BTreeSet<_> = metadata
+        .packages
+        .iter()
+        .filter(|package| workspace.contains(&package.id))
+        .map(|package| normalize(package.name.as_ref()))
+        .filter(|name| name != "xtask")
+        .collect();
+
     let mut packages = BTreeMap::new();
     for package in metadata.packages {
+        if !workspace.contains(&package.id) {
+            continue;
+        }
         let name = normalize(package.name.as_ref());
-        if !name.starts_with("ticonnect_") {
+        if name == "xtask" {
             continue;
         }
         let deps = package
             .dependencies
             .into_iter()
-            .map(|dependency| normalize(&dependency.name.to_string()))
-            .filter(|dependency| dependency.starts_with("ticonnect_"))
+            .filter(|dependency| {
+                matches!(
+                    dependency.kind,
+                    DependencyKind::Normal | DependencyKind::Build
+                )
+            })
+            .map(|dependency| normalize(&dependency.name))
+            .filter(|dependency| workspace_names.contains(dependency))
             .collect();
         packages.insert(name, deps);
     }
@@ -82,6 +100,13 @@ fn check_rules(
     for rule in &model.build_rules {
         if !ids.insert(rule.id.as_str()) {
             errors.push(format!("duplicate build rule id: {}", rule.id));
+        }
+        if rule
+            .forbid_prefix
+            .as_deref()
+            .is_some_and(|prefix| prefix.trim().is_empty())
+        {
+            errors.push(format!("rule {} has an empty forbidden prefix", rule.id));
         }
         let mut package_count = 0;
         for package in rule.packages() {
@@ -155,6 +180,27 @@ fn normalize(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::systems::model::BuildRule;
+
+    #[test]
+    fn empty_forbidden_prefix_is_reported() {
+        let mut model = Model::default();
+        model.build_rules.push(BuildRule {
+            id: "r".into(),
+            package: Some("ticonnect-core".into()),
+            packages: Vec::new(),
+            forbid: Vec::new(),
+            forbid_prefix: Some(" ".into()),
+        });
+        let actual = BTreeMap::from([("ticonnect_core".to_string(), BTreeSet::new())]);
+        let mut errors = Vec::new();
+        check_rules(&model, &actual, &mut errors);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("empty forbidden prefix"))
+        );
+    }
 
     #[test]
     fn cycle_is_reported_once() {

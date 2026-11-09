@@ -6,31 +6,16 @@ use crate::systems::model::{Edge, EdgeKind, EdgeMode, Layer, Model, System};
 use super::table::Table;
 use super::text::{header, id, label, node_id};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GraphFilter {
-    All,
-    Runtime,
-}
-
-impl GraphFilter {
-    fn matches(self, edge: &Edge) -> bool {
-        match self {
-            Self::All => true,
-            Self::Runtime => edge.mode != EdgeMode::Build,
-        }
-    }
-}
-
 pub fn render_systems(model: &Model) -> String {
     let mut out = header();
     out.push_str("# System graph\n\n");
     out.push_str("```mermaid\n");
-    out.push_str(&system_graph(model, GraphFilter::All));
+    out.push_str(&system_graph(model));
     out.push_str("```\n\n");
     out.push_str("## Aggregated system edges\n\n");
 
     let mut table = Table::new(&["From", "To", "Kinds", "Modes", "Gates", "Edges"]);
-    for edge in aggregate_system_edges(model, GraphFilter::All) {
+    for edge in aggregate_system_edges(model) {
         table.row([
             format!("`{}`", edge.from),
             format!("`{}`", edge.to),
@@ -51,7 +36,7 @@ pub fn render_runtime(model: &Model) -> String {
         "Cross-system runtime edges. Build-time dependencies live in [build-deps](build-deps.md).\n\n",
     );
     out.push_str("```mermaid\n");
-    out.push_str(&system_graph(model, GraphFilter::Runtime));
+    out.push_str(&system_graph(model));
     out.push_str("```\n\n");
     out.push_str("## Cross-system component edges\n\n");
 
@@ -325,9 +310,9 @@ struct Aggregate {
     count: usize,
 }
 
-fn aggregate_system_edges(model: &Model, filter: GraphFilter) -> Vec<Aggregate> {
+fn aggregate_system_edges(model: &Model) -> Vec<Aggregate> {
     let mut map: BTreeMap<(String, String), Aggregate> = BTreeMap::new();
-    for edge in model.edges.values().filter(|edge| filter.matches(edge)) {
+    for edge in model.edges.values() {
         let (Some(from), Some(to)) = (model.node_system(&edge.from), model.node_system(&edge.to))
         else {
             continue;
@@ -355,7 +340,7 @@ fn aggregate_system_edges(model: &Model, filter: GraphFilter) -> Vec<Aggregate> 
     map.into_values().collect()
 }
 
-fn system_graph(model: &Model, filter: GraphFilter) -> String {
+fn system_graph(model: &Model) -> String {
     let mut out = String::from("flowchart LR\n");
     for layer in Layer::ORDER {
         let systems: Vec<&System> = model
@@ -380,7 +365,7 @@ fn system_graph(model: &Model, filter: GraphFilter) -> String {
         out.push_str("  end\n");
     }
 
-    for aggregated in aggregate_system_edges(model, filter) {
+    for aggregated in aggregate_system_edges(model) {
         let mut edge_label = format!(
             "{} / {}",
             aggregated.kinds.into_iter().collect::<Vec<_>>().join(", "),
@@ -415,7 +400,6 @@ fn arrow(edge: &Edge) -> &'static str {
     match (edge.kind, edge.mode) {
         (EdgeKind::ConfigRead, _) => "-.->",
         (_, EdgeMode::Async | EdgeMode::Event) => "-.->",
-        (_, EdgeMode::Build) => "==>",
         _ => "-->",
     }
 }

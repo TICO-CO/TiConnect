@@ -153,7 +153,7 @@ edges = [
   { id = "E277", from = "TRAY.menu", to = "TRAY.policy", kind = "calls", mode = "sync", contract = "policy menu", stage = 6 },
   { id = "E278", from = "TRAY.menu", to = "TRAY.activate", kind = "calls", mode = "sync", contract = "open app action", stage = 6 },
   { id = "E279", from = "TRAY.policy", to = "POL.store", kind = "calls", mode = "sync", contract = "set peer policy", gate = "POL.store", stage = 6 },
-  { id = "E280", from = "TRAY.activate", to = "UI.activate", kind = "calls", mode = "sync", contract = "Activate view", stage = 6 },
+  { id = "E280", from = "TRAY.activate", to = "UI.activate", kind = "calls", mode = "sync", contract = "Activate view", stage = 7 },
   { id = "E281", from = "TRAY.fallback", to = "TRAY.item", kind = "calls", mode = "sync", contract = "tray unavailable", stage = 6 },
   { id = "E282", from = "TRAY.item", to = "IPC.signal-bus", kind = "emits", mode = "event", contract = "tray status", stage = 6 },
 

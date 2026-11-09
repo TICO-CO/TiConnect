@@ -203,7 +203,7 @@ flowchart LR
 | `OVL.activate` | `UI.activate` | calls | sync | Activate view |  |  | 8 |
 | `OVL.client` | `CFG.file-store` | config-read | sync | overlay enabled |  |  | 8 |
 | `TRAY.policy` | `POL.store` | calls | sync | set peer policy | POL.store |  | 6 |
-| `TRAY.activate` | `UI.activate` | calls | sync | Activate view |  |  | 6 |
+| `TRAY.activate` | `UI.activate` | calls | sync | Activate view |  |  | 7 |
 | `TRAY.item` | `IPC.signal-bus` | emits | event | tray status |  |  | 6 |
 | `CLI.daemon` | `IPC.client` | calls | sync | daemon proxy |  |  | 2 |
 | `CLI.settings` | `CFG.file-store` | calls | sync | settings read and write |  |  | 3 |

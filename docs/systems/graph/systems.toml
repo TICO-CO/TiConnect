@@ -57,7 +57,7 @@ open_decisions = ["node id derivation", "peer id derivation", "conversation id d
 [[systems]]
 id = "IPC"
 name = "D-Bus control plane"
-owner = "ticonnect-ipc"
+owner = "ticonnect-core"
 layer = "domain"
 stage = 2
 doc = "05-ipc.md"
@@ -66,7 +66,7 @@ boundary = "Depends on core DTO types. Daemon implements the service. UI, overla
 owned_state = ["D-Bus interface version"]
 interfaces = ["org.ticonnect.Daemon", "org.ticonnect.UI", "methods", "signals", "D-Bus error names"]
 failure_semantics = ["unknown callers are rejected by session bus defaults", "daemon absence returns typed client errors", "signal payloads are versioned"]
-open_decisions = ["separate ticonnect-ipc crate or core::ipc", "interface version negotiation"]
+open_decisions = ["interface version negotiation"]
 
 [[systems]]
 id = "ID"

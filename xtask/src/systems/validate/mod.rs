@@ -6,7 +6,8 @@ use std::path::Path;
 
 use anyhow::{Result, bail};
 
-use super::model::{EdgeKind, MAX_STAGE, Model};
+use super::model::{EdgeKind, EdgeMode, MAX_STAGE, Model};
+use super::render::text::{node_id, state_id};
 
 pub fn validate(root: &Path, model: &Model) -> Result<()> {
     let mut diagnostics = Diagnostics::default();
@@ -16,8 +17,10 @@ pub fn validate(root: &Path, model: &Model) -> Result<()> {
     check_components(model, &mut diagnostics);
     check_stores(model, &mut diagnostics);
     check_edges(model, &mut diagnostics);
+    check_stages(model, &mut diagnostics);
     check_invariants(model, &mut diagnostics);
     check_machines(model, &mut diagnostics);
+    check_render_ids(model, &mut diagnostics);
 
     diagnostics.extend(build::validate(root, model));
     diagnostics.extend(cycles::validate(model));
@@ -105,6 +108,13 @@ fn check_stores(model: &Model, diagnostics: &mut Diagnostics) {
                 "{} references unknown owner {}",
                 store.id, store.owner_component
             ));
+        } else if let Some(owner) = model.components.get(&store.owner_component)
+            && owner.system != store.system
+        {
+            diagnostics.push(format!(
+                "{} is in system {} but owner {} is in system {}",
+                store.id, store.system, store.owner_component, owner.system
+            ));
         }
         let owns: Vec<_> = model
             .edges
@@ -151,6 +161,94 @@ fn check_edges(model: &Model, diagnostics: &mut Diagnostics) {
         }
         if !(1..=MAX_STAGE).contains(&edge.stage) {
             diagnostics.push(format!("{} has invalid stage {}", edge.id, edge.stage));
+        }
+
+        match edge.kind {
+            EdgeKind::Owns => {
+                if !model.components.contains_key(&edge.from) {
+                    diagnostics.push(format!(
+                        "{} owns edge must start at a component, not {}",
+                        edge.id, edge.from
+                    ));
+                }
+                if !model.stores.contains_key(&edge.to) {
+                    diagnostics.push(format!(
+                        "{} owns edge must end at a store, not {}",
+                        edge.id, edge.to
+                    ));
+                }
+                if edge.mode != EdgeMode::Sync {
+                    diagnostics.push(format!(
+                        "{} owns edge must use sync mode, not {}",
+                        edge.id,
+                        edge.mode.as_str()
+                    ));
+                }
+            }
+            EdgeKind::ConfigRead if edge.mode != EdgeMode::Sync => {
+                diagnostics.push(format!(
+                    "{} config-read edge must use sync mode, not {}",
+                    edge.id,
+                    edge.mode.as_str()
+                ));
+            }
+            _ => {}
+        }
+    }
+}
+
+fn endpoint_stage(model: &Model, id: &str) -> Option<u32> {
+    model
+        .components
+        .get(id)
+        .map(|component| component.stage)
+        .or_else(|| {
+            model
+                .stores
+                .get(id)
+                .and_then(|store| model.components.get(&store.owner_component))
+                .map(|component| component.stage)
+        })
+        .or_else(|| model.systems.get(id).map(|system| system.stage))
+}
+
+fn check_stages(model: &Model, diagnostics: &mut Diagnostics) {
+    for edge in model.edges.values() {
+        for (side, id) in [("from", &edge.from), ("to", &edge.to)] {
+            if let Some(stage) = endpoint_stage(model, id)
+                && stage > edge.stage
+            {
+                diagnostics.push(format!(
+                    "{} stage {} is earlier than {} endpoint {} stage {}",
+                    edge.id, edge.stage, side, id, stage
+                ));
+            }
+        }
+    }
+}
+
+fn check_render_ids(model: &Model, diagnostics: &mut Diagnostics) {
+    let mut nodes = BTreeMap::new();
+    for id in model.components.keys().chain(model.stores.keys()) {
+        let rendered = node_id(id);
+        if let Some(other) = nodes.insert(rendered.clone(), id) {
+            diagnostics.push(format!(
+                "rendered node id collision: {} and {} both render as {}",
+                other, id, rendered
+            ));
+        }
+    }
+
+    for machine in model.machines.values() {
+        let mut states = BTreeMap::new();
+        for state in &machine.states {
+            let rendered = state_id(&state.name);
+            if let Some(other) = states.insert(rendered.clone(), &state.name) {
+                diagnostics.push(format!(
+                    "machine {} rendered state id collision: {} and {} both render as {}",
+                    machine.id, other, state.name, rendered
+                ));
+            }
         }
     }
 }
@@ -246,15 +344,92 @@ mod tests {
         assert!(errors.iter().any(|error| error.contains("self-loop")));
     }
 
+    #[test]
+    fn stage_violation_is_reported() {
+        let mut model = fixture();
+        model.components.get_mut("C").expect("component").stage = 2;
+        let errors = collect(&model);
+        assert!(
+            errors.iter().any(|error| {
+                error.contains("E1 stage 1 is earlier than from endpoint C stage 2")
+            })
+        );
+    }
+
+    #[test]
+    fn store_owner_in_other_system_is_reported() {
+        let mut model = fixture();
+        model.systems.insert("T".into(), system("T"));
+        model.components.insert("D".into(), component("D", "T", 1));
+        model.stores.get_mut("ST").expect("store").owner_component = "D".into();
+        model.edges.get_mut("E1").expect("edge").from = "D".into();
+        let errors = collect(&model);
+        assert!(
+            errors
+                .iter()
+                .any(|error| { error.contains("ST is in system S but owner D is in system T") })
+        );
+    }
+
+    #[test]
+    fn rendered_id_collision_is_reported() {
+        let mut model = fixture();
+        model
+            .components
+            .insert("C_1".into(), component("C_1", "S", 1));
+        model
+            .components
+            .insert("C-1".into(), component("C-1", "S", 1));
+        let errors = collect(&model);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("both render as n_c_1"))
+        );
+    }
+
     fn collect(model: &Model) -> Vec<String> {
         let mut diagnostics = Diagnostics::default();
         check_systems(model, &mut diagnostics);
         check_components(model, &mut diagnostics);
         check_stores(model, &mut diagnostics);
         check_edges(model, &mut diagnostics);
+        check_stages(model, &mut diagnostics);
         check_invariants(model, &mut diagnostics);
         check_machines(model, &mut diagnostics);
+        check_render_ids(model, &mut diagnostics);
         diagnostics.errors
+    }
+
+    fn system(id: &str) -> System {
+        System {
+            id: id.into(),
+            name: id.into(),
+            owner: "test".into(),
+            layer: Layer::Leaves,
+            stage: 1,
+            doc: format!("{id}.md"),
+            purpose: "purpose".into(),
+            boundary: "boundary".into(),
+            owned_state: Vec::new(),
+            interfaces: Vec::new(),
+            failure_semantics: Vec::new(),
+            open_decisions: Vec::new(),
+        }
+    }
+
+    fn component(id: &str, system: &str, stage: u32) -> Component {
+        Component {
+            id: id.into(),
+            system: system.into(),
+            name: id.into(),
+            owner: "test".into(),
+            kind: ComponentKind::Module,
+            stage,
+            state: Vec::new(),
+            contract: "contract".into(),
+            test: "test".into(),
+        }
     }
 
     fn fixture() -> Model {
