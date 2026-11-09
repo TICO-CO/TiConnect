@@ -18,3 +18,6 @@ ticonnect-settings.workspace = true
 ticonnect-net.workspace = true
 ticonnect-media.workspace = true
 ticonnect-desktop.workspace = true
+tracing.workspace = true
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "signal", "sync", "time"] }
+zbus.workspace = true

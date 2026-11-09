@@ -8,9 +8,10 @@ the UI was never opened.
 
 ## Status
 
-Stages 1 and 1.5 are implemented: workspace, settings, logging, typed errors,
-binary scaffolds, and the canonical architecture graph. Daemon IPC, identity,
-discovery, transport, messaging, and UI stages are not implemented yet.
+Stages 1, 1.5, and 2 are implemented: workspace, settings, logging, typed
+errors, binary scaffolds, the canonical architecture graph, the D-Bus daemon,
+the CLI, and systemd/autostart packaging. Identity, discovery, transport,
+messaging, and UI stages are not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -54,12 +55,16 @@ Architecture docs are generated. After editing `docs/systems/graph/` or
 
 ```sh
 cargo run --bin ticonnectd
-cargo run --bin ticonnect-cli
+cargo run --bin ticonnect-cli -- status
+cargo run --bin ticonnect-cli -- ping
+cargo run --bin ticonnect-cli -- quit
 cargo run --bin ticonnect-ui
 cargo run --bin ticonnect-ovl
 ```
 
-All four binaries currently load settings, initialize logging, and exit.
+`ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
+`ticonnect-cli` exposes `status`, `version`, `ping`, and `quit`. The UI and
+overlay binaries still load settings, initialize logging, and exit.
 
 ## Configuration
 

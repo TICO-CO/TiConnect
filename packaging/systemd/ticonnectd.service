@@ -1,0 +1,23 @@
+[Unit]
+Description=TiConnect background daemon
+Documentation=https://github.com/TICO-CO/TiConnect
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.ticonnect.Daemon
+ExecStart=/usr/bin/ticonnectd
+Restart=on-failure
+RestartSec=2
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=-%h/.config/ticonnect -%h/.local/share/ticonnect
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=default.target
