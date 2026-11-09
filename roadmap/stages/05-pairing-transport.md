@@ -6,6 +6,11 @@ Establish authenticated, encrypted QUIC connections between paired nodes. Pairin
 uses SPAKE2 with a 6-digit PIN or a QR code, then pins the peer certificate to
 its fingerprint. Unpaired peers can reach only the pairing endpoint.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-5).
+Component graphs: [PAIR](../../docs/systems/generated/components/pair.md), [TX](../../docs/systems/generated/components/tx.md), [WIRE](../../docs/systems/generated/components/wire.md).
+
 ## Scope
 
 - SPAKE2 pairing over a dedicated pairing path.
@@ -24,7 +29,7 @@ its fingerprint. Unpaired peers can reach only the pairing endpoint.
 
 ## Prerequisites
 
-Stages 1, 3, and 4 complete.
+Stages 1, 1.5, 3, and 4 complete.
 
 ## Deliverables
 

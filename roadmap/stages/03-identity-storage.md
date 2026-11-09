@@ -7,6 +7,11 @@ database with migrations for application data. Extend the TOML settings schema
 and add the peer table. The daemon exposes identity and read-only settings over
 D-Bus; any process may change settings through `ticonnect-settings`.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-3).
+Component graphs: [ID](../../docs/systems/generated/components/id.md), [DB](../../docs/systems/generated/components/db.md), [CFG](../../docs/systems/generated/components/cfg.md).
+
 ## Scope
 
 - Ed25519 key generation, loading, and storage.
@@ -24,7 +29,7 @@ D-Bus; any process may change settings through `ticonnect-settings`.
 
 ## Prerequisites
 
-Stages 1 and 2 complete.
+Stages 1, 1.5, and 2 complete.
 
 ## Deliverables
 

@@ -3,6 +3,10 @@
 TiConnect keeps crate dependencies one-directional. A crate may depend on crates
 below it, never above it.
 
+`xtask` is a dev-only tool. It is not part of the product dependency graph.
+`cargo xtask systems --check` validates the declared build edges in
+`docs/systems/graph/build-deps.toml` against `cargo metadata`.
+
 ```
 settings   logging        leaf crates
    |          |

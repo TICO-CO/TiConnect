@@ -1,0 +1,114 @@
+[[machines]]
+id = "pairing"
+owner = "PAIR.spake2"
+doc = "09-pairing.md"
+states = [
+  { name = "idle", description = "No pairing session." },
+  { name = "waiting", description = "PIN or QR exchanged, waiting for SPAKE2 messages." },
+  { name = "confirming", description = "Transcript confirmation in progress." },
+  { name = "trusted", description = "Peer committed to the trust store." },
+  { name = "failed", description = "Confirmation failed or attempts exhausted." },
+  { name = "expired", description = "Pairing token or timeout expired." },
+]
+transitions = [
+  { from = "idle", event = "start", to = "waiting", action = "allocate session and token" },
+  { from = "waiting", event = "message", to = "confirming", guard = "valid frame" },
+  { from = "confirming", event = "confirm", to = "trusted", guard = "confirmation matches", action = "commit trust" },
+  { from = "confirming", event = "mismatch", to = "failed", action = "increment attempts" },
+  { from = "waiting", event = "timeout", to = "expired" },
+  { from = "waiting", event = "cancel", to = "idle" },
+  { from = "confirming", event = "cancel", to = "idle" },
+  { from = "failed", event = "retry", to = "waiting", guard = "attempts remaining" },
+]
+
+[[machines]]
+id = "outbox"
+owner = "MSG.outbox"
+doc = "12-messaging.md"
+states = [
+  { name = "queued", description = "Record is waiting for a peer session." },
+  { name = "sending", description = "Record is being written to a QUIC stream." },
+  { name = "sent", description = "Transport acknowledged the frame." },
+  { name = "failed", description = "Terminal send failure." },
+  { name = "expired", description = "TTL elapsed before delivery." },
+]
+transitions = [
+  { from = "queued", event = "peer_connected", to = "sending", guard = "trusted peer and gap sync complete" },
+  { from = "sending", event = "ack", to = "sent" },
+  { from = "sending", event = "error", to = "queued", guard = "retry budget remains", action = "backoff" },
+  { from = "queued", event = "ttl_elapsed", to = "expired" },
+  { from = "sending", event = "ttl_elapsed", to = "expired" },
+  { from = "queued", event = "fatal", to = "failed" },
+]
+
+[[machines]]
+id = "transfer"
+owner = "ATT.scheduler"
+doc = "14-attachments.md"
+states = [
+  { name = "idle", description = "No transfer active." },
+  { name = "requesting", description = "Resume ranges are being requested." },
+  { name = "receiving", description = "Chunks are arriving." },
+  { name = "verifying", description = "Final hash verification is running." },
+  { name = "complete", description = "Attachment published." },
+  { name = "failed", description = "Transfer failed." },
+  { name = "cancelled", description = "Transfer cancelled by user or policy." },
+]
+transitions = [
+  { from = "idle", event = "send", to = "requesting" },
+  { from = "idle", event = "receive", to = "requesting" },
+  { from = "requesting", event = "ranges", to = "receiving" },
+  { from = "receiving", event = "last_chunk", to = "verifying" },
+  { from = "verifying", event = "hash_ok", to = "complete", action = "publish content" },
+  { from = "verifying", event = "hash_mismatch", to = "failed", action = "remove temp data" },
+  { from = "requesting", event = "cancel", to = "cancelled" },
+  { from = "receiving", event = "cancel", to = "cancelled" },
+  { from = "requesting", event = "error", to = "failed" },
+  { from = "receiving", event = "error", to = "failed" },
+]
+
+[[machines]]
+id = "call"
+owner = "CALL.state"
+doc = "16-calls.md"
+states = [
+  { name = "idle", description = "No call." },
+  { name = "ringing", description = "Incoming or outgoing ring." },
+  { name = "in_call", description = "Audio connected." },
+  { name = "ended", description = "Terminal call state." },
+]
+transitions = [
+  { from = "idle", event = "start", to = "ringing", guard = "peer trusted and policy allows" },
+  { from = "idle", event = "incoming", to = "ringing", guard = "peer trusted and policy allows" },
+  { from = "ringing", event = "accept", to = "in_call", action = "start audio devices" },
+  { from = "ringing", event = "decline", to = "ended" },
+  { from = "ringing", event = "timeout", to = "ended" },
+  { from = "in_call", event = "hangup", to = "ended" },
+  { from = "in_call", event = "error", to = "ended" },
+  { from = "ringing", event = "error", to = "ended" },
+]
+
+[[machines]]
+id = "remote"
+owner = "RD.state"
+doc = "19-remote-desktop.md"
+states = [
+  { name = "idle", description = "No remote session." },
+  { name = "requested", description = "Viewer asked for a session." },
+  { name = "consented", description = "Host granted consent and PIN." },
+  { name = "active", description = "Capture and input are active." },
+  { name = "ending", description = "Teardown in progress." },
+  { name = "ended", description = "Terminal session state." },
+  { name = "denied", description = "Consent denied or PIN failed." },
+]
+transitions = [
+  { from = "idle", event = "request", to = "requested", guard = "peer trusted" },
+  { from = "requested", event = "consent", to = "consented", action = "generate PIN" },
+  { from = "requested", event = "deny", to = "denied" },
+  { from = "consented", event = "pin_ok", to = "active", action = "open portal and start framing" },
+  { from = "consented", event = "pin_fail", to = "denied", guard = "attempts remaining" },
+  { from = "active", event = "kill_switch", to = "ending" },
+  { from = "active", event = "disconnect", to = "ending" },
+  { from = "active", event = "hangup", to = "ending" },
+  { from = "ending", event = "cleanup_done", to = "ended" },
+]

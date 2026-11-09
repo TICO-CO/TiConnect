@@ -1,0 +1,335 @@
+[[systems]]
+id = "RT"
+name = "Runtime and composition"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 2
+doc = "01-runtime.md"
+purpose = "Own process lifecycle, composition root, signals, shutdown, single-instance guard, and autostart wiring for every binary."
+boundary = "Depends on settings, logging, and daemon service wiring. Does not own domain state, network state, or UI state."
+owned_state = ["process lifecycle", "shutdown signal"]
+interfaces = ["binary entrypoints", "SIGTERM and SIGINT", "systemd user unit", "XDG autostart"]
+failure_semantics = ["exit non-zero on startup failure", "release bus name on shutdown", "never run as root"]
+open_decisions = ["introduce ticonnect-runtime in Stage 2 or defer"]
+
+[[systems]]
+id = "CFG"
+name = "Settings"
+owner = "ticonnect-settings"
+layer = "leaves"
+stage = 1
+doc = "02-settings.md"
+purpose = "Load, validate, persist, and watch TOML configuration with environment overrides and atomic cross-process writes."
+boundary = "Leaf crate. No domain, network, storage, or logging dependency. Exposes effective settings only."
+owned_state = ["config.toml", "effective settings snapshot"]
+interfaces = ["Settings API", "config.toml", "TICONNECT_ environment overrides", "SettingsChanged signal"]
+failure_semantics = ["reject invalid values with typed errors", "atomic replace prevents corruption", "missing file is a no-op reset"]
+open_decisions = ["lock behavior on NFS or unusual filesystems", "settings write conflict UX"]
+
+[[systems]]
+id = "LOG"
+name = "Observability"
+owner = "ticonnect-logging"
+layer = "leaves"
+stage = 1
+doc = "03-observability.md"
+purpose = "Parse log configuration, build tracing subscribers, route output, and enforce redaction rules."
+boundary = "Leaf crate. No settings, core, domain, or network dependency. Runtime passes validated log settings."
+owned_state = ["global tracing subscriber"]
+interfaces = ["LogSettings", "Logging::init", "tracing spans and events"]
+failure_semantics = ["invalid level or format returns typed error", "initialization is guarded", "no secrets in output"]
+open_decisions = ["span naming and metric conventions", "log rotation ownership"]
+
+[[systems]]
+id = "DOM"
+name = "Domain model"
+owner = "ticonnect-core"
+layer = "domain"
+stage = 1
+doc = "04-domain.md"
+purpose = "Define shared IDs, version, canonical encoding, signatures, identity types, message records, attachment references, and wire frame types."
+boundary = "Pure domain types. No I/O, no settings, no logging, no database, no network."
+owned_state = []
+interfaces = ["IDs", "canonical encoding", "signature envelope", "message and ack records", "attachment reference", "wire frame types"]
+failure_semantics = ["malformed input returns local typed errors", "canonical encoding rejects non-deterministic data", "signature verification fails closed"]
+open_decisions = ["node id derivation", "peer id derivation", "conversation id derivation", "canonical fingerprint encoding"]
+
+[[systems]]
+id = "IPC"
+name = "D-Bus control plane"
+owner = "ticonnect-ipc"
+layer = "domain"
+stage = 2
+doc = "05-ipc.md"
+purpose = "Define one stable D-Bus contract, DTOs, error names, dispatch, signals, client proxies, and compatibility versioning."
+boundary = "Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and CLI use client proxies. No daemon internals."
+owned_state = ["D-Bus interface version"]
+interfaces = ["org.ticonnect.Daemon", "org.ticonnect.UI", "methods", "signals", "D-Bus error names"]
+failure_semantics = ["unknown callers are rejected by session bus defaults", "daemon absence returns typed client errors", "signal payloads are versioned"]
+open_decisions = ["separate ticonnect-ipc crate or core::ipc", "interface version negotiation"]
+
+[[systems]]
+id = "ID"
+name = "Identity and trust"
+owner = "ticonnect-core"
+layer = "services"
+stage = 3
+doc = "06-identity-trust.md"
+purpose = "Create and store Ed25519 identity, derive fingerprints and node IDs, bind certificates, and own trust CRUD and revocation."
+boundary = "Owns identity key material and trust decisions. Uses storage for peer rows. Never exposes private keys over IPC or logs."
+owned_state = ["identity.key", "trusted peer table"]
+interfaces = ["identity key file", "fingerprint", "node id", "trust store", "certificate binding"]
+failure_semantics = ["refuse world-readable key", "pin mismatch aborts handshake", "revocation closes sessions"]
+open_decisions = ["node id from fingerprint or UUIDv7", "certificate fingerprint versus identity fingerprint"]
+
+[[systems]]
+id = "DB"
+name = "Storage"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 3
+doc = "07-storage.md"
+purpose = "Own SQLite schema, migrations, repositories, transactions, integrity checks, and durable application data."
+boundary = "Daemon-only. Stores no configuration. Repositories expose typed operations. Network and media never write directly."
+owned_state = ["ticonnect.db tables", "schema version"]
+interfaces = ["SQLite", "migrations", "peers repo", "messages repo", "outbox repo", "attachments repo", "peer_state repo", "transfer partials repo"]
+failure_semantics = ["transaction rollback on error", "WAL mode", "migration failure refuses startup", "no configuration in SQLite"]
+open_decisions = ["backup and export policy", "disk quota policy", "schema migration compatibility window"]
+
+[[systems]]
+id = "DISC"
+name = "Discovery"
+owner = "ticonnect-net"
+layer = "services"
+stage = 4
+doc = "08-discovery.md"
+purpose = "Advertise this node and produce candidate peers over mDNS with UDP broadcast fallback. Candidates are hints, not trust."
+boundary = "Owns sockets and candidate cache. Does not pair, connect, or authenticate. Emits candidates to transport."
+owned_state = ["candidate cache"]
+interfaces = ["mDNS TXT records", "UDP beacon", "candidate list", "candidate signals"]
+failure_semantics = ["malformed packets dropped and counted", "candidate caps enforced", "mDNS failure falls back to broadcast"]
+open_decisions = ["candidate expiry policy", "transport port advertisement", "IPv6 scope"]
+
+[[systems]]
+id = "PAIR"
+name = "Pairing"
+owner = "ticonnect-net"
+layer = "services"
+stage = 5
+doc = "09-pairing.md"
+purpose = "Authenticate a first-time peer with SPAKE2 over PIN or QR, confirm the transcript, and commit trust."
+boundary = "Owns pairing state and endpoint. Unpaired peers can reach only this endpoint. Commits trust through identity and storage."
+owned_state = ["pairing session state", "one-time token"]
+interfaces = ["SPAKE2 transcript", "PIN", "QR payload", "pairing frames", "PairingCompleted signal"]
+failure_semantics = ["bounded attempts", "single-use token", "constant-time confirmation", "fail closed"]
+open_decisions = ["pairing endpoint transport", "QR token TTL", "PIN attempt lockout policy"]
+
+[[systems]]
+id = "TX"
+name = "Transport"
+owner = "ticonnect-net"
+layer = "services"
+stage = 5
+doc = "10-transport.md"
+purpose = "Own QUIC endpoints, TLS pinning, session lifecycle, streams, datagrams, reconnect, and transport metrics."
+boundary = "Owns sessions and sockets. Uses trust for pinning and discovery for candidates. Carries opaque typed frames for messaging, attachments, calls, and remote desktop."
+owned_state = ["active sessions", "QUIC endpoints"]
+interfaces = ["TLS 1.3", "ALPN ticonnect/1", "streams", "datagrams", "session events"]
+failure_semantics = ["pinning fails closed", "one active session per peer", "bounded reconnect backoff", "no 0-RTT until replay handled"]
+open_decisions = ["certificate binding mechanism", "reconnect state preservation", "datagram replay policy"]
+
+[[systems]]
+id = "WIRE"
+name = "Wire protocol"
+owner = "ticonnect-core"
+layer = "domain"
+stage = 5
+doc = "11-wire-protocol.md"
+purpose = "Define versioned postcard framing for handshake, sync, messages, acks, transfers, audio, video, input, calls, and limits."
+boundary = "Pure encoding and decoding contracts. No sockets, storage, or daemon state."
+owned_state = []
+interfaces = ["envelope", "handshake", "sync frames", "message frames", "ack frames", "transfer frames", "audio datagrams", "video frames", "input frames", "call signals"]
+failure_semantics = ["reject oversized frames", "unknown version rejected", "decode never panics", "golden vectors required"]
+open_decisions = ["frame version negotiation", "stream versus datagram split", "audio and video packet layouts"]
+
+[[systems]]
+id = "MSG"
+name = "Messaging"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 6
+doc = "12-messaging.md"
+purpose = "Own immutable signed message records, sequence allocation, ingest, history, outbox, gap sync, receipts, state projection, and messaging events."
+boundary = "Daemon domain service. Uses storage and transport. Policy gates inbound and notification decisions."
+owned_state = ["conversation state", "message state", "outbox state", "receipt coalescing state"]
+interfaces = ["message records", "outbox", "gap sync", "receipts", "MessageReceived signal", "MessageStateChanged signal"]
+failure_semantics = ["verify signature before storage or ack", "duplicates are ignored", "expired outbox rows fail", "ignore policy drops before storage"]
+open_decisions = ["ignore peer send semantics", "sync batch limits", "clock skew rendering fallback"]
+
+[[systems]]
+id = "POL"
+name = "Policy"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 6
+doc = "13-policy.md"
+purpose = "Own per-peer accept, mute, ignore, global DND, notification decisions, and receipt suppression."
+boundary = "Daemon-only decision service. UI, overlay, and tray present decisions but do not own policy."
+owned_state = ["peer policy", "DND state"]
+interfaces = ["PolicyDecision", "PolicyChanged signal", "notification decision", "receipt suppression"]
+failure_semantics = ["ignore enforced before storage", "DND suppresses notification not storage", "policy changes are atomic"]
+open_decisions = ["mute ringing behavior", "notification payload privacy"]
+
+[[systems]]
+id = "ATT"
+name = "Attachments"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 9
+doc = "14-attachments.md"
+purpose = "Own content-addressed attachment storage, validation, chunked resumable transfer, linking, progress, and export."
+boundary = "Daemon service. Uses transport streams, storage metadata, and messaging linking. UI requests export over IPC."
+owned_state = ["attachment content store", "partial transfer state"]
+interfaces = ["attachment hash", "chunk frames", "resume state", "TransferProgress signal", "TransferDone signal"]
+failure_semantics = ["verify hash before publish", "temp files are restrictive", "size and MIME limits", "no symlink following"]
+open_decisions = ["chunk size and resume framing", "disk quota policy", "orphan cleanup policy"]
+
+[[systems]]
+id = "AUD"
+name = "Audio"
+owner = "ticonnect-media"
+layer = "services"
+stage = 10
+doc = "15-audio.md"
+purpose = "Own device selection, capture, resampling, Opus codec, jitter buffer, playback, metrics, and ringtone playback."
+boundary = "Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline."
+owned_state = ["device handles", "jitter buffer", "playback ring"]
+interfaces = ["cpal devices", "Opus frames", "jitter buffer", "ringtone sink"]
+failure_semantics = ["device loss does not panic", "bounded rings", "no microphone before call acceptance"]
+open_decisions = ["sample-rate policy", "jitter target", "ringtone ducking behavior"]
+
+[[systems]]
+id = "CALL"
+name = "Calls"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 10
+doc = "16-calls.md"
+purpose = "Own call state, signaling, media coordination, ringtone coordination, policy gates, timeout, and cleanup."
+boundary = "Daemon service. Uses audio, transport, policy, and IPC. UI only presents controls."
+owned_state = ["call registry", "call state"]
+interfaces = ["call state machine", "call signals", "call controls", "IncomingCall signal"]
+failure_semantics = ["one call per node and peer", "reject untrusted peers", "cleanup on every terminal transition"]
+open_decisions = ["call signaling frames", "mute peer ringing behavior", "device selection persistence"]
+
+[[systems]]
+id = "DT"
+name = "Desktop capture and input"
+owner = "ticonnect-desktop"
+layer = "services"
+stage = 11
+doc = "17-desktop.md"
+purpose = "Own portal consent, PipeWire capture, capture backpressure, backend detection, and input injection through libei or XTEST."
+boundary = "Desktop library. No storage, D-Bus, or policy. Remote desktop orchestrates consent and sessions."
+owned_state = ["portal session", "EIS file descriptor", "capture stream"]
+interfaces = ["RemoteDesktop portal", "PipeWire", "libei", "XTEST", "input events"]
+failure_semantics = ["no capture before consent", "drop frames under backpressure", "validate input bounds", "release devices on teardown"]
+open_decisions = ["portal capability matrix", "libei fallback rules", "multi-monitor selection"]
+
+[[systems]]
+id = "VID"
+name = "Video"
+owner = "ticonnect-media"
+layer = "services"
+stage = 11
+doc = "18-video.md"
+purpose = "Own H.264 encoder and decoder configuration, packetization, keyframe handling, and video metrics."
+boundary = "Media library. No capture, network, storage, or UI. Remote desktop coordinates frames."
+owned_state = ["encoder state", "decoder state"]
+interfaces = ["openh264 encoder", "openh264 decoder", "packetizer", "keyframe request", "video metrics"]
+failure_semantics = ["drop frames under load", "request keyframe on loss", "bounded queues"]
+open_decisions = ["frame packet layout", "bitrate adaptation", "keyframe interval"]
+
+[[systems]]
+id = "RD"
+name = "Remote desktop"
+owner = "ticonnect-daemon"
+layer = "daemon"
+stage = 11
+doc = "19-remote-desktop.md"
+purpose = "Own remote session state, consent, PIN, session scope, capture coordination, input coordination, indicator, kill switch, and teardown."
+boundary = "Daemon service. Uses desktop, video, transport, policy, and IPC. Indicator must remain visible while active."
+owned_state = ["remote session registry", "session consent state", "kill switch state"]
+interfaces = ["consent flow", "session PIN", "RemoteSessionRequested signal", "RemoteSessionStarted signal", "RemoteSessionEnded signal"]
+failure_semantics = ["consent required per session", "one trusted peer per session", "kill switch tears down immediately", "no capture or input after end"]
+open_decisions = ["indicator process ownership", "session timeout default", "PIN reuse policy"]
+
+[[systems]]
+id = "UI"
+name = "GTK4 user interface"
+owner = "ticonnect-ui"
+layer = "clients"
+stage = 7
+doc = "20-ui.md"
+purpose = "Own the GTK4 main window, peer list, conversations, composer, pairing dialog, settings pages, call view, remote view, attachment widgets, and accessibility."
+boundary = "Client process. Talks only over D-Bus and settings. Never reads keys, SQLite, or network directly."
+owned_state = ["view state", "window activation state"]
+interfaces = ["org.ticonnect.UI", "Activate view", "D-Bus client", "settings writes"]
+failure_semantics = ["daemon absence shows banner and retries", "no blocking I/O on GTK main thread", "signal replay after reconnect"]
+open_decisions = ["view model refresh batching", "QR image dependency", "accessibility test harness"]
+
+[[systems]]
+id = "OVL"
+name = "Overlay"
+owner = "ticonnect-overlay"
+layer = "clients"
+stage = 8
+doc = "21-overlay.md"
+purpose = "Own corner toast cards, card queue, deduplication, Wayland layer-shell surface, X11 fallback, notifications fallback, and UI activation."
+boundary = "Client process. Subscribes to daemon signals and settings. Does not depend on UI or daemon internals."
+owned_state = ["card queue", "visible card state"]
+interfaces = ["gtk4-layer-shell", "X11 fallback window", "notify-rust", "Activate view"]
+failure_semantics = ["never steal focus", "deduplicate by message id", "fallback to system notifications", "respect policy and DND"]
+open_decisions = ["call and transfer card extension points", "multi-monitor placement", "reduced-motion detection"]
+
+[[systems]]
+id = "TRAY"
+name = "Tray"
+owner = "ticonnect-daemon"
+layer = "clients"
+stage = 6
+doc = "22-tray.md"
+purpose = "Own StatusNotifierItem icon, menu, policy actions, activation, and unavailable-tray fallback."
+boundary = "Runs inside the daemon. Calls policy and IPC. Does not own policy state."
+owned_state = ["tray item state"]
+interfaces = ["ksni StatusNotifierItem", "menu actions", "DND toggle", "peer policy submenu"]
+failure_semantics = ["daemon works without tray", "menu actions map to policy errors", "no headless dependency"]
+open_decisions = ["tray policy menu depth", "icon packaging"]
+
+[[systems]]
+id = "CLI"
+name = "Command-line client"
+owner = "ticonnect-cli"
+layer = "clients"
+stage = 2
+doc = "23-cli.md"
+purpose = "Own command parsing, daemon IPC client, settings client, output formats, and debugging commands."
+boundary = "Client process. Talks to daemon over D-Bus and settings directly. No storage or network access."
+owned_state = []
+interfaces = ["status", "version", "ping", "quit", "id", "settings", "peers", "discover", "pair", "send", "messages", "mark-read", "policy"]
+failure_semantics = ["daemon absent exits non-zero", "typed errors printed once", "JSON output stable"]
+open_decisions = ["JSON schema versioning", "interactive pairing UX"]
+
+[[systems]]
+id = "ASR"
+name = "Assurance and packaging"
+owner = "workspace"
+layer = "assurance"
+stage = 1
+doc = "24-assurance.md"
+purpose = "Own test harnesses, fakes, private D-Bus, two-node loopback, CI gates, dependency checks, migration matrix, fuzz, benchmarks, threat model, and packaging validation."
+boundary = "Cross-cutting verification. Observes and tests all systems. Ships no runtime feature."
+owned_state = ["test fixtures", "benchmark results"]
+interfaces = ["cargo test", "cargo xtask systems --check", "cargo audit", "systemd-analyze security", "Flatpak build"]
+failure_semantics = ["CI fails on drift", "fuzz target must never panic", "benchmarks record environment", "no secrets in artifacts"]
+open_decisions = ["soak-test duration", "benchmark hardware baseline"]

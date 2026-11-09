@@ -1,0 +1,6 @@
+build_rules = [
+  { id = "core-no-up", package = "ticonnect-core", forbid = ["ticonnect-settings", "ticonnect-logging"] },
+  { id = "leaves-are-leaves", packages = ["ticonnect-settings", "ticonnect-logging"], forbid_prefix = "ticonnect-" },
+  { id = "clients-no-internals", packages = ["ticonnect-ui", "ticonnect-overlay", "ticonnect-cli"], forbid = ["ticonnect-daemon", "ticonnect-net", "ticonnect-media", "ticonnect-desktop"] },
+  { id = "services-no-daemon", packages = ["ticonnect-net", "ticonnect-media", "ticonnect-desktop"], forbid = ["ticonnect-daemon"] },
+]

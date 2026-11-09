@@ -6,6 +6,11 @@ Ship TiConnect as a Flatpak and as distro-installable binaries with hardened
 systemd user units, complete documentation, and measured idle and runtime
 performance. Close the release checklist and the security review.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-12).
+Architecture checks: [docs/systems](../../docs/systems/README.md).
+
 ## Scope
 
 - Flatpak manifest for daemon, UI, overlay, and CLI.
@@ -25,7 +30,7 @@ performance. Close the release checklist and the security review.
 
 ## Prerequisites
 
-Stages 1–11 complete.
+Stages 1, 1.5, and 2–11 complete.
 
 ## Deliverables
 

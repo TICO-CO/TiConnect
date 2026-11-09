@@ -6,6 +6,11 @@ Send and receive images, audio clips, and arbitrary files as attachments over
 QUIC streams. Use a BLAKE3 content-addressed store with chunked, resumable
 transfers. Messages reference the attachment hash, so duplicates dedupe.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-9).
+Component graphs: [ATT](../../docs/systems/generated/components/att.md), [WIRE](../../docs/systems/generated/components/wire.md).
+
 ## Scope
 
 - Content-addressed attachment store.
@@ -24,7 +29,7 @@ transfers. Messages reference the attachment hash, so duplicates dedupe.
 
 ## Prerequisites
 
-Stages 1, 3, 5, and 6 complete.
+Stages 1, 1.5, 3, 5, 6, and 7 complete.
 
 ## Deliverables
 

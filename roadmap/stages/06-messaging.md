@@ -7,6 +7,11 @@ immutable records, per-sender sequence numbers, outbox with expiry, gap sync on
 reconnect, read receipts, policy (accept/mute/ignore/DND), and a tray menu. This
 is the first end-to-end usable milestone without a GUI.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-6).
+Component graphs: [MSG](../../docs/systems/generated/components/msg.md), [POL](../../docs/systems/generated/components/pol.md), [TRAY](../../docs/systems/generated/components/tray.md).
+
 ## Scope
 
 - Message record creation, signing, verification, and storage.
@@ -27,7 +32,7 @@ is the first end-to-end usable milestone without a GUI.
 
 ## Prerequisites
 
-Stages 1, 3, and 5 complete.
+Stages 1, 1.5, 3, and 5 complete.
 
 ## Deliverables
 

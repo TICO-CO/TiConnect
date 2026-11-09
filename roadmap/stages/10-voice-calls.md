@@ -6,6 +6,11 @@ Add one-to-one voice calls over QUIC datagrams. The daemon owns the call state
 machine and ringtone so calls ring with the UI closed. Audio uses `cpal` and
 Opus at 20 ms frames with a jitter buffer and packet-loss concealment.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-10).
+Component graphs: [AUD](../../docs/systems/generated/components/aud.md), [CALL](../../docs/systems/generated/components/call.md).
+
 ## Scope
 
 - Call state machine in the daemon.
@@ -28,7 +33,8 @@ Opus at 20 ms frames with a jitter buffer and packet-loss concealment.
 
 ## Prerequisites
 
-Stages 1, 3, 5, and 6 complete.
+Stages 1, 1.5, 3, 5, and 6 complete. Stage 7 is optional; CLI and D-Bus signals
+are enough to demo calls.
 
 ## Deliverables
 

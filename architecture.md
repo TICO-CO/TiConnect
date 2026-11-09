@@ -58,6 +58,9 @@ crates/
   cli/                      command-line client
 ```
 
+Component contracts, state ownership, and relation graphs live in
+`docs/systems/`. The graph is canonical and generated views are checked in CI.
+
 Dependency direction: `settings` and `logging` are leaf crates. `logging` is a
 pure tracing wrapper and depends on neither `settings` nor `core`. `core`
 depends on neither. `net`, `media`, `desktop` depend on `core`. `daemon`

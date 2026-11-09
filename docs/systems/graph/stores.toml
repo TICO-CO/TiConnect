@@ -1,0 +1,13 @@
+stores = [
+  { id = "CFG.config-file", system = "CFG", kind = "toml-file", owner_component = "CFG.file-store", path = "$XDG_CONFIG_HOME/ticonnect/config.toml" },
+  { id = "ID.key-store", system = "ID", kind = "key-file", owner_component = "ID.key-load", path = "$XDG_CONFIG_HOME/ticonnect/identity.key" },
+  { id = "DB.schema-store", system = "DB", kind = "sqlite-table", owner_component = "DB.migrations", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version" },
+  { id = "DB.peers-store", system = "DB", kind = "sqlite-table", owner_component = "DB.peers", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#peers" },
+  { id = "DB.conversations-store", system = "DB", kind = "sqlite-table", owner_component = "DB.conversations", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#conversations" },
+  { id = "DB.messages-store", system = "DB", kind = "sqlite-table", owner_component = "DB.messages", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#messages" },
+  { id = "DB.outbox-store", system = "DB", kind = "sqlite-table", owner_component = "DB.outbox", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#outbox" },
+  { id = "DB.attachments-store", system = "DB", kind = "sqlite-table", owner_component = "DB.attachments", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#attachments" },
+  { id = "DB.peer-state-store", system = "DB", kind = "sqlite-table", owner_component = "DB.peer-state", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#peer_state" },
+  { id = "DB.transfer-partials-store", system = "DB", kind = "sqlite-table", owner_component = "DB.transfer-partials", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#transfer_partials" },
+  { id = "ATT.content-store", system = "ATT", kind = "content-directory", owner_component = "ATT.store", path = "$XDG_DATA_HOME/ticonnect/attachments" },
+]

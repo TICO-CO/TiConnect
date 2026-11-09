@@ -6,6 +6,11 @@ Build the GTK4 main window as a separate process that talks to the daemon only
 over D-Bus. Provide peers, chat threads, message state, settings, and the pairing
 dialog. The daemon remains fully functional when the UI is closed.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-7).
+Component graph: [UI](../../docs/systems/generated/components/ui.md).
+
 ## Scope
 
 - `ticonnect-ui` binary with `gtk4`, `libadwaita`, and `relm4`.
@@ -24,7 +29,7 @@ dialog. The daemon remains fully functional when the UI is closed.
 
 ## Prerequisites
 
-Stages 1, 2, and 6 complete.
+Stages 1, 1.5, 2, and 6 complete.
 
 ## Deliverables
 

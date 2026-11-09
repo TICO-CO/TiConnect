@@ -7,13 +7,23 @@ messages, incoming calls, and completed transfers. It must not depend on the UI
 being open. When the overlay is disabled or unavailable, events fall back to
 system notifications.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-8).
+Component graph: [OVL](../../docs/systems/generated/components/ovl.md).
+
+Call cards and transfer cards are extension points in Stages 10 and 9. Stage 8
+ships message cards only.
+
 ## Scope
 
 - `ticonnect-ovl` GTK4 layer-shell agent on Wayland.
 - X11 fallback: undecorated always-on-top window.
-- Toast cards for `MessageReceived`, `IncomingCall`, `TransferDone`.
+- Toast cards for `MessageReceived`.
+- Extension hooks for `IncomingCall` cards in Stage 10 and `TransferDone` cards
+  in Stage 9.
 - Click-to-activate via `org.ticonnect.UI.Activate(view)`.
-- Auto-dismiss and persistent incoming-call behavior.
+- Auto-dismiss behavior for message cards.
 - `notify-rust` fallback.
 - Overlay enable/disable setting.
 
@@ -26,7 +36,7 @@ system notifications.
 
 ## Prerequisites
 
-Stages 1, 2, and 6 complete. Stage 7 is optional for click activation; without
+Stages 1, 1.5, 2, and 6 complete. Stage 7 is optional for click activation; without
 the UI, clicks fall back to notifications or are ignored.
 
 ## Deliverables
@@ -62,10 +72,10 @@ the UI, clicks fall back to notifications or are ignored.
 ## Card behavior
 
 - [ ] Message card: sender name, preview text, timestamp.
-- [ ] Incoming call card: caller name, accept and decline actions, persists until
-  answered or declined.
-- [ ] Transfer done card: file name and size.
-- [ ] Non-call cards auto-dismiss after a configurable timeout (default 5 s).
+- [ ] Incoming call card extension point: caller name, accept and decline
+  actions, persists until answered or declined. Enabled in Stage 10.
+- [ ] Transfer done card extension point: file name and size. Enabled in Stage 9.
+- [ ] Message cards auto-dismiss after a configurable timeout (default 5 s).
 - [ ] Hover pauses dismissal.
 - [ ] Clicking a card calls `org.ticonnect.UI.Activate(view)`.
 - [ ] If the UI bus name is absent, clicking opens the app if configured or does
@@ -124,7 +134,7 @@ the UI, clicks fall back to notifications or are ignored.
 - X11 fallback shows equivalent cards.
 - Overlay works with the UI closed.
 - Clicking a card raises the UI on the relevant view.
-- Incoming call cards persist until answered or declined.
+- Incoming call and transfer cards appear when Stages 10 and 9 are present.
 - Disabling the overlay yields system notifications.
 - DND and per-peer policy are honored.
 

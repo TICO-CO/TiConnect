@@ -7,6 +7,11 @@ through a single RemoteDesktop portal grant. Consent is explicit, an indicator i
 always visible, and a kill switch ends the session immediately. Sessions are
 PIN-gated and scoped to one trusted peer.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-11).
+Component graphs: [DT](../../docs/systems/generated/components/dt.md), [VID](../../docs/systems/generated/components/vid.md), [RD](../../docs/systems/generated/components/rd.md).
+
 ## Scope
 
 - `ashpd` RemoteDesktop portal session.
@@ -27,7 +32,7 @@ PIN-gated and scoped to one trusted peer.
 
 ## Prerequisites
 
-Stages 1, 3, 5, and 7 complete.
+Stages 1, 1.5, 3, 5, and 7 complete.
 
 ## Deliverables
 

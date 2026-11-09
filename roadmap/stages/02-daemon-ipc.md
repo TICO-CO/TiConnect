@@ -7,6 +7,11 @@ session bus, expose a minimal control API, ship a debugging CLI, and install as
 a systemd user unit plus XDG autostart entry. The daemon must run with no UI and
 no display server.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-2).
+Component graphs: [RT](../../docs/systems/generated/components/rt.md), [IPC](../../docs/systems/generated/components/ipc.md), [CLI](../../docs/systems/generated/components/cli.md).
+
 ## Scope
 
 - `ticonnectd` binary in `crates/daemon`.
@@ -25,7 +30,7 @@ no display server.
 
 ## Prerequisites
 
-Stage 1 complete.
+Stages 1 and 1.5 complete.
 
 ## Deliverables
 

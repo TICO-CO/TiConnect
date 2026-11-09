@@ -35,16 +35,17 @@ be split.
 | # | Stage | Outcome | Depends on | Main risk |
 |---|---|---|---|---|
 | 1 | Foundation | Workspace builds, config/logging ready, typed errors, CI green | — | Scope creep into features |
-| 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1 | D-Bus API churn |
-| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, peers | 1, 2 | Key handling mistakes |
-| 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 3 | mDNS availability on LANs |
-| 5 | Pairing & transport | SPAKE2 pairing, QUIC/TLS with pinning, trust table | 1, 3, 4 | Cryptographic correctness |
-| 6 | Messaging | Signed replica messages, outbox, gap sync, receipts, policy, tray | 1, 3, 5 | Ordering and expiry edge cases |
-| 7 | GTK4 UI | Main window: peers, threads, settings, pairing dialog | 1, 2, 6 | UI/daemon coupling |
-| 8 | Overlay & notifications | Corner toasts, X11 fallback, activation, system notifications | 1, 2, 6 | layer-shell portability |
-| 9 | Attachments | Content-addressed store, resumable transfer, media rendering | 1, 3, 5, 6 | Large-file and resume state |
-| 10 | Voice calls | Call state machine, ringtone, Opus over datagrams, jitter buffer | 1, 3, 5, 6 | Audio latency and device quirks |
-| 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 3, 5, 7 | Portal/desktop variance |
+| 1.5 | Architecture contracts & graph | Component registry, canonical relations, generated graphs, architecture CI | 1 | Graph drift |
+| 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1, 1.5 | D-Bus API churn |
+| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, peers | 1, 1.5, 2 | Key handling mistakes |
+| 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 1.5, 3 | mDNS availability on LANs |
+| 5 | Pairing & transport | SPAKE2 pairing, QUIC/TLS with pinning, trust table | 1, 1.5, 3, 4 | Cryptographic correctness |
+| 6 | Messaging | Signed replica messages, outbox, gap sync, receipts, policy, tray | 1, 1.5, 3, 5 | Ordering and expiry edge cases |
+| 7 | GTK4 UI | Main window: peers, threads, settings, pairing dialog | 1, 1.5, 2, 6 | UI/daemon coupling |
+| 8 | Overlay & notifications | Message cards, X11 fallback, activation, system notifications | 1, 1.5, 2, 6 | layer-shell portability |
+| 9 | Attachments | Content-addressed store, resumable transfer, media rendering | 1, 1.5, 3, 5, 6, 7 | Large-file and resume state |
+| 10 | Voice calls | Call state machine, ringtone, Opus over datagrams, jitter buffer | 1, 1.5, 3, 5, 6 | Audio latency and device quirks |
+| 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 1.5, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 
 Future extraction: binaries currently duplicate the `ticonnect-settings` +
@@ -58,26 +59,38 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 
 ```
 1 Foundation
-├── 2 Daemon & IPC
-│   ├── 3 Identity & storage
-│   │   ├── 4 Discovery
-│   │   │   └── 5 Pairing & transport
-│   │   │       ├── 6 Messaging
-│   │   │       │   ├── 7 GTK4 UI
-│   │   │       │   │   ├── 8 Overlay & notifications
-│   │   │       │   │   └── 11 Remote desktop
-│   │   │       │   ├── 9 Attachments
-│   │   │       │   └── 10 Voice calls
-│   │   │       └── (5 feeds 6, 9, 10, 11)
-│   │   └── (3 feeds 4, 5, 6, 9, 10, 11)
-│   └── (2 feeds 7, 8)
-└── (1 feeds everything)
+└── 1.5 Architecture contracts & graph
+    └── 2 Daemon & IPC
+        ├── 3 Identity & storage
+        │   ├── 4 Discovery
+        │   │   └── 5 Pairing & transport
+        │   │       ├── 6 Messaging
+        │   │       │   ├── 7 GTK4 UI
+        │   │       │   │   ├── 8 Overlay & notifications (message cards)
+        │   │       │   │   └── 11 Remote desktop
+        │   │       │   ├── 9 Attachments
+        │   │       │   └── 10 Voice calls
+        │   │       └── (5 feeds 6, 9, 10, 11)
+        │   └── (3 feeds 4, 5, 6, 9, 10, 11)
+        └── (2 feeds 7, 8)
 12 Packaging & performance (after all)
 ```
+
+Call and transfer cards extend the overlay in Stages 10 and 9 respectively.
+Stage 8 ships message cards only so it remains demoable with earlier stages.
+
 
 ## Definition of Done (every stage)
 
 - [ ] `cargo build --workspace` succeeds with no warnings.
+- [ ] Components touched by the stage exist in `docs/systems/graph/` with an
+  owner, stage, contract, test seam, limits, and failure mode.
+- [ ] Cross-system edges are declared and the generated component graph is
+  regenerated.
+- [ ] `cargo xtask systems --check` passes; generated architecture docs are not
+  stale.
+- [ ] State ownership and trust/policy/consent gates are unchanged or explicitly
+  updated.
 - [ ] `cargo test --workspace` passes; new code has unit or integration tests.
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 - [ ] `cargo fmt --all -- --check` is clean.
@@ -102,6 +115,15 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 | M5 Release | 12 | Flatpak, hardened units, performance targets met. |
 
 ## Cross-cutting tracks
+
+### Architecture
+
+- [x] Canonical system, component, store, relation, and invariant graph exists.
+- [x] Generated system, component, build, runtime, trust, state, and state-machine
+  views exist.
+- [x] `cargo xtask systems --check` runs in CI.
+- [ ] Every new component and cross-system edge is declared before code lands.
+- [ ] Contract changes are recorded with an ADR when they cross a stage boundary.
 
 ### Security
 
@@ -138,6 +160,7 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 ## Stage index
 
 1. [Foundation](stages/01-foundation.md)
+1.5. [Architecture contracts & graph](stages/015-architecture-graph.md)
 2. [Daemon & IPC](stages/02-daemon-ipc.md)
 3. [Identity & storage](stages/03-identity-storage.md)
 4. [Discovery](stages/04-discovery.md)
@@ -153,6 +176,7 @@ dependencies. Errors stay crate-local; `core` never depends on `settings` or
 ## Overall progress
 
 - [x] Stage 1 — Foundation
+- [x] Stage 1.5 — Architecture contracts & graph
 - [ ] Stage 2 — Daemon & IPC
 - [ ] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery

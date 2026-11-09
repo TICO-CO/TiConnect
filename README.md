@@ -8,12 +8,13 @@ the UI was never opened.
 
 ## Status
 
-Stage 1 (Foundation) is implemented: workspace, settings, logging, typed errors,
-and binary scaffolds. Daemon IPC, identity, discovery, transport, messaging, and
-UI stages are not implemented yet.
+Stages 1 and 1.5 are implemented: workspace, settings, logging, typed errors,
+binary scaffolds, and the canonical architecture graph. Daemon IPC, identity,
+discovery, transport, messaging, and UI stages are not implemented yet.
 
-See `main.md` for product intent, `architecture.md` for the design, and
-`roadmap/roadmap.md` for staged delivery.
+See `main.md` for product intent, `architecture.md` for the design,
+`docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
+staged delivery.
 
 ## Workspace
 
@@ -29,8 +30,10 @@ See `main.md` for product intent, `architecture.md` for the design, and
 | `ticonnect-ui` | GTK4 main window, binary `ticonnect-ui` |
 | `ticonnect-overlay` | Toast overlay, binary `ticonnect-ovl` |
 | `ticonnect-cli` | Command-line client, binary `ticonnect-cli` |
+| `xtask` | Repository architecture graph generator and validator |
 
 Dependency direction is documented in `docs/dependency-direction.md`.
+Component contracts and relations are documented in `docs/systems/`.
 
 ## Build and test
 
@@ -41,7 +44,11 @@ cargo test --workspace --all-targets
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo audit
+cargo xtask systems --check
 ```
+
+Architecture docs are generated. After editing `docs/systems/graph/` or
+`docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
 ## Run binaries
 

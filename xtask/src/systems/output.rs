@@ -1,0 +1,169 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, bail};
+use tempfile::NamedTempFile;
+
+use super::load::{DOCS_DIR, GENERATED_DIR, files_under};
+
+pub fn write(root: &Path, outputs: &BTreeMap<PathBuf, String>) -> Result<()> {
+    for (path, content) in outputs {
+        let full = root.join(path);
+        if let Some(parent) = full.parent() {
+            fs::create_dir_all(parent).with_context(|| format!("create {}", parent.display()))?;
+        }
+        let mut temp = NamedTempFile::new_in(full.parent().unwrap_or(root))
+            .with_context(|| format!("create temporary file for {}", full.display()))?;
+        temp.write_all(content.as_bytes())
+            .with_context(|| format!("write {}", full.display()))?;
+        temp.persist(&full)
+            .map_err(|error| error.error)
+            .with_context(|| format!("replace {}", full.display()))?;
+    }
+    Ok(())
+}
+
+pub fn check(root: &Path, outputs: &BTreeMap<PathBuf, String>) -> Result<()> {
+    let mut problems = Vec::new();
+
+    for (path, expected) in outputs {
+        let full = root.join(path);
+        match fs::read_to_string(&full) {
+            Ok(actual) if &actual == expected => {}
+            Ok(_) => problems.push(format!("outdated: {}", path.display())),
+            Err(_) => problems.push(format!("missing: {}", path.display())),
+        }
+    }
+
+    for existing in files_under(&root.join(GENERATED_DIR))? {
+        if let Ok(relative) = existing.strip_prefix(root)
+            && !outputs.contains_key(relative)
+        {
+            problems.push(format!("untracked generated file: {}", relative.display()));
+        }
+    }
+
+    let docs_dir = root.join(DOCS_DIR);
+    if docs_dir.is_dir() {
+        for entry in
+            fs::read_dir(&docs_dir).with_context(|| format!("read {}", docs_dir.display()))?
+        {
+            let entry = entry?;
+            let path = entry.path();
+            if path.extension().is_none_or(|extension| extension != "md") {
+                continue;
+            }
+            if path.file_name().is_some_and(|name| name == "README.md") {
+                continue;
+            }
+            if let Ok(relative) = path.strip_prefix(root)
+                && !outputs.contains_key(relative)
+            {
+                problems.push(format!("untracked system doc: {}", relative.display()));
+            }
+        }
+    }
+
+    for (path, content) in outputs {
+        for link in internal_links(content) {
+            let Some(target) = resolve_link(root, path, &link) else {
+                problems.push(format!("broken link in {}: {link}", path.display()));
+                continue;
+            };
+            if !target.exists() {
+                problems.push(format!("broken link in {}: {link}", path.display()));
+            }
+        }
+    }
+
+    if problems.is_empty() {
+        Ok(())
+    } else {
+        bail!(
+            "architecture docs are stale or invalid; run `cargo xtask systems` and fix any broken links:\n- {}",
+            problems.join("\n- ")
+        )
+    }
+}
+
+fn resolve_link(root: &Path, source: &Path, link: &str) -> Option<PathBuf> {
+    if link.starts_with("http://")
+        || link.starts_with("https://")
+        || link.starts_with("mailto:")
+        || link.starts_with('#')
+    {
+        return None;
+    }
+    let target = link.split('#').next().unwrap_or(link);
+    if target.is_empty() {
+        return None;
+    }
+    Some(source.parent().unwrap_or(Path::new("")).join(target)).map(|path| root.join(path))
+}
+
+fn internal_links(content: &str) -> impl Iterator<Item = String> + '_ {
+    let mut links = Vec::new();
+    let mut rest = content;
+    while let Some(start) = rest.find("](") {
+        let after = &rest[start + 2..];
+        let Some(end) = after.find(')') else {
+            break;
+        };
+        let target = after[..end].trim();
+        if !target.is_empty() {
+            links.push(target.to_string());
+        }
+        rest = &after[end + 1..];
+    }
+    links.into_iter()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_internal_links() {
+        let links: Vec<_> = internal_links("a [x](../a.md) b [y](https://e)").collect();
+        assert_eq!(links, ["../a.md", "https://e"]);
+    }
+
+    #[test]
+    fn check_detects_stale_and_untracked() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        fs::create_dir_all(root.join("docs/systems/generated")).expect("dirs");
+        fs::write(root.join("docs/systems/README.md"), "readme\n").expect("readme");
+        fs::write(root.join("docs/systems/01-a.md"), "old\n").expect("doc");
+        fs::write(root.join("docs/systems/generated/old.md"), "old\n").expect("old");
+
+        let mut outputs = BTreeMap::new();
+        outputs.insert(PathBuf::from("docs/systems/01-a.md"), "new\n".to_string());
+        let error = check(root, &outputs).expect_err("stale");
+        let text = format!("{error}");
+        assert!(text.contains("outdated"));
+        assert!(text.contains("untracked generated file"));
+    }
+
+    #[test]
+    fn check_detects_broken_links() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = temp.path();
+        let mut outputs = BTreeMap::new();
+        outputs.insert(
+            PathBuf::from("docs/systems/01-a.md"),
+            "[missing](../missing.md)\n".to_string(),
+        );
+        fs::create_dir_all(root.join("docs/systems")).expect("dirs");
+        fs::write(root.join("docs/systems/README.md"), "readme\n").expect("readme");
+        fs::write(
+            root.join("docs/systems/01-a.md"),
+            "[missing](../missing.md)\n",
+        )
+        .expect("doc");
+        let error = check(root, &outputs).expect_err("broken link");
+        assert!(format!("{error}").contains("broken link"));
+    }
+}

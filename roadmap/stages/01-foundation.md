@@ -6,6 +6,11 @@ Create the Cargo workspace, crate skeleton, shared configuration, logging,
 error handling, and CI. No networking, no UI, no D-Bus yet. This stage proves
 the repository builds and the tooling is in place.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-1).
+System contracts: [docs/systems](../../docs/systems/README.md).
+
 ## Scope
 
 - Workspace and crate layout exactly as described in `architecture.md`.

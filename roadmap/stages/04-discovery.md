@@ -6,6 +6,11 @@ Advertise this node and discover other nodes on the LAN using mDNS, with UDP
 broadcast as a fallback. Discovery produces candidates only; it never implies
 trust. The daemon exposes the candidate list over D-Bus.
 
+## Systems and components
+
+Component IDs and relations: [stage component map](../../docs/systems/generated/stage-map.md#stage-4).
+Component graph: [DISC](../../docs/systems/generated/components/disc.md).
+
 ## Scope
 
 - mDNS service advertisement and browsing via `mdns-sd`.
@@ -23,7 +28,7 @@ trust. The daemon exposes the candidate list over D-Bus.
 
 ## Prerequisites
 
-Stages 1 and 3 complete.
+Stages 1, 1.5, and 3 complete.
 
 ## Deliverables
 
