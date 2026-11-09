@@ -65,8 +65,10 @@ composes them. `ui`, `overlay`, `cli` depend on `core`, `settings`, and D-Bus
 types, never on daemon internals.
 
 Interim composition: each binary loads `Settings`, builds `LogSettings` with
-`LogSettings::from_parts`, and initializes `Logging` in its entrypoint. This
-glue is intentionally duplicated across the four entrypoints for now. A future
+`LogSettings::new`, and initializes `Logging` in its entrypoint. `Settings`
+stores effective values only; `ticonnect-logging` parses the log level into
+`LogLevel` and validates `LogFormat` when constructing `LogSettings`. This glue
+is intentionally duplicated across the four entrypoints for now. A future
 `ticonnect-runtime` crate will own this composition, plus process lifecycle;
 binaries will then depend on `runtime` instead of wiring `settings` and
 `logging` individually. Runtime is a composition root: it consumes `settings`

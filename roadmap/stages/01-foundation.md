@@ -99,8 +99,9 @@ None.
 - [ ] `Settings` can load from, save, and reset an explicit file; missing files
   are a no-op.
 - [ ] `ticonnect-logging` depends on neither `ticonnect-settings` nor
-  `ticonnect-core`; it owns its own `Error`/`Result`, plus `LogSettings` and
-  `LogFormat` validation, and initializes `tracing-subscriber` with `EnvFilter`.
+  `ticonnect-core`; it owns its own `Error`/`Result`, parses the log level into
+  `LogLevel` and validates `LogFormat` at `LogSettings::new`, and initializes
+  `tracing-subscriber` with `EnvFilter`.
 - [ ] Each binary entrypoint loads `Settings`, builds `LogSettings`, and calls
   `Logging::init`. This composition is duplicated across the four entrypoints
   for now; `ticonnect-runtime` will centralize it in a later stage.
@@ -134,7 +135,8 @@ None.
 - [ ] Smoke test: `cargo build --workspace --bins` succeeds.
 - [ ] Smoke test: each placeholder binary exits successfully.
 - [ ] Test that logging initialization is idempotent or safely guarded.
-- [ ] Unit test: invalid log filters return `ticonnect-logging`'s own typed error.
+- [ ] Unit test: invalid log levels or formats return `ticonnect-logging`'s own
+  typed error from `LogSettings::new`.
 
 ## Security
 

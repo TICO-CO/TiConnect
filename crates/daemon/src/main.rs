@@ -8,7 +8,7 @@ fn main() -> anyhow::Result<()> {
 
 fn run() -> anyhow::Result<()> {
     let settings = ticonnect_settings::Settings::load().context("failed to load settings")?;
-    let log_settings = ticonnect_logging::LogSettings::from_parts(
+    let log_settings = ticonnect_logging::LogSettings::new(
         settings.log_level(),
         settings.log_file(),
         settings.log_format(),

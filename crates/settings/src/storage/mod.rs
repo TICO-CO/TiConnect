@@ -1,4 +1,4 @@
-pub(crate) mod io;
+mod io;
 mod location;
 mod lock;
 mod persist;
