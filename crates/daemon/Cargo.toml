@@ -6,8 +6,15 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "ticonnectd"
+path = "src/main.rs"
+
 [dependencies]
+anyhow.workspace = true
 ticonnect-core.workspace = true
+ticonnect-logging.workspace = true
+ticonnect-settings.workspace = true
 ticonnect-net.workspace = true
 ticonnect-media.workspace = true
 ticonnect-desktop.workspace = true

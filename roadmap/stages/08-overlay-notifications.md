@@ -31,7 +31,8 @@ the UI, clicks fall back to notifications or are ignored.
 
 ## Deliverables
 
-- `crates/overlay/src/main.rs`
+- `crates/overlay/src/main.rs` — replace the Stage 1 stub with overlay startup
+  and `anyhow` error reporting.
 - `crates/overlay/src/card.rs`
 - `crates/overlay/src/layer_shell.rs`
 - `crates/overlay/src/x11_fallback.rs`
@@ -85,8 +86,8 @@ the UI, clicks fall back to notifications or are ignored.
 
 - [ ] Overlay subscribes directly to `org.ticonnect.Daemon` signals.
 - [ ] Overlay does not depend on the UI process.
-- [ ] Config key `overlay.enabled` read from daemon settings at start and on
-  change.
+- [ ] Config key `overlay.enabled` read from TOML settings at start and after
+  config reload changes.
 - [ ] Autostart entry starts the overlay after login.
 - [ ] Single-instance guard for the overlay.
 

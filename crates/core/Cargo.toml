@@ -7,12 +7,3 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
-serde.workspace = true
-thiserror.workspace = true
-figment.workspace = true
-directories.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-
-[dev-dependencies]
-figment = { workspace = true, features = ["test"] }

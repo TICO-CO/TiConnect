@@ -28,7 +28,8 @@ Stages 1, 2, and 6 complete.
 
 ## Deliverables
 
-- `crates/ui/src/main.rs`
+- `crates/ui/src/main.rs` — replace the Stage 1 stub with GTK application
+  startup and `anyhow` error reporting.
 - `crates/ui/src/app.rs` — relm4 application and components.
 - `crates/ui/src/client.rs` — D-Bus client wrapper.
 - `crates/ui/src/views/{peers.rs,chat.rs,settings.rs,pairing.rs}`
@@ -70,7 +71,10 @@ Stages 1, 2, and 6 complete.
 - [ ] Read receipts toggle.
 - [ ] DND toggle.
 - [ ] Outbox TTL days.
-- [ ] Settings apply immediately and persist through daemon.
+- [ ] Settings apply immediately and persist directly to `config.toml` through
+  `ticonnect-settings`.
+- [ ] Refresh displayed settings on `SettingsChanged`; no `SetSetting` D-Bus
+  call.
 
 ## Pairing dialog
 
@@ -98,7 +102,8 @@ Stages 1, 2, and 6 complete.
 - [ ] Manual: close UI, send from CLI, reopen, confirm history and states.
 - [ ] Manual: daemon restart while UI is open recovers.
 - [ ] Manual: pairing flow with PIN and QR.
-- [ ] Manual: settings changes persist across restart.
+- [ ] Manual: settings changes persist across restart and the daemon reflects
+  them without restart.
 - [ ] Accessibility check: keyboard navigation, labels, focus order.
 
 ## Security

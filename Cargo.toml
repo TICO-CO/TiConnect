@@ -9,7 +9,10 @@ rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
+anyhow = "1"
 ticonnect-core = { path = "crates/core" }
+ticonnect-logging = { path = "crates/logging" }
+ticonnect-settings = { path = "crates/settings" }
 ticonnect-net = { path = "crates/net" }
 ticonnect-media = { path = "crates/media" }
 ticonnect-desktop = { path = "crates/desktop" }
@@ -20,6 +23,7 @@ ticonnect-cli = { path = "crates/cli" }
 
 tokio = "1"
 serde = { version = "1", features = ["derive"] }
+toml = "0.8"
 postcard = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }

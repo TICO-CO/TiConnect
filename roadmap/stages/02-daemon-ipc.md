@@ -29,10 +29,12 @@ Stage 1 complete.
 
 ## Deliverables
 
-- `crates/daemon/src/main.rs`
+- `crates/daemon/src/main.rs` — replace the Stage 1 stub with runtime setup and
+  `anyhow` error reporting.
 - `crates/daemon/src/service.rs` — D-Bus object implementation.
 - `crates/daemon/src/runtime.rs` — tokio runtime, shutdown handling.
-- `crates/cli/src/main.rs` — subcommands `status`, `version`, `ping`, `quit`.
+- `crates/cli/src/main.rs` — replace the Stage 1 stub with subcommands `status`,
+  `version`, `ping`, `quit`, keeping `anyhow` error reporting.
 - `packaging/systemd/ticonnectd.service`
 - `packaging/autostart/ticonnect.desktop`
 - `crates/core/src/ipc.rs` — shared D-Bus interface constants and error mapping.
@@ -49,7 +51,7 @@ Stage 1 complete.
 - [ ] Method `Shutdown()` stops the daemon cleanly.
 - [ ] Property `Version` (read).
 - [ ] Signal `DaemonStarted()`, `DaemonStopping()`.
-- [ ] D-Bus errors mapped from `core::Error` to stable error names.
+- [ ] D-Bus errors mapped from daemon and dependency errors to stable error names.
 
 ## Setup
 

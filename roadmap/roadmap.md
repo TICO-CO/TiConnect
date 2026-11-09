@@ -34,9 +34,9 @@ be split.
 
 | # | Stage | Outcome | Depends on | Main risk |
 |---|---|---|---|---|
-| 1 | Foundation | Workspace builds, config/logging/errors ready, CI green | — | Scope creep into features |
+| 1 | Foundation | Workspace builds, config/logging ready, typed errors, CI green | — | Scope creep into features |
 | 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1 | D-Bus API churn |
-| 3 | Identity & storage | Ed25519 identity, SQLite schema, settings, peers | 1, 2 | Key handling mistakes |
+| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, peers | 1, 2 | Key handling mistakes |
 | 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 3 | mDNS availability on LANs |
 | 5 | Pairing & transport | SPAKE2 pairing, QUIC/TLS with pinning, trust table | 1, 3, 4 | Cryptographic correctness |
 | 6 | Messaging | Signed replica messages, outbox, gap sync, receipts, policy, tray | 1, 3, 5 | Ordering and expiry edge cases |
@@ -46,6 +46,13 @@ be split.
 | 10 | Voice calls | Call state machine, ringtone, Opus over datagrams, jitter buffer | 1, 3, 5, 6 | Audio latency and device quirks |
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
+
+Future extraction: binaries currently duplicate the `ticonnect-settings` +
+`ticonnect-logging` bootstrap in their entrypoints. `ticonnect-runtime` will
+own that composition, process lifecycle, and daemon wiring, so binaries depend
+on `runtime` instead. This keeps `ticonnect-core` free of settings and logging
+dependencies. Errors stay crate-local; `core` never depends on `settings` or
+`logging`, and no crate imports a catch-all workspace error enum.
 
 ## Dependency graph
 
@@ -74,9 +81,12 @@ be split.
 - [ ] `cargo test --workspace` passes; new code has unit or integration tests.
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings` is clean.
 - [ ] `cargo fmt --all -- --check` is clean.
-- [ ] Public APIs and D-Bus interfaces are documented.
+- [ ] User-facing behavior, configuration, and D-Bus interfaces are documented
+  in `README.md` and `docs/`. Rustdoc comments are not used.
 - [ ] New config keys are documented with defaults.
 - [ ] New errors are typed and logged through `tracing`.
+- [ ] Library crates return typed `thiserror` errors; only binary entry points
+  use `anyhow` for top-level error reporting.
 - [ ] Stage demo steps run on both X11 and Wayland where applicable.
 - [ ] No secret, key, or credential is logged or committed.
 - [ ] Stage file checkboxes are fully checked.
@@ -100,7 +110,7 @@ be split.
 - [ ] Key files created with mode `0600`; directory `0700`.
 - [ ] No feature reachable before pairing.
 - [ ] Remote desktop consent, indicator, and kill switch reviewed.
-- [ ] Dependency audit (`cargo audit`) runs in CI from Stage 1.
+- [x] Dependency audit (`cargo audit`) runs in CI from Stage 1.
 
 ### Testing
 
@@ -142,7 +152,7 @@ be split.
 
 ## Overall progress
 
-- [ ] Stage 1 — Foundation
+- [x] Stage 1 — Foundation
 - [ ] Stage 2 — Daemon & IPC
 - [ ] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery

@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! TiConnect command-line client.
-
 #[cfg(test)]
 mod tests {
     #[test]

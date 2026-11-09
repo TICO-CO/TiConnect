@@ -28,8 +28,9 @@ without any graphical stack.
 D-Bus is the control plane:
 
 - `org.ticonnect.Daemon` — owned by `ticonnectd`. Methods for sending messages,
-  managing peers, starting calls, granting remote sessions, changing settings.
-  Signals for inbound events.
+  managing peers, starting calls, granting remote sessions, and reading settings.
+  Config writes go through `ticonnect-settings`, not D-Bus. Signals for inbound
+  events and config reloads.
 - `org.ticonnect.UI` — owned by `ticonnect-ui`. The overlay activates it by
   calling `Activate(view)`, which raises the window on the relevant screen.
 - The overlay subscribes to daemon signals directly and does not depend on the
@@ -44,6 +45,9 @@ events fall back to system notifications.
 ```
 Cargo.toml                  workspace
 crates/
+  settings/                 persisted + effective settings (leaf)
+  logging/                  tracing setup (leaf)
+  runtime/                  future: composition root, settings + logging + lifecycle
   core/                     protocol types, identity, pairing, crypto
   net/                      mDNS discovery, QUIC transport, sessions
   media/                    cpal audio, opus, openh264, jitter buffer
@@ -54,9 +58,33 @@ crates/
   cli/                      command-line client
 ```
 
-Dependency direction: `core` depends on nothing but utility crates. `net`,
-`media`, `desktop` depend on `core`. `daemon` composes them. `ui`, `overlay`,
-`cli` depend only on `core` and D-Bus types, never on daemon internals.
+Dependency direction: `settings` and `logging` are leaf crates. `logging` is a
+pure tracing wrapper and depends on neither `settings` nor `core`. `core`
+depends on neither. `net`, `media`, `desktop` depend on `core`. `daemon`
+composes them. `ui`, `overlay`, `cli` depend on `core`, `settings`, and D-Bus
+types, never on daemon internals.
+
+Interim composition: each binary loads `Settings`, builds `LogSettings` with
+`LogSettings::new`, and initializes `Logging` in its entrypoint. `Settings`
+stores effective values only; `ticonnect-logging` parses the log level into
+`LogLevel` and validates `LogFormat` when constructing `LogSettings`. This glue
+is intentionally duplicated across the four entrypoints for now. A future
+`ticonnect-runtime` crate will own this composition, plus process lifecycle;
+binaries will then depend on `runtime` instead of wiring `settings` and
+`logging` individually. Runtime is a composition root: it consumes `settings`
+and `logging` as leaves and does not own the settings model. `core` stays free
+of both.
+
+Each fallible library crate owns its `Error` and `Result` types and maps
+failures from its dependencies into them. `core` exposes domain types only and
+defines no crate-wide error type; fallible `core` modules define local errors
+when they need them. There is no workspace-wide catch-all error enum.
+
+Binary entry points (`ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
+`ticonnect-ovl`) use `anyhow::Result` to report the full error chain once from
+`main` and exit failure. They add context around each startup step and let
+`anyhow` aggregate crate errors. Only `src/main.rs` uses `anyhow`; library
+modules keep typed errors.
 
 ## 3. Stack
 
@@ -69,7 +97,7 @@ Dependency direction: `core` depends on nothing but utility crates. `net`,
 | Identity | `ed25519-dalek`, `blake3` fingerprints |
 | Pairing | `spake2` with a 6-digit PIN or QR |
 | IPC | `zbus` on the session bus |
-| Storage | `rusqlite` (bundled) |
+| Data storage | `rusqlite` (bundled) |
 | Audio I/O | `cpal` |
 | Audio codec | `opus`, 20ms frames |
 | Video codec | `openh264` (software), 1080p target |
@@ -80,8 +108,21 @@ Dependency direction: `core` depends on nothing but utility crates. `net`,
 | Toast overlay | `gtk4-layer-shell` |
 | Notifications | `notify-rust` |
 | Tray | `ksni` (StatusNotifierItem) |
-| Config | `figment` + TOML, `directories` |
-| Logging | `tracing` |
+| Config | `figment` + TOML, `directories` (`ticonnect-settings`) |
+| Logging | `tracing` (`ticonnect-logging`) |
+
+### Config and data rule
+
+Configuration lives only in `config.toml` under the user config directory. Any
+process may read or write it through `ticonnect-settings`. Writes take an
+in-process mutex and an OS advisory lock, then replace the file atomically.
+Concurrent writers are last-writer-wins per save; the lock prevents corruption,
+not lost updates. Environment overrides are runtime-only and never persisted.
+
+The daemon watches `config.toml`, reloads changed settings, and emits
+`SettingsChanged`. SQLite under the user data directory holds application data
+only: peers, messages, outbox, attachment metadata, and related state. It never
+stores configuration.
 
 ### Transport rule
 
@@ -201,9 +242,10 @@ outbox(message_id TEXT PK, attempts INTEGER, next_try INTEGER,
 attachments(hash TEXT PK, size INTEGER, path TEXT, mime TEXT)
 
 peer_state(peer_id TEXT PK, last_sent_seq INTEGER, last_recv_seq INTEGER)
-
-settings(key TEXT PK, value TEXT)
 ```
+
+There is deliberately no `settings` table. Configuration lives in
+`config.toml`; SQLite stores application data only.
 
 ## 6. Voice calls
 

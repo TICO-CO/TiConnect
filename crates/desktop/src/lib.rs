@@ -1,7 +1,5 @@
 #![forbid(unsafe_code)]
 
-//! Desktop capture and input integration for TiConnect.
-
 #[cfg(test)]
 mod tests {
     #[test]
