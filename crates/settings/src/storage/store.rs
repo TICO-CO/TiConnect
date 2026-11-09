@@ -4,20 +4,18 @@ use super::{Location, acquire_write_lock, io, load_values, save_values};
 use crate::error::{Error, Result};
 use crate::settings::schema::SettingsValues;
 
-/// File-backed settings storage.
-///
-/// Owns the resolved settings location, the values last loaded from or saved to
-/// disk, and all filesystem access. The [`SettingsValues`] type itself stays a passive
-/// data model.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Storage {
     location: Location,
-    saved: SettingsValues,
+    stored: SettingsValues,
 }
 
 impl Storage {
-    /// Open storage for an explicit settings file and load its values.
-    pub fn at(path: impl Into<PathBuf>) -> Result<Self> {
+    pub fn open() -> Result<Self> {
+        Self::from_location(Location::discover()?)
+    }
+
+    pub fn open_at(path: impl Into<PathBuf>) -> Result<Self> {
         let file = path.into();
         let dir = file
             .parent()
@@ -27,15 +25,33 @@ impl Storage {
         Self::from_location(Location::new(dir, file))
     }
 
-    /// Open storage at the default location and load its values.
-    pub fn open_default() -> Result<Self> {
-        Self::from_location(Location::discover()?)
+    pub fn data_dir(&self, configured: Option<&Path>) -> Result<PathBuf> {
+        configured.map_or_else(Location::default_data_dir, |dir| Ok(dir.to_path_buf()))
     }
 
-    fn from_location(location: Location) -> Result<Self> {
-        let saved = load_values(&location)?;
+    pub fn stored(&self) -> &SettingsValues {
+        &self.stored
+    }
 
-        Ok(Self { location, saved })
+    pub fn save(&mut self, values: &SettingsValues) -> Result<()> {
+        let path = self.location.file();
+        io::create_parent(path)?;
+        let _lock = acquire_write_lock(path)?;
+        save_values(path, values)?;
+
+        self.stored = values.clone();
+        Ok(())
+    }
+
+    pub fn reset(&mut self) -> Result<()> {
+        let path = self.location.file();
+        if io::exists(path) {
+            let _lock = acquire_write_lock(path)?;
+            self.remove_file()?;
+        }
+
+        self.stored = SettingsValues::default();
+        Ok(())
     }
 
     #[cfg(test)]
@@ -48,39 +64,10 @@ impl Storage {
         self.location.dir()
     }
 
-    /// Resolve the data directory from a configured value or the platform default.
-    pub fn data_dir(&self, configured: Option<&Path>) -> Result<PathBuf> {
-        configured.map_or_else(Location::default_data_dir, |dir| Ok(dir.to_path_buf()))
-    }
+    fn from_location(location: Location) -> Result<Self> {
+        let stored = load_values(&location)?;
 
-    /// Settings values currently persisted on disk.
-    pub fn saved(&self) -> &SettingsValues {
-        &self.saved
-    }
-
-    /// Persist settings, preserving unknown keys in the existing file.
-    pub fn save(&mut self, values: &SettingsValues) -> Result<()> {
-        let path = self.location.file();
-        io::create_parent(path)?;
-        let _lock = acquire_write_lock(path)?;
-        save_values(path, values)?;
-
-        self.saved = values.clone();
-        Ok(())
-    }
-
-    /// Remove the settings file so built-in defaults apply.
-    ///
-    /// A missing file is not an error. No directories are created.
-    pub fn reset(&mut self) -> Result<()> {
-        let path = self.location.file();
-        if io::exists(path) {
-            let _lock = acquire_write_lock(path)?;
-            self.remove_file()?;
-        }
-
-        self.saved = SettingsValues::default();
-        Ok(())
+        Ok(Self { location, stored })
     }
 
     fn remove_file(&self) -> Result<()> {

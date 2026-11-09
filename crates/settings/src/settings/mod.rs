@@ -19,11 +19,11 @@ pub struct Settings {
 
 impl Settings {
     pub fn load() -> Result<Self> {
-        Self::from_storage(Storage::open_default()?)
+        Self::from_storage(Storage::open()?)
     }
 
     pub fn load_from(path: impl AsRef<Path>) -> Result<Self> {
-        Self::from_storage(Storage::at(path.as_ref().to_path_buf())?)
+        Self::from_storage(Storage::open_at(path.as_ref().to_path_buf())?)
     }
 
     pub fn save(&mut self) -> Result<()> {
@@ -31,7 +31,7 @@ impl Settings {
             return Ok(());
         }
 
-        let mut next = self.storage.saved().clone();
+        let mut next = self.storage.stored().clone();
         self.changes.apply(&self.active, &mut next);
         self.storage.save(&next)?;
         self.changes.clear();
@@ -48,7 +48,7 @@ impl Settings {
     }
 
     fn from_storage(storage: Storage) -> Result<Self> {
-        let active = overrides::load(storage.saved())?;
+        let active = overrides::load(storage.stored())?;
 
         Ok(Self {
             storage,
