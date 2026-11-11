@@ -26,18 +26,18 @@ Daemon domain service. Uses storage and transport. Policy gates inbound and noti
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `MSG.conversation` | Conversation resolver | `module` | `crates/daemon/src/messaging/mod.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.events` | Messaging event emitter | `module` | `crates/daemon/src/messaging/mod.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.history` | History query | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.ingest` | Ingest gate | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.outbox` | Outbox scheduler | `module` | `crates/daemon/src/messaging/outbox.rs` | outbox retry state | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/outbox.rs |
-| `MSG.receipts` | Receipt coalescer | `module` | `crates/daemon/src/messaging/receipts.rs` | pending acks | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/receipts.rs |
-| `MSG.seq` | Sequence allocator | `module` | `crates/daemon/src/messaging/store.rs` | next seq | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.signer` | Record signer | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.state` | Message state projector | `module` | `crates/daemon/src/messaging/store.rs` | message state cache | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.sync-executor` | Gap sync executor | `module` | `crates/daemon/src/messaging/sync.rs` | sync batches | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/sync.rs |
-| `MSG.sync-planner` | Gap sync planner | `module` | `crates/daemon/src/messaging/sync.rs` | missing ranges | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/sync.rs |
-| `MSG.verifier` | Record verifier | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
+| `MSG.conversation` | Conversation resolver | `module` | `crates/daemon/src/messaging/mod.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.events` | Messaging event emitter | `module` | `crates/daemon/src/messaging/mod.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.history` | History query | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.ingest` | Ingest gate | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.outbox` | Outbox scheduler | `module` | `crates/daemon/src/messaging/outbox.rs` | outbox retry state | docs/systems/12-messaging.md#components | crates/daemon/tests/messages.rs |
+| `MSG.receipts` | Receipt coalescer | `module` | `crates/daemon/src/messaging/receipts.rs` | pending acks | docs/systems/12-messaging.md#components | crates/daemon/src/messaging/receipts.rs |
+| `MSG.seq` | Sequence allocator | `module` | `crates/daemon/src/messaging/store.rs` | next seq | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.signer` | Record signer | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.state` | Message state projector | `module` | `crates/daemon/src/messaging/store.rs` | message state cache | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.sync-executor` | Gap sync executor | `module` | `crates/daemon/src/messaging/sync.rs` | sync batches | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.sync-planner` | Gap sync planner | `module` | `crates/daemon/src/messaging/sync.rs` | missing ranges | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.verifier` | Record verifier | `module` | `crates/daemon/src/messaging/store.rs` |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
 
 ## Interfaces
 

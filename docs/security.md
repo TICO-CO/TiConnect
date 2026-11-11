@@ -1,12 +1,13 @@
 # Security model
 
-This document covers identity, discovery, pairing, and transport. Messaging,
-files, calls, and remote desktop add their own gates in later stages.
+This document covers identity, discovery, pairing, transport, and text
+messaging. Files, calls, and remote desktop add their own gates in later stages.
 
 ## Assets
 
 - Ed25519 identity private key in `identity.key`.
-- Trusted peer table in SQLite.
+- Trusted peer table and peer signing keys in SQLite.
+- Message bodies, signatures, and receipt state.
 - Pairing PINs, QR tokens, and SPAKE2 secrets.
 - Post-pairing QUIC session keys and application frames.
 
@@ -36,7 +37,12 @@ files, calls, and remote desktop add their own gates in later stages.
 | Replay of pairing messages | The transcript includes both identities, the token, and a protocol version. Pairing messages are length-prefixed and bounded. 0-RTT is disabled. |
 | Oversized or malformed frames | Every decoder enforces fixed maximum sizes and returns typed errors. Fuzz targets cover wire and pairing decoders. |
 | Resource exhaustion | Candidate caps, packet size limits, bounded pairing frames, connection timeouts, and one active session per peer limit memory and connection abuse. |
-| Secret leakage | Private keys, PINs, tokens, and session keys are never logged or exposed over D-Bus. Errors are stable reason codes. |
+| Secret leakage | Private keys, PINs, tokens, and session keys are never logged or exposed over D-Bus. Message bodies are never logged. Errors are stable reason codes. |
+| Forged or tampered message | Records are signed with the sender's Ed25519 identity key. The receiver verifies the signature against the public key bound to the pinned fingerprint before storage, acknowledgement, or notification. |
+| Message replay or duplication | Message IDs are UUIDv7 and signed. Duplicate IDs and duplicate `(conversation, sender, seq)` rows are ignored. Sequence numbers are bounded and monotonic. |
+| Forged receipt | Ack records are signed and may target only a locally stored outbound message. Acks for unknown or inbound targets are rejected. |
+| Oversized message | Bodies are limited to 32 KiB and canonical records to 64 KiB. Decoders reject malformed or oversized records. |
+| Ignore policy bypass | Ignore is enforced before verification, storage, receipt creation, or notification. |
 
 ## Certificate model
 
@@ -46,7 +52,9 @@ There is one fingerprint model in v1:
 2. The identity fingerprint is BLAKE3 of the Ed25519 public key.
 3. The self-signed TLS certificate uses the same Ed25519 key.
 4. The certificate fingerprint is therefore the identity fingerprint.
-5. Trust rows store that single fingerprint.
+5. Trust rows store that single fingerprint and the peer's Ed25519 public key.
+6. The public key is extracted from the peer certificate during pairing or the
+   first authenticated session and checked against the pinned fingerprint.
 
 Certificate validity and self-signature are checked. Pinning fails closed on
 unknown, mismatched, or malformed certificates.

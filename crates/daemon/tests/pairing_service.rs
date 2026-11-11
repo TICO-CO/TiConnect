@@ -98,6 +98,7 @@ async fn commit(trust: &TrustStore, peer: &PublicIdentity) {
         .commit(NewPeer {
             id: peer.node_id().to_string(),
             fingerprint: peer.fingerprint().to_hex(),
+            public_key: None,
             display_name: None,
             policy: PeerPolicy::Accept,
             trusted_at: 1,

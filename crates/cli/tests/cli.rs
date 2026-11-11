@@ -32,6 +32,21 @@ fn settings_commands_round_trip_without_daemon() {
 }
 
 #[test]
+fn messaging_commands_are_exposed() {
+    let dir = temp_dir();
+    fs::create_dir_all(&dir).expect("create config dir");
+
+    let help = run(&dir, &["--help"]);
+    assert_success(&help);
+    let stdout = String::from_utf8_lossy(&help.stdout);
+    for command in ["send", "messages", "mark-read", "policy"] {
+        assert!(stdout.contains(command), "missing {command} in help");
+    }
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
 fn ping_without_daemon_exits_non_zero() {
     let dir = temp_dir();
     fs::create_dir_all(&dir).expect("create config dir");

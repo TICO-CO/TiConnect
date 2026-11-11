@@ -127,7 +127,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 
 ### Security
 
-- [ ] Threat model documented before Stage 5 and updated at Stages 6, 10, 11.
+- [x] Threat model documented before Stage 5 and updated at Stage 6. Stage 10 and 11 updates pending.
 - [x] Pairing, pinning, and trust-table behavior covered by tests.
 - [x] Key files created with mode `0600`; directory `0700`.
 - [x] No feature reachable before pairing.
@@ -181,7 +181,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 - [x] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery
 - [x] Stage 5 — Pairing & transport
-- [ ] Stage 6 — Messaging
+- [x] Stage 6 — Messaging
 - [ ] Stage 7 — GTK4 UI
 - [ ] Stage 8 — Overlay & notifications
 - [ ] Stage 9 — Attachments

@@ -45,124 +45,124 @@ Stages 1, 1.5, 3, and 5 complete.
 
 ## Message records
 
-- [ ] Define `MessageKind`: `text`, `image`, `audio`, `file`, `ack`.
-- [ ] Define a canonical encoding for signing: conversation id, sender id,
+- [x] Define `MessageKind`: `text`, `image`, `audio`, `file`, `ack`.
+- [x] Define a canonical encoding for signing: conversation id, sender id,
   seq, sent_at, kind, target_id, body, attachment_hash.
-- [ ] Sender generates UUIDv7 message id.
-- [ ] Sender assigns monotonic `seq` per conversation per sender.
-- [ ] Sign canonical bytes with the Ed25519 identity key.
-- [ ] Receiver verifies signature and `seq` before insert.
-- [ ] Duplicate message ids and duplicate `(conversation, sender, seq)` are
+- [x] Sender generates UUIDv7 message id.
+- [x] Sender assigns monotonic `seq` per conversation per sender.
+- [x] Sign canonical bytes with the Ed25519 identity key.
+- [x] Receiver verifies signature and `seq` before insert.
+- [x] Duplicate message ids and duplicate `(conversation, sender, seq)` are
   ignored, not errors.
-- [ ] Messages are immutable; no update path.
-- [ ] Store `received_at` locally.
-- [ ] Render order uses `sent_at` with `received_at` fallback when clocks skew.
-- [ ] Conversation id is deterministic for the peer pair; document derivation.
+- [x] Messages are immutable; no update path.
+- [x] Store `received_at` locally.
+- [x] Render order uses `sent_at` with `received_at` fallback when clocks skew.
+- [x] Conversation id is deterministic for the peer pair; document derivation.
 
 ## Storage
 
-- [ ] Implement message insert, get by id, list by conversation with pagination.
-- [ ] Enforce `UNIQUE(conversation_id, sender_id, seq)`.
-- [ ] Store signature as `BLOB` and verify on insert.
-- [ ] Update `peer_state.last_recv_seq` transactionally with insert.
-- [ ] Store ack records with `target_id` and kind `ack`.
-- [ ] Add indexes needed for pagination and receipt lookup.
+- [x] Implement message insert, get by id, list by conversation with pagination.
+- [x] Enforce `UNIQUE(conversation_id, sender_id, seq)`.
+- [x] Store signature as `BLOB` and verify on insert.
+- [x] Update `peer_state.last_recv_seq` transactionally with insert.
+- [x] Store ack records with `target_id` and kind `ack`.
+- [x] Add indexes needed for pagination and receipt lookup.
 
 ## Outbox
 
-- [ ] Queue outbound messages in `outbox` with `attempts`, `next_try`,
+- [x] Queue outbound messages in `outbox` with `attempts`, `next_try`,
   `expires_at`.
-- [ ] Default TTL is 7 days; configurable via `outbox.ttl_days`.
-- [ ] Retry with exponential backoff on peer rediscovery and send failure.
-- [ ] Flush outbox for a peer after a successful connection and gap sync.
-- [ ] Expired rows are dropped and the message is surfaced as `failed` or
+- [x] Default TTL is 7 days; configurable via `outbox.ttl_days`.
+- [x] Retry with exponential backoff on peer rediscovery and send failure.
+- [x] Flush outbox for a peer after a successful connection and gap sync.
+- [x] Expired rows are dropped and the message is surfaced as `failed` or
   `expired`.
-- [ ] Sending to a muted peer still queues and delivers, but silently.
-- [ ] Sending to an ignored peer is dropped at receive; sender sees `sent` once
+- [x] Sending to a muted peer still queues and delivers, but silently.
+- [x] Sending to an ignored peer is dropped at receive; sender sees `sent` once
   transport acknowledges, or `failed` if never connected. Document semantics.
-- [ ] Outbox depth exposed in `GetStatus`.
+- [x] Outbox depth exposed in `GetStatus`.
 
 ## Gap sync
 
-- [ ] On authenticated connection, exchange `peer_state`
+- [x] On authenticated connection, exchange `peer_state`
   (`last_sent_seq`, `last_recv_seq`).
-- [ ] Each side computes missing ranges and requests them.
-- [ ] Stream missing records over a dedicated QUIC stream.
-- [ ] Verify and insert records; ignore duplicates.
-- [ ] Flush outbox after sync completes.
-- [ ] Sync is resumable and bounded in memory per batch.
-- [ ] Emit `SyncCompleted(peer_id, count)`.
+- [x] Each side computes missing ranges and requests them.
+- [x] Stream missing records over a dedicated QUIC stream.
+- [x] Verify and insert records; ignore duplicates.
+- [x] Flush outbox after sync completes.
+- [x] Sync is resumable and bounded in memory per batch.
+- [x] Emit `SyncCompleted(peer_id, count)`.
 
 ## Read receipts
 
-- [ ] `delivered` ack created when the receiver stores the message.
-- [ ] `read` ack created when the conversation is visible in the UI and the
+- [x] `delivered` ack created when the receiver stores the message.
+- [x] `read` ack created when the conversation is visible in the UI and the
   message is scrolled into view; CLI `mark-read` simulates this before the UI.
-- [ ] Acks are signed records stored like messages.
-- [ ] Coalesce acks over a short interval (default 500 ms).
-- [ ] Suppress receipts for mute/ignore peers unless the message was read.
-- [ ] Global `read_receipts.enabled` disables sending but still honors inbound.
-- [ ] Message state exposed as `queued`, `sent`, `delivered`, `read`, `failed`,
+- [x] Acks are signed records stored like messages.
+- [x] Coalesce acks over a short interval (default 500 ms).
+- [x] Suppress receipts for mute/ignore peers unless the message was read.
+- [x] Global `read_receipts.enabled` disables sending but still honors inbound.
+- [x] Message state exposed as `queued`, `sent`, `delivered`, `read`, `failed`,
   `expired`.
 
 ## Policy
 
-- [ ] Per-peer policy stored in `peers.policy`.
-- [ ] `accept`: store and notify.
-- [ ] `mute`: store silently, no notification.
-- [ ] `ignore`: drop inbound with no storage and no notification.
-- [ ] Global DND mode suppresses notifications, not storage.
-- [ ] Policy changes over D-Bus and tray menu.
-- [ ] Emit `PolicyChanged(peer_id, policy)`.
+- [x] Per-peer policy stored in `peers.policy`.
+- [x] `accept`: store and notify.
+- [x] `mute`: store silently, no notification.
+- [x] `ignore`: drop inbound with no storage and no notification.
+- [x] Global DND mode suppresses notifications, not storage.
+- [x] Policy changes over D-Bus and tray menu.
+- [x] Emit `PolicyChanged(peer_id, policy)`.
 
 ## Tray
 
-- [ ] `ksni` StatusNotifierItem with icon, title, and menu.
-- [ ] Menu: open app, DND toggle, per-peer policy submenu, quit.
-- [ ] Tray is optional; daemon runs when tray is unavailable.
-- [ ] No tray dependency in headless test runs.
+- [x] `ksni` StatusNotifierItem with icon, title, and menu.
+- [x] Menu: open app, DND toggle, per-peer policy submenu, quit.
+- [x] Tray is optional; daemon runs when tray is unavailable.
+- [x] No tray dependency in headless test runs.
 
 ## D-Bus additions
 
-- [ ] `SendMessage(s peer_id, s body) -> s message_id`.
-- [ ] `ListMessages(s conversation_id, u limit, u offset) -> aa{sv}`.
-- [ ] `MarkRead(s conversation_id, as message_ids)`.
-- [ ] `GetMessageState(s message_id) -> s`.
-- [ ] `SetPeerPolicy(s peer_id, s policy)`.
-- [ ] `SetDnd(b enabled)`.
-- [ ] Signals `MessageReceived(a{sv})`, `MessageStateChanged(s, s)`,
+- [x] `SendMessage(s peer_id, s body) -> s message_id`.
+- [x] `ListMessages(s conversation_id, u limit, u offset) -> aa{sv}`.
+- [x] `MarkRead(s conversation_id, as message_ids)`.
+- [x] `GetMessageState(s message_id) -> s`.
+- [x] `SetPeerPolicy(s peer_id, s policy)`.
+- [x] `SetDnd(b enabled)`.
+- [x] Signals `MessageReceived(a{sv})`, `MessageStateChanged(s, s)`,
   `SyncCompleted(s, u)`, `PolicyChanged(s, s)`.
 
 ## Tests
 
-- [ ] Sign/verify round-trip and tamper detection.
-- [ ] Duplicate insert is ignored.
-- [ ] Out-of-order seq insertion is handled per sync rules.
-- [ ] Outbox retry and expiry with a controllable clock.
-- [ ] Gap sync between two stores with missing ranges on both sides.
-- [ ] Receipt coalescing sends one ack for multiple messages.
-- [ ] Mute stores silently; ignore drops.
-- [ ] DND suppresses notification but stores message.
-- [ ] Two-node integration: send, receive, delivered, read.
-- [ ] Reconnect after drop triggers gap sync and outbox flush.
-- [ ] Clock skew does not panic and falls back to `received_at`.
+- [x] Sign/verify round-trip and tamper detection.
+- [x] Duplicate insert is ignored.
+- [x] Out-of-order seq insertion is handled per sync rules.
+- [x] Outbox retry and expiry with a controllable clock.
+- [x] Gap sync between two stores with missing ranges on both sides.
+- [x] Receipt coalescing sends one ack for multiple messages.
+- [x] Mute stores silently; ignore drops.
+- [x] DND suppresses notification but stores message.
+- [x] Two-node integration: send, receive, delivered, read.
+- [x] Reconnect after drop triggers gap sync and outbox flush.
+- [x] Clock skew does not panic and falls back to `received_at`.
 
 ## Security
 
-- [ ] Verify signatures before any storage or ack.
-- [ ] Bound message body size; reject oversized records.
-- [ ] Reject seq values that overflow or are absurdly large.
-- [ ] Do not log message bodies by default.
-- [ ] Ignore policy is enforced before storage, not after.
-- [ ] Receipts cannot be forged for messages not stored.
+- [x] Verify signatures before any storage or ack.
+- [x] Bound message body size; reject oversized records.
+- [x] Reject seq values that overflow or are absurdly large.
+- [x] Do not log message bodies by default.
+- [x] Ignore policy is enforced before storage, not after.
+- [x] Receipts cannot be forged for messages not stored.
 
 ## Docs and acceptance
 
-- [ ] Document message canonical encoding and signing.
-- [ ] Document outbox semantics, TTL, and expiry behavior.
-- [ ] Document gap sync algorithm and conflict handling.
-- [ ] Document receipt semantics and suppression rules.
-- [ ] Document policy semantics for each mode.
+- [x] Document message canonical encoding and signing.
+- [x] Document outbox semantics, TTL, and expiry behavior.
+- [x] Document gap sync algorithm and conflict handling.
+- [x] Document receipt semantics and suppression rules.
+- [x] Document policy semantics for each mode.
 
 ## Acceptance criteria
 

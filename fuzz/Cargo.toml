@@ -27,3 +27,10 @@ path = "fuzz_targets/pairing_decode.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "message_decode"
+path = "fuzz_targets/message_decode.rs"
+test = false
+doc = false
+bench = false

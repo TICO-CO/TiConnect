@@ -36,10 +36,46 @@ impl FromStr for NodeId {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct MessageId(Uuid);
+
+impl MessageId {
+    pub fn generate() -> Self {
+        Self(Uuid::now_v7())
+    }
+
+    pub fn from_uuid(uuid: Uuid) -> Self {
+        Self(uuid)
+    }
+
+    pub fn as_uuid(&self) -> &Uuid {
+        &self.0
+    }
+}
+
+impl fmt::Display for MessageId {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(formatter)
+    }
+}
+
+impl FromStr for MessageId {
+    type Err = IdError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Uuid::parse_str(value)
+            .map(Self)
+            .map_err(|error| IdError::MessageId(error.to_string()))
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum IdError {
     #[error("invalid node id: {0}")]
     NodeId(String),
+
+    #[error("invalid message id: {0}")]
+    MessageId(String),
 }
 
 #[cfg(test)]

@@ -107,6 +107,7 @@ mod tests {
             .commit(NewPeer {
                 id: "peer-1".to_owned(),
                 fingerprint: "fingerprint-1".to_owned(),
+                public_key: None,
                 display_name: Some("Peer".to_owned()),
                 policy: PeerPolicy::Accept,
                 trusted_at: 1,

@@ -5,6 +5,7 @@ use tokio::time::timeout;
 use super::session;
 use super::{
     DialTarget, RECONNECT_ATTEMPTS, RECONNECT_BASE_DELAY, Session, Transport, TransportError,
+    peer_certificate,
 };
 use crate::tls::ClientAlpn;
 
@@ -105,6 +106,10 @@ async fn connect_once(
     target: DialTarget,
 ) -> Result<Session, TransportError> {
     let connection = open_connection(transport, &target, ClientAlpn::Session).await?;
+    let (certificate_fingerprint, public_key) = peer_certificate(&connection)?;
+    if certificate_fingerprint != target.fingerprint {
+        return Err(TransportError::IdentityMismatch);
+    }
 
     let peer = session::client_handshake(
         &connection,
@@ -112,6 +117,7 @@ async fn connect_once(
         transport.expected_fingerprint(),
         target.fingerprint,
         target.node_id,
+        public_key,
     )
     .await?;
     let session = Session::new(connection.clone(), peer.clone());

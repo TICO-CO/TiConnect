@@ -175,14 +175,23 @@ pub fn transport_config() -> Result<quinn::TransportConfig, TlsError> {
     Ok(transport)
 }
 
-pub fn certificate_fingerprint(der: &CertificateDer<'_>) -> Result<Fingerprint, TlsError> {
+pub fn certificate_public_key(der: &CertificateDer<'_>) -> Result<[u8; 32], TlsError> {
     let (_, certificate) =
         X509Certificate::from_der(der.as_ref()).map_err(|_| TlsError::InvalidCertificate)?;
     if certificate.public_key().algorithm.algorithm.to_id_string() != ED25519_OID {
         return Err(TlsError::InvalidCertificate);
     }
-    let key = certificate.public_key().subject_public_key.data.as_ref();
-    let key: [u8; 32] = key.try_into().map_err(|_| TlsError::InvalidCertificate)?;
+    certificate
+        .public_key()
+        .subject_public_key
+        .data
+        .as_ref()
+        .try_into()
+        .map_err(|_| TlsError::InvalidCertificate)
+}
+
+pub fn certificate_fingerprint(der: &CertificateDer<'_>) -> Result<Fingerprint, TlsError> {
+    let key = certificate_public_key(der)?;
     Ok(Fingerprint::from_bytes(*blake3::hash(&key).as_bytes()))
 }
 
@@ -334,6 +343,16 @@ mod tests {
         assert_eq!(
             validate_certificate(certificate.certificate()).expect("validate"),
             certificate.fingerprint()
+        );
+    }
+
+    #[test]
+    fn certificate_public_key_matches_identity() {
+        let identity = IdentityKeyPair::from_secret_bytes([65_u8; 32]);
+        let certificate = IdentityCertificate::from_identity(&identity).expect("certificate");
+        assert_eq!(
+            certificate_public_key(certificate.certificate()).expect("key"),
+            identity.verifying_key().to_bytes()
         );
     }
 

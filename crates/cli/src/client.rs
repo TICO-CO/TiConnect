@@ -24,6 +24,17 @@ pub trait Daemon {
     fn cancel_pairing(&self) -> zbus::Result<()>;
     fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
     fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
+    fn list_messages(
+        &self,
+        conversation_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn mark_read(&self, conversation_id: &str, message_ids: &[&str]) -> zbus::Result<()>;
+    fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
+    fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -46,4 +57,16 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn peer_disconnected(&self, peer: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_received(&self, message: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_state_changed(&self, message_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn sync_completed(&self, peer_id: &str, count: u32) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn policy_changed(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
 }

@@ -8,15 +8,17 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, 3, 4, and 5 are implemented. Stage 2 automation is implemented,
+Stages 1, 1.5, 3, 4, 5, and 6 are implemented. Stage 2 automation is implemented,
 with manual systemd/logout verification pending. Stage 4 discovery is
 implemented, with manual two-machine LAN verification pending. This includes
 workspace, settings, logging, typed errors, the architecture graph, the D-Bus
 daemon, the CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage,
 settings reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast
 fallback, a discovery candidate cache, SPAKE2 PIN and QR pairing, pinned
-QUIC/TLS transport, trusted peer revocation, and automatic reconnect for
-trusted peers. Messaging and UI stages are not implemented yet.
+QUIC/TLS transport, trusted peer revocation, automatic reconnect for trusted
+peers, signed text messages, history, outbox retry, gap sync, delivered and read
+receipts, per-peer policy, DND, and an optional system tray. The UI, overlay,
+attachments, calls, and remote desktop stages are not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -76,6 +78,11 @@ cargo run --bin ticonnect-cli -- pair with-pin <node-id> <pin>
 cargo run --bin ticonnect-cli -- pair with-qr '<payload>'
 cargo run --bin ticonnect-cli -- pair cancel
 cargo run --bin ticonnect-cli -- pair forget <peer-id>
+cargo run --bin ticonnect-cli -- send <peer-id> "hello"
+cargo run --bin ticonnect-cli -- messages <peer-id>
+cargo run --bin ticonnect-cli -- mark-read <peer-id> <message-id>
+cargo run --bin ticonnect-cli -- policy set <peer-id> mute
+cargo run --bin ticonnect-cli -- policy dnd on
 cargo run --bin ticonnect-cli -- quit
 cargo run --bin ticonnect-ui
 cargo run --bin ticonnect-ovl
@@ -83,7 +90,7 @@ cargo run --bin ticonnect-ovl
 
 `ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
 `ticonnect-cli` talks to the daemon for status, identity, peers, discovery,
-pairing, ping, and quit.
+pairing, messaging, policy, ping, and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
 directly. The UI and overlay binaries initialize runtime services and exit.
 
@@ -119,7 +126,7 @@ Settings keys:
 | `discovery.beacon_interval_secs` | integer | `5` | Valid range `1..=3600` |
 | `transport.port` | integer | `45871` | UDP port for QUIC session and pairing; valid range `1..=65535`; restart required |
 | `overlay.enabled` | bool | `true` | Reserved for Stage 8 |
-| `read_receipts.enabled` | bool | `true` | Reserved for Stage 6 |
+| `read_receipts.enabled` | bool | `true` | Send delivered and read receipts |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
 | `ringtone.path` | optional path | unset | Empty value clears it |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
@@ -149,10 +156,51 @@ Settings keys:
 - Schema version is stored in `schema_version` and migrations run on every open.
   Migration failure refuses startup.
 - Stage 3 creates `peers`, `conversations`, `messages`, `outbox`, `attachments`,
-  and `peer_state`. Only the peers repository is active in Stage 3.
+  and `peer_state`. Stage 6 adds `peers.public_key` and `messages.state` and
+  activates the conversation, message, outbox, and peer-state repositories.
 - Configuration lives only in `config.toml`; SQLite stores no configuration.
 - Changing `data_dir` while the daemon is running does not move an existing database;
   it applies on the next start.
+
+## Messaging
+
+- Each conversation is the pair of node IDs. Its conversation ID is BLAKE3 over
+  the sorted node IDs, encoded as a UUID string.
+- The signed canonical record uses domain `message-record` and contains the
+  protocol version, message ID, conversation ID, sender ID, sequence, send
+  timestamp, kind, target ID, body, and attachment hash. Optional fields use an
+  explicit presence byte.
+- A sender assigns a monotonic `seq` per conversation and signs the canonical
+  record with its Ed25519 identity key using the shared signed-envelope format.
+  The receiver checks the sender's stored public key, signature, conversation,
+  and sequence before storage.
+- Message bodies are limited to 32 KiB. Duplicate message IDs and duplicate
+  `(conversation, sender, seq)` records are ignored.
+- Text is the only user message kind in this stage. Ack records use kind `ack`,
+  a target message ID, and body `delivered` or `read`.
+- Undelivered records queue in the outbox. Retry uses exponential backoff after
+  a failed stream write and expires after `outbox.ttl_days`. Expired rows are
+  removed and the message state becomes `expired`.
+- On every authenticated session each side exchanges `last_sent_seq` and
+  `last_recv_seq`, requests missing sequence ranges in batches of 128, verifies
+  and inserts the records, advances its receive high-water mark, and flushes its
+  outbox. Synced records use the same verification path as live records.
+- Delivered receipts are queued when an accepted message is stored. Read
+  receipts are queued by `MarkRead`. Receipts are signed ack records, coalesced
+  for 500 ms, and sent through the outbox. Mute suppresses delivered receipts;
+  ignore suppresses all receipts.
+- Message state is `queued`, `sent`, `delivered`, `read`, `failed`, or `expired`.
+  Inbound messages have no local outbound state.
+- `accept` stores and may notify; `mute` stores silently and suppresses
+  delivered receipts; `ignore` drops inbound records before verification,
+  storage, receipt creation, or notification. DND suppresses notifications but
+  not storage.
+- The tray is optional. When StatusNotifierItem support is unavailable the
+  daemon continues headless.
+
+D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
+`GetMessageState`, `SetPeerPolicy`, and `SetDnd`. Signals are `MessageReceived`,
+`MessageStateChanged`, `SyncCompleted`, and `PolicyChanged`.
 
 ## Pairing and transport
 

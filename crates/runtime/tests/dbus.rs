@@ -29,6 +29,16 @@ trait Daemon {
     fn cancel_pairing(&self) -> zbus::Result<()>;
     fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
     fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
+    fn list_messages(
+        &self,
+        conversation_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
+    fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -121,6 +131,33 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
             .expect("trusted peers")
             .is_empty()
     );
+    assert!(
+        proxy
+            .list_messages("missing-conversation", 10, 0)
+            .await
+            .expect("messages")
+            .is_empty()
+    );
+    assert!(
+        proxy
+            .send_message("00000000-0000-7000-8000-000000000000", "hello")
+            .await
+            .is_err()
+    );
+    assert!(
+        proxy
+            .get_message_state("00000000-0000-7000-8000-000000000000")
+            .await
+            .is_err()
+    );
+    assert!(
+        proxy
+            .set_peer_policy("00000000-0000-7000-8000-000000000000", "mute")
+            .await
+            .is_err()
+    );
+    proxy.set_dnd(true).await.expect("set dnd");
+    assert!(bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("dnd"));
     let discovery = proxy
         .get_discovery_status()
         .await

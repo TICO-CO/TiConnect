@@ -44,6 +44,7 @@ rusqlite = { version = "0.42", features = ["bundled"] }
 uuid = { version = "1", features = ["rng", "v7"] }
 mdns-sd = "0.21"
 if-addrs = "0.15"
+ksni = "0.3"
 socket2 = "0.6"
 spake2 = "0.4"
 subtle = "2"

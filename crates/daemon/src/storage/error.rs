@@ -20,6 +20,12 @@ pub enum StorageError {
     #[error("invalid peer policy: {0}")]
     InvalidPolicy(String),
 
+    #[error("invalid message state: {0}")]
+    InvalidMessageState(String),
+
+    #[error("invalid stored data: {0}")]
+    InvalidData(String),
+
     #[error("database worker stopped")]
     WorkerStopped,
 }

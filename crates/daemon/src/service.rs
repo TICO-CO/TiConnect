@@ -11,9 +11,10 @@ use zbus::object_server::SignalEmitter;
 use zbus::{DBusError, OwnedVariant, Str};
 
 use crate::identity::PublicIdentity;
+use crate::messaging::{MessagingEvent, MessagingService};
 use crate::pairing_service::{PairingService, StartPairingResponse};
 use crate::runtime::Shutdown;
-use crate::storage::{DatabaseHandle, Peer, StorageError};
+use crate::storage::{DatabaseHandle, Peer, PeerPolicy, StorageError, StoredMessage};
 use crate::trust::TrustStore;
 use ticonnect_net::transport::Transport;
 
@@ -36,6 +37,7 @@ pub struct DaemonState {
     trust: Arc<TrustStore>,
     transport: Arc<Transport>,
     pairing: Arc<PairingService>,
+    messaging: Arc<MessagingService>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -76,8 +78,16 @@ impl DaemonState {
             transport.clone(),
             discovery.clone(),
         ));
+        let messaging = Arc::new(MessagingService::new(
+            identity.key_pair().clone(),
+            public.node_id(),
+            database.clone(),
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+        ));
         Ok(Self::new(
-            shutdown, public, settings, database, discovery, trust, transport, pairing,
+            shutdown, public, settings, database, discovery, trust, transport, pairing, messaging,
         ))
     }
 
@@ -91,6 +101,7 @@ impl DaemonState {
         trust: Arc<TrustStore>,
         transport: Arc<Transport>,
         pairing: Arc<PairingService>,
+        messaging: Arc<MessagingService>,
     ) -> Self {
         Self {
             started_at: Instant::now(),
@@ -102,6 +113,7 @@ impl DaemonState {
             trust,
             transport,
             pairing,
+            messaging,
         }
     }
 
@@ -133,6 +145,10 @@ impl DaemonState {
         &self.pairing
     }
 
+    pub fn messaging(&self) -> &Arc<MessagingService> {
+        &self.messaging
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings
             .read()
@@ -141,6 +157,7 @@ impl DaemonState {
     }
 
     pub fn replace_settings(&self, settings: Settings) {
+        self.messaging.apply_settings(settings.clone());
         *self
             .settings
             .write()
@@ -377,6 +394,75 @@ impl DaemonService {
         Ok(peers.into_iter().map(peer_variant).collect())
     }
 
+    async fn send_message(&self, peer_id: &str, body: &str) -> Result<String, ServiceError> {
+        let message_id = self
+            .state
+            .messaging()
+            .send_message(peer_id, body)
+            .await
+            .map_err(messaging_error)?;
+        Ok(message_id.to_string())
+    }
+
+    async fn list_messages(
+        &self,
+        conversation_id: &str,
+        limit: u32,
+        offset: u32,
+    ) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let messages = self
+            .state
+            .messaging()
+            .list_messages(conversation_id, limit, offset)
+            .await
+            .map_err(messaging_error)?;
+        Ok(messages.into_iter().map(stored_message_variant).collect())
+    }
+
+    async fn mark_read(
+        &self,
+        conversation_id: &str,
+        message_ids: Vec<String>,
+    ) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .mark_read(conversation_id, &message_ids)
+            .await
+            .map_err(messaging_error)
+    }
+
+    async fn get_message_state(&self, message_id: &str) -> Result<String, ServiceError> {
+        let state = self
+            .state
+            .messaging()
+            .message_state(message_id)
+            .await
+            .map_err(messaging_error)?;
+        Ok(state.as_str().to_owned())
+    }
+
+    async fn set_peer_policy(&self, peer_id: &str, policy: &str) -> Result<(), ServiceError> {
+        let policy = policy
+            .parse::<PeerPolicy>()
+            .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        self.state
+            .messaging()
+            .set_peer_policy(peer_id, policy)
+            .await
+            .map_err(messaging_error)
+    }
+
+    async fn set_dnd(&self, enabled: bool) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .set_dnd(enabled)
+            .await
+            .map_err(messaging_error)?;
+        self.state
+            .replace_settings(self.state.messaging().settings());
+        Ok(())
+    }
+
     fn shutdown(&self) -> Result<(), ServiceError> {
         if self.state.shutdown().is_requested() {
             return Err(ServiceError::Failed(
@@ -438,6 +524,126 @@ impl DaemonService {
         emitter: SignalEmitter<'_>,
         peer: HashMap<String, OwnedVariant>,
     ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn message_received(
+        emitter: SignalEmitter<'_>,
+        message: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn message_state_changed(
+        emitter: SignalEmitter<'_>,
+        message_id: &str,
+        state: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn sync_completed(
+        emitter: SignalEmitter<'_>,
+        peer_id: &str,
+        count: u32,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn policy_changed(
+        emitter: SignalEmitter<'_>,
+        peer_id: &str,
+        policy: &str,
+    ) -> zbus::Result<()>;
+}
+
+pub(crate) async fn emit_messaging_event(
+    connection: &zbus::Connection,
+    event: MessagingEvent,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    match event {
+        MessagingEvent::MessageReceived {
+            peer_id,
+            message,
+            notify,
+        } => {
+            DaemonService::message_received(
+                emitter,
+                stored_message_variant_with(peer_id, message, notify),
+            )
+            .await
+        }
+        MessagingEvent::MessageStateChanged { message_id, state } => {
+            DaemonService::message_state_changed(emitter, &message_id, state.as_str()).await
+        }
+        MessagingEvent::SyncCompleted { peer_id, count } => {
+            DaemonService::sync_completed(emitter, &peer_id, count).await
+        }
+        MessagingEvent::PolicyChanged { peer_id, policy } => {
+            DaemonService::policy_changed(emitter, &peer_id, policy.as_str()).await
+        }
+    }
+}
+
+fn stored_message_variant(message: StoredMessage) -> HashMap<String, OwnedVariant> {
+    stored_message_variant_with(String::new(), message, false)
+}
+
+fn stored_message_variant_with(
+    peer_id: String,
+    message: StoredMessage,
+    notify: bool,
+) -> HashMap<String, OwnedVariant> {
+    let record = message.record;
+    HashMap::from([
+        (
+            ipc::MESSAGE_ID.to_owned(),
+            string_variant(record.message_id.to_string()),
+        ),
+        (
+            ipc::MESSAGE_CONVERSATION_ID.to_owned(),
+            string_variant(record.conversation_id),
+        ),
+        (ipc::MESSAGE_PEER_ID.to_owned(), string_variant(peer_id)),
+        (
+            ipc::MESSAGE_SENDER_ID.to_owned(),
+            string_variant(record.sender_id),
+        ),
+        (
+            ipc::MESSAGE_SEQ.to_owned(),
+            OwnedVariant::from(u32::try_from(record.seq).unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_SENT_AT.to_owned(),
+            OwnedVariant::from(record.sent_at),
+        ),
+        (
+            ipc::MESSAGE_RECEIVED_AT.to_owned(),
+            OwnedVariant::from(message.received_at),
+        ),
+        (
+            ipc::MESSAGE_KIND.to_owned(),
+            string_variant(record.kind.as_str().to_owned()),
+        ),
+        (
+            ipc::MESSAGE_TARGET_ID.to_owned(),
+            string_variant(record.target_id.unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_BODY.to_owned(),
+            string_variant(record.body.unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_ATTACHMENT_HASH.to_owned(),
+            string_variant(record.attachment_hash.unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_STATE.to_owned(),
+            string_variant(
+                message
+                    .state
+                    .map_or_else(String::new, |state| state.as_str().to_owned()),
+            ),
+        ),
+        (ipc::MESSAGE_NOTIFY.to_owned(), OwnedVariant::from(notify)),
+    ])
 }
 
 fn setting_variant(value: SettingValue) -> OwnedVariant {
@@ -563,6 +769,11 @@ fn start_pairing_variant(started: &StartPairingResponse) -> HashMap<String, Owne
     ])
 }
 
+fn messaging_error(error: crate::messaging::MessagingError) -> ServiceError {
+    tracing::warn!(%error, "messaging request failed");
+    ServiceError::Failed(error.to_string())
+}
+
 fn pairing_error(error: crate::pairing_service::PairingServiceError) -> ServiceError {
     tracing::warn!(%error, "pairing request failed");
     ServiceError::Failed(error.to_string())
@@ -677,6 +888,14 @@ mod tests {
             transport.clone(),
             discovery.clone(),
         ));
+        let messaging = Arc::new(MessagingService::new(
+            identity.key_pair().clone(),
+            public.node_id(),
+            database.clone(),
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+        ));
         let state = Arc::new(DaemonState::new(
             Arc::new(Shutdown::new()),
             public,
@@ -686,6 +905,7 @@ mod tests {
             trust,
             transport,
             pairing,
+            messaging,
         ));
         (DaemonService::new(state), dir)
     }

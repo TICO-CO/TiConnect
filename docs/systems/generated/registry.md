@@ -144,18 +144,18 @@
 | `LOG.sinks` | `LOG` | Output sinks | `module` | `crates/logging/src/output.rs` | 1 | stdout or file sink | docs/systems/03-observability.md#components | crates/logging/src/output.rs |
 | `LOG.spans` | `LOG` | Span conventions | `module` | `docs/systems/03-observability.md` | 1 |  | docs/systems/03-observability.md#components | planned: docs review |
 | `LOG.subscriber` | `LOG` | Subscriber builder | `module` | `crates/logging/src/logging.rs` | 1 | global subscriber | docs/systems/03-observability.md#components | crates/logging/src/logging.rs |
-| `MSG.conversation` | `MSG` | Conversation resolver | `module` | `crates/daemon/src/messaging/mod.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.events` | `MSG` | Messaging event emitter | `module` | `crates/daemon/src/messaging/mod.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.history` | `MSG` | History query | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.ingest` | `MSG` | Ingest gate | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.outbox` | `MSG` | Outbox scheduler | `module` | `crates/daemon/src/messaging/outbox.rs` | 6 | outbox retry state | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/outbox.rs |
-| `MSG.receipts` | `MSG` | Receipt coalescer | `module` | `crates/daemon/src/messaging/receipts.rs` | 6 | pending acks | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/receipts.rs |
-| `MSG.seq` | `MSG` | Sequence allocator | `module` | `crates/daemon/src/messaging/store.rs` | 6 | next seq | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.signer` | `MSG` | Record signer | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.state` | `MSG` | Message state projector | `module` | `crates/daemon/src/messaging/store.rs` | 6 | message state cache | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
-| `MSG.sync-executor` | `MSG` | Gap sync executor | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | sync batches | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/sync.rs |
-| `MSG.sync-planner` | `MSG` | Gap sync planner | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | missing ranges | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/sync.rs |
-| `MSG.verifier` | `MSG` | Record verifier | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | planned: crates/daemon/tests/messaging.rs |
+| `MSG.conversation` | `MSG` | Conversation resolver | `module` | `crates/daemon/src/messaging/mod.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.events` | `MSG` | Messaging event emitter | `module` | `crates/daemon/src/messaging/mod.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.history` | `MSG` | History query | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.ingest` | `MSG` | Ingest gate | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.outbox` | `MSG` | Outbox scheduler | `module` | `crates/daemon/src/messaging/outbox.rs` | 6 | outbox retry state | docs/systems/12-messaging.md#components | crates/daemon/tests/messages.rs |
+| `MSG.receipts` | `MSG` | Receipt coalescer | `module` | `crates/daemon/src/messaging/receipts.rs` | 6 | pending acks | docs/systems/12-messaging.md#components | crates/daemon/src/messaging/receipts.rs |
+| `MSG.seq` | `MSG` | Sequence allocator | `module` | `crates/daemon/src/messaging/store.rs` | 6 | next seq | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.signer` | `MSG` | Record signer | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.state` | `MSG` | Message state projector | `module` | `crates/daemon/src/messaging/store.rs` | 6 | message state cache | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.sync-executor` | `MSG` | Gap sync executor | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | sync batches | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.sync-planner` | `MSG` | Gap sync planner | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | missing ranges | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
+| `MSG.verifier` | `MSG` | Record verifier | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
 | `OVL.activate` | `OVL` | UI activation client | `module` | `crates/overlay/src/client.rs` | 8 |  | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/activate.rs |
 | `OVL.card` | `OVL` | Card widget | `module` | `crates/overlay/src/card.rs` | 8 | visible cards | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
 | `OVL.client` | `OVL` | Signal client | `module` | `crates/overlay/src/client.rs` | 8 | connection state | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/client.rs |
@@ -171,11 +171,11 @@
 | `PAIR.pin` | `PAIR` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | 5 | PIN attempts | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
 | `PAIR.qr` | `PAIR` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | 5 | one-time token | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
 | `PAIR.spake2` | `PAIR` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | 5 | pairing transcript | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `POL.dnd` | `POL` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | DND state | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.inbound` | `POL` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.notify` | `POL` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.receipts` | `POL` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.store` | `POL` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | peer policy | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
+| `POL.dnd` | `POL` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | DND state | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.inbound` | `POL` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.notify` | `POL` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.receipts` | `POL` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.store` | `POL` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | peer policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `RD.capture` | `RD` | Capture coordinator | `module` | `crates/daemon/src/remote/session.rs` | 11 | capture handles | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.consent` | `RD` | Consent | `module` | `crates/daemon/src/remote/consent.rs` | 11 | consent grant | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.indicator` | `RD` | Indicator and kill switch | `module` | `crates/daemon/src/remote/consent.rs` | 11 | indicator state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
@@ -191,11 +191,11 @@
 | `RT.single-instance` | `RT` | Single instance guard | `module` | `crates/daemon/src/runtime.rs` | 2 | bus name ownership | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
 | `RT.supervisor` | `RT` | Actor supervisor | `module` | `crates/runtime/src/supervisor.rs` | 2 | child task handles | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
 | `RT.wiring` | `RT` | Composition wiring | `module` | `crates/runtime/src/daemon.rs` | 2 |  | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
-| `TRAY.activate` | `TRAY` | Window activation | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.fallback` | `TRAY` | Tray fallback | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.item` | `TRAY` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | 6 | tray item | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.menu` | `TRAY` | Tray menu | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.policy` | `TRAY` | Policy actions | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
+| `TRAY.activate` | `TRAY` | Window activation | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.fallback` | `TRAY` | Tray fallback | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.item` | `TRAY` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | 6 | tray item | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.menu` | `TRAY` | Tray menu | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.policy` | `TRAY` | Policy actions | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
 | `TX.alpn` | `TX` | ALPN routing | `module` | `crates/net/src/transport/server.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.datagrams` | `TX` | Datagram router | `module` | `crates/net/src/transport/session.rs` | 5 | datagram routes | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.dialer` | `TX` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | 5 | backoff state | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |

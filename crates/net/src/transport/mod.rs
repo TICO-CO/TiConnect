@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
+use quinn::rustls::pki_types::CertificateDer;
 use thiserror::Error;
 use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::id::NodeId;
@@ -199,6 +200,23 @@ impl Transport {
             .collect()
     }
 
+    pub fn session_by_fingerprint(&self, fingerprint: &Fingerprint) -> Option<Session> {
+        self.sessions
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(&fingerprint.to_hex())
+            .cloned()
+    }
+
+    pub fn session_by_node_id(&self, node_id: NodeId) -> Option<Session> {
+        self.sessions
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .values()
+            .find(|session| session.peer().node_id == node_id)
+            .cloned()
+    }
+
     pub async fn connect(&self, target: DialTarget) -> Result<Session, TransportError> {
         client::connect(self, target).await
     }
@@ -303,6 +321,23 @@ impl Transport {
     ) -> Result<quinn::ClientConfig, TransportError> {
         tls::client_config(&self.certificate, expected, alpn).map_err(Into::into)
     }
+}
+
+pub(crate) fn peer_certificate(
+    connection: &quinn::Connection,
+) -> Result<(Fingerprint, [u8; 32]), TransportError> {
+    let identity = connection
+        .peer_identity()
+        .ok_or_else(|| TransportError::Handshake("peer certificate is missing".to_owned()))?;
+    let certificates = identity
+        .downcast::<Vec<CertificateDer<'static>>>()
+        .map_err(|_| TransportError::Handshake("peer identity type is invalid".to_owned()))?;
+    let certificate = certificates
+        .first()
+        .ok_or_else(|| TransportError::Handshake("peer certificate is missing".to_owned()))?;
+    let fingerprint = tls::validate_certificate(certificate).map_err(TransportError::Tls)?;
+    let public_key = tls::certificate_public_key(certificate).map_err(TransportError::Tls)?;
+    Ok((fingerprint, public_key))
 }
 
 #[derive(Debug, Clone)]

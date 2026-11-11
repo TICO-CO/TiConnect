@@ -352,6 +352,7 @@ impl PairingService {
         let new_peer = NewPeer {
             id: peer.node_id.to_string(),
             fingerprint: peer.fingerprint.to_hex(),
+            public_key: None,
             display_name,
             policy: PeerPolicy::Accept,
             trusted_at: i64::try_from(now_unix()).unwrap_or(i64::MAX),

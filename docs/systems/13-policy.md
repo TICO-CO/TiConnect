@@ -24,11 +24,11 @@ Daemon-only decision service. UI, overlay, and tray present decisions but do not
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `POL.dnd` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | DND state | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.inbound` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.notify` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.receipts` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
-| `POL.store` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | peer policy | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
+| `POL.dnd` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | DND state | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.inbound` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.notify` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.receipts` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.store` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | peer policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 
 ## Interfaces
 

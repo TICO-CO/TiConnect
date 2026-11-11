@@ -50,6 +50,16 @@ impl SignedEnvelope {
         })
     }
 
+    pub fn from_parts(payload: &[u8], signature: [u8; 64]) -> Result<Self, SignError> {
+        if payload.len() > MAX_SIGNED_PAYLOAD {
+            return Err(SignError::PayloadTooLarge);
+        }
+        Ok(Self {
+            payload: payload.to_vec(),
+            signature,
+        })
+    }
+
     pub fn verify(&self, public_key: &VerifyingKey) -> Result<(), SignError> {
         let signature = Signature::from_bytes(&self.signature);
         public_key

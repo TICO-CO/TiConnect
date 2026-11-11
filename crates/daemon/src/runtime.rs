@@ -9,9 +9,11 @@ use zbus::object_server::SignalEmitter;
 
 use crate::config_watch;
 use crate::discovery_service;
+use crate::messaging;
 use crate::pairing_service;
 use crate::reconnect_service;
 use crate::service::{DaemonService, DaemonState};
+use crate::tray;
 
 #[derive(Clone)]
 pub struct Shutdown {
@@ -73,6 +75,12 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
     let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
+    let tray_task = tray::spawn(
+        connection.clone(),
+        state.messaging().as_ref().clone(),
+        state.shutdown().clone(),
+    );
     let reconnect_task = reconnect_service::spawn(
         state.transport().clone(),
         state.discovery().clone(),
@@ -84,6 +92,8 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     state.discovery().stop_and_wait().await;
     discovery_task.abort();
     pairing_task.abort();
+    messaging_task.abort();
+    tray_task.abort();
     reconnect_task.abort();
     state.transport().shutdown().await;
 

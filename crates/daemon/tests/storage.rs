@@ -43,6 +43,7 @@ fn peer(id: &str, fingerprint: &str) -> NewPeer {
     NewPeer {
         id: id.to_owned(),
         fingerprint: fingerprint.to_owned(),
+        public_key: None,
         display_name: Some("Peer".to_owned()),
         policy: PeerPolicy::Accept,
         trusted_at: 1,

@@ -18,6 +18,7 @@ async fn trust_store_loads_commits_forgets_and_reports_trust() {
         .commit(NewPeer {
             id: "peer-1".to_owned(),
             fingerprint: "fingerprint-1".to_owned(),
+            public_key: None,
             display_name: Some("Peer".to_owned()),
             policy: PeerPolicy::Accept,
             trusted_at: 1,
@@ -49,6 +50,7 @@ async fn trust_store_reloads_existing_peers() {
         .insert_peer(NewPeer {
             id: "peer-1".to_owned(),
             fingerprint: "fingerprint-1".to_owned(),
+            public_key: None,
             display_name: None,
             policy: PeerPolicy::Accept,
             trusted_at: 1,

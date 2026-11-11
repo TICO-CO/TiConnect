@@ -23,11 +23,11 @@ Runs inside the daemon. Calls policy and IPC. Does not own policy state.
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `TRAY.activate` | Window activation | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.fallback` | Tray fallback | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.item` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | tray item | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.menu` | Tray menu | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TRAY.policy` | Policy actions | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
+| `TRAY.activate` | Window activation | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.fallback` | Tray fallback | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.item` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | tray item | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.menu` | Tray menu | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRAY.policy` | Policy actions | `module` | `crates/daemon/src/tray.rs` |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
 
 ## Interfaces
 

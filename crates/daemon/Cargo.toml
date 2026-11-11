@@ -8,12 +8,14 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+ed25519-dalek.workspace = true
 ticonnect-core.workspace = true
 ticonnect-settings.workspace = true
 ticonnect-net.workspace = true
 ticonnect-media.workspace = true
 ticonnect-desktop.workspace = true
 notify.workspace = true
+ksni.workspace = true
 quinn.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

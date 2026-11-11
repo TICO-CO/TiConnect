@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
 
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
 use ticonnect_cli::client::DaemonProxy;
 use ticonnect_cli::output::{candidate_line, status_human, status_json, variant_text};
+use ticonnect_core::id::NodeId;
 use ticonnect_core::ipc;
+use ticonnect_core::message::conversation_id;
 use ticonnect_settings::Settings;
 
 #[derive(Debug, Parser)]
@@ -58,6 +60,26 @@ enum Command {
         #[command(subcommand)]
         command: PairCommand,
     },
+    /// Send a text message to a trusted peer.
+    Send { peer_id: String, body: String },
+    /// List message history for a peer.
+    Messages {
+        peer_id: String,
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+        #[arg(long, default_value_t = 0)]
+        offset: u32,
+    },
+    /// Mark inbound messages as read.
+    MarkRead {
+        peer_id: String,
+        message_ids: Vec<String>,
+    },
+    /// Read or change peer policy and DND.
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -88,6 +110,20 @@ enum DiscoverCommand {
     List,
     /// Print candidate found and lost events.
     Watch,
+}
+
+#[derive(Debug, Subcommand)]
+enum PolicyCommand {
+    /// Set policy for one peer.
+    Set { peer_id: String, policy: String },
+    /// Toggle global do-not-disturb mode.
+    Dnd { state: DndState },
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum DndState {
+    On,
+    Off,
 }
 
 #[derive(Debug, Subcommand)]
@@ -184,8 +220,84 @@ async fn run(command: Command) -> Result<()> {
         }
         Command::Discover { command } => run_discover(command).await?,
         Command::Pair { command } => run_pair(command).await?,
+        Command::Send { peer_id, body } => {
+            let proxy = connect().await?;
+            let message_id = proxy
+                .send_message(&peer_id, &body)
+                .await
+                .context("send message")?;
+            println!("{message_id}");
+        }
+        Command::Messages {
+            peer_id,
+            limit,
+            offset,
+        } => {
+            let proxy = connect().await?;
+            let conversation_id = derive_conversation(&proxy, &peer_id).await?;
+            let messages = proxy
+                .list_messages(&conversation_id, limit, offset)
+                .await
+                .context("list messages")?;
+            if messages.is_empty() {
+                println!("no messages");
+            } else {
+                for message in messages {
+                    println!(
+                        "{} {} {} {} {}",
+                        message_value(&message, ipc::MESSAGE_ID),
+                        message_value(&message, ipc::MESSAGE_STATE),
+                        message_value(&message, ipc::MESSAGE_SENT_AT),
+                        message_value(&message, ipc::MESSAGE_SENDER_ID),
+                        message_value(&message, ipc::MESSAGE_BODY),
+                    );
+                }
+            }
+        }
+        Command::MarkRead {
+            peer_id,
+            message_ids,
+        } => {
+            let proxy = connect().await?;
+            let conversation_id = derive_conversation(&proxy, &peer_id).await?;
+            let ids: Vec<&str> = message_ids.iter().map(String::as_str).collect();
+            proxy
+                .mark_read(&conversation_id, &ids)
+                .await
+                .context("mark read")?;
+            println!("marked read");
+        }
+        Command::Policy { command } => {
+            let proxy = connect().await?;
+            match command {
+                PolicyCommand::Set { peer_id, policy } => {
+                    proxy
+                        .set_peer_policy(&peer_id, &policy)
+                        .await
+                        .context("set peer policy")?;
+                    println!("{peer_id} {policy}");
+                }
+                PolicyCommand::Dnd { state } => {
+                    let enabled = matches!(state, DndState::On);
+                    proxy.set_dnd(enabled).await.context("set dnd")?;
+                    println!("dnd {}", if enabled { "on" } else { "off" });
+                }
+            }
+        }
     }
     Ok(())
+}
+
+async fn derive_conversation(proxy: &DaemonProxy<'_>, peer_id: &str) -> Result<String> {
+    let identity = proxy.get_identity().await.context("get daemon identity")?;
+    let local = identity_value(&identity, ipc::IDENTITY_NODE_ID);
+    let local = local
+        .parse::<NodeId>()
+        .context("daemon returned an invalid node id")?;
+    let peer = peer_id
+        .parse::<NodeId>()
+        .context("peer id is not a valid node id")?;
+    Ok(conversation_id(local, peer))
 }
 
 async fn run_pair(command: PairCommand) -> Result<()> {
@@ -313,6 +425,16 @@ fn identity_value(
 
 fn peer_value(peer: &std::collections::HashMap<String, zbus::OwnedVariant>, key: &str) -> String {
     peer.get(key)
+        .map(variant_text)
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn message_value(
+    message: &std::collections::HashMap<String, zbus::OwnedVariant>,
+    key: &str,
+) -> String {
+    message
+        .get(key)
         .map(variant_text)
         .unwrap_or_else(|| "unknown".to_owned())
 }
