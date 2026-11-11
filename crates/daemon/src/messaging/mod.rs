@@ -207,6 +207,10 @@ impl MessagingService {
             .await?)
     }
 
+    pub async fn count_messages(&self, conversation_id: &str) -> Result<u32, MessagingError> {
+        Ok(self.inner.database.count_history(conversation_id).await?)
+    }
+
     pub async fn mark_read(
         &self,
         conversation_id: &str,

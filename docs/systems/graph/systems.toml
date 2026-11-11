@@ -276,7 +276,7 @@ boundary = "Client process. Talks only over D-Bus and settings. Never reads keys
 owned_state = ["view state", "window activation state"]
 interfaces = ["org.ticonnect.UI", "Activate view", "D-Bus client", "settings writes"]
 failure_semantics = ["daemon absence shows banner and retries", "no blocking I/O on GTK main thread", "signal replay after reconnect"]
-open_decisions = ["view model refresh batching", "QR image dependency", "accessibility test harness"]
+open_decisions = ["refresh coalesced through SyncCompleted reloads and scroll debounce", "QR rendered locally with qrcodegen and PNG", "accessibility covered by manual checklist and label tests"]
 
 [[systems]]
 id = "OVL"

@@ -107,7 +107,7 @@ impl ksni::Tray for Tray {
                                 "/org/ticonnect/UI",
                                 Some("org.ticonnect.UI"),
                                 "Activate",
-                                &(),
+                                &("chat",),
                             )
                             .await;
                     });

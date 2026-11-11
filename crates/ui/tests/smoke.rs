@@ -1,23 +1,12 @@
-use std::fs;
-use std::process::Command;
+use ticonnect_ui::model::{ConversationModel, PeerListModel};
 
 #[test]
-fn ui_binary_exits_successfully() {
-    let dir = std::env::temp_dir().join(format!("ticonnect-smoke-ui-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("create smoke dir");
+fn models_start_empty() {
+    let peers = PeerListModel::default();
+    assert!(peers.is_empty());
+    assert!(peers.selected().is_none());
 
-    let output = Command::new(env!("CARGO_BIN_EXE_ticonnect-ui"))
-        .env_clear()
-        .env("TICONNECT_CONFIG_DIR", &dir)
-        .output()
-        .expect("run ui binary");
-
-    let _ = fs::remove_dir_all(&dir);
-
-    assert!(
-        output.status.success(),
-        "stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
+    let conversation = ConversationModel::default();
+    assert!(conversation.is_empty());
+    assert!(conversation.conversation_id().is_none());
 }

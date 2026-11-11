@@ -81,6 +81,10 @@ async fn message_insert_history_and_state_are_transactional() {
         .await
         .expect("history");
     assert_eq!(history.len(), 1);
+    assert_eq!(
+        database.count_history(&conversation).await.expect("count"),
+        1
+    );
     assert_eq!(history[0].record.body.as_deref(), Some("hello"));
 
     assert!(

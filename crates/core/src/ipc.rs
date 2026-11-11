@@ -24,6 +24,7 @@ pub const PEER_POLICY: &str = "policy";
 pub const PEER_TRUSTED_AT: &str = "trusted_at";
 pub const PEER_LAST_SEEN: &str = "last_seen";
 pub const PEER_ADDRESS: &str = "address";
+pub const PEER_CONNECTED: &str = "connected";
 
 pub const PAIRING_PIN: &str = "pin";
 pub const PAIRING_QR: &str = "qr";
@@ -80,6 +81,7 @@ pub mod methods {
     pub const LIST_TRUSTED_PEERS: &str = "ListTrustedPeers";
     pub const SEND_MESSAGE: &str = "SendMessage";
     pub const LIST_MESSAGES: &str = "ListMessages";
+    pub const COUNT_MESSAGES: &str = "CountMessages";
     pub const MARK_READ: &str = "MarkRead";
     pub const GET_MESSAGE_STATE: &str = "GetMessageState";
     pub const SET_PEER_POLICY: &str = "SetPeerPolicy";
@@ -108,3 +110,5 @@ pub mod errors {
     pub const FAILED: &str = "org.ticonnect.Daemon.Error.Failed";
     pub const NOT_FOUND: &str = "org.ticonnect.Daemon.Error.NotFound";
 }
+
+pub mod client;

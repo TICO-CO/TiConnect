@@ -142,6 +142,15 @@ pub fn get(connection: &Connection, id: &str) -> Result<Option<StoredMessage>, S
         .map_err(Into::into)
 }
 
+pub fn count(connection: &Connection, conversation_id: &str) -> Result<u32, StorageError> {
+    let count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1 AND kind != 'ack'",
+        params![conversation_id],
+        |row| row.get(0),
+    )?;
+    u32::try_from(count).map_err(|_| StorageError::InvalidData("message count overflow".to_owned()))
+}
+
 pub fn history(
     connection: &Connection,
     conversation_id: &str,

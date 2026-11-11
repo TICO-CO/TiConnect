@@ -17,6 +17,7 @@ fn methods_and_signals_match_the_documented_contract() {
     assert_eq!(ipc::methods::GET_SETTING, "GetSetting");
     assert_eq!(ipc::methods::LIST_SETTINGS, "ListSettings");
     assert_eq!(ipc::methods::LIST_PEERS, "ListPeers");
+    assert_eq!(ipc::methods::COUNT_MESSAGES, "CountMessages");
     assert_eq!(ipc::methods::START_PAIRING, "StartPairing");
     assert_eq!(ipc::methods::PAIR_WITH_PIN, "PairWithPin");
     assert_eq!(ipc::methods::PAIR_WITH_QR, "PairWithQr");
@@ -54,4 +55,5 @@ fn status_and_identity_keys_are_stable() {
     assert_eq!(ipc::IDENTITY_NODE_ID, "node_id");
     assert_eq!(ipc::IDENTITY_FINGERPRINT, "fingerprint");
     assert_eq!(ipc::IDENTITY_DISPLAY_NAME, "display_name");
+    assert_eq!(ipc::PEER_CONNECTED, "connected");
 }

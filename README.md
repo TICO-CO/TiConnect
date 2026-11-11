@@ -8,16 +8,18 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, 3, 4, 5, and 6 are implemented. Stage 2 automation is implemented,
-with manual systemd/logout verification pending. Stage 4 discovery is
-implemented, with manual two-machine LAN verification pending. This includes
-workspace, settings, logging, typed errors, the architecture graph, the D-Bus
+Stages 1, 1.5, 3, 4, 5, 6, and 7 are implemented. Stage 2 automation is
+implemented, with manual systemd/logout verification pending. Stage 4 discovery
+is implemented, with manual two-machine LAN verification pending. Stage 7 GTK4
+UI is implemented, with manual X11/Wayland and accessibility checks pending.
+This includes workspace, settings, logging, typed errors, the architecture graph, the D-Bus
 daemon, the CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage,
 settings reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast
 fallback, a discovery candidate cache, SPAKE2 PIN and QR pairing, pinned
 QUIC/TLS transport, trusted peer revocation, automatic reconnect for trusted
 peers, signed text messages, history, outbox retry, gap sync, delivered and read
-receipts, per-peer policy, DND, and an optional system tray. The UI, overlay,
+receipts, per-peer policy, DND, an optional system tray, and a GTK4 main window
+with peers, conversations, settings, and PIN/QR pairing. The overlay,
 attachments, calls, and remote desktop stages are not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
@@ -56,6 +58,12 @@ cargo audit
 cargo xtask systems --check
 ```
 
+The GTK4 UI needs development headers:
+
+```sh
+sudo apt install libgtk-4-dev libadwaita-1-dev
+```
+
 Architecture docs are generated. After editing `docs/systems/graph/` or
 `docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
@@ -92,7 +100,37 @@ cargo run --bin ticonnect-ovl
 `ticonnect-cli` talks to the daemon for status, identity, peers, discovery,
 pairing, messaging, policy, ping, and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
-directly. The UI and overlay binaries initialize runtime services and exit.
+directly. `ticonnect-ui` opens the GTK4 window and talks to the daemon only over
+D-Bus. The overlay binary initializes runtime services and exits until Stage 8.
+
+## UI
+
+`ticonnect-ui` is a separate process. It never reads keys, the database, or the
+network directly. Closing the window stops only the UI; the daemon keeps
+receiving messages.
+
+The UI owns `org.ticonnect.UI` on the session bus and exposes
+`Activate(s view)`. Views are `peers`, `chat`, `settings`, and `pairing`; an
+empty value means `chat`. The tray uses `Activate("chat")`. Starting a second UI
+forwards activation to the running instance.
+
+Keyboard shortcuts:
+
+| Shortcut | Action |
+|---|---|
+| `Enter` | Send message |
+| `Shift+Enter` | Insert a newline |
+| `Ctrl+,` | Settings |
+| `Ctrl+N` | Pair a device |
+| `Ctrl+1` | Peers |
+| `Ctrl+2` | Conversation |
+| `Ctrl+Q` | Quit the UI |
+| `Escape` | Close a dialog |
+
+Settings are written directly to `config.toml` through `ticonnect-settings`; the
+daemon reloads the file and emits `SettingsChanged`. Autostart is controlled by
+the XDG entry at `$XDG_CONFIG_HOME/autostart/ticonnect.desktop`. The UI never
+calls a `SetSetting` D-Bus method.
 
 ## Configuration
 

@@ -12,6 +12,7 @@ build_deps = [
   { from = "ticonnect-runtime", to = "ticonnect-settings" },
   { from = "ticonnect-ui", to = "ticonnect-core" },
   { from = "ticonnect-ui", to = "ticonnect-runtime" },
+  { from = "ticonnect-ui", to = "ticonnect-settings" },
   { from = "ticonnect-overlay", to = "ticonnect-core" },
   { from = "ticonnect-overlay", to = "ticonnect-runtime" },
   { from = "ticonnect-cli", to = "ticonnect-core" },

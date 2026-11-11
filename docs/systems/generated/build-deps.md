@@ -24,6 +24,7 @@ flowchart LR
   p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_settings["ticonnect-settings"]
   p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_runtime["ticonnect-runtime"]
+  p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_settings["ticonnect-settings"]
 ```
 
 | From | To |
@@ -46,6 +47,7 @@ flowchart LR
 | `ticonnect-runtime` | `ticonnect-settings` |
 | `ticonnect-ui` | `ticonnect-core` |
 | `ticonnect-ui` | `ticonnect-runtime` |
+| `ticonnect-ui` | `ticonnect-settings` |
 
 ## Build rules
 

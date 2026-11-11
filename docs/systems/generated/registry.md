@@ -207,20 +207,20 @@
 | `TX.streams` | `TX` | Stream registry | `module` | `crates/net/src/transport/session.rs` | 5 | open streams | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.tls-cert` | `TX` | TLS certificate | `module` | `crates/net/src/tls.rs` | 5 | self-signed certificate | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
 | `TX.verifier` | `TX` | Certificate verifier | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
-| `UI.a11y` | `UI` | Accessibility | `module` | `crates/ui/src/app.rs` | 7 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/a11y.rs |
-| `UI.activate` | `UI` | Activation service | `module` | `crates/ui/src/app.rs` | 7 | activation view | docs/systems/20-ui.md#components | planned: crates/ui/tests/activation.rs |
+| `UI.a11y` | `UI` | Accessibility | `module` | `crates/ui/src/app.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/a11y.rs |
+| `UI.activate` | `UI` | Activation service | `module` | `crates/ui/src/app.rs` | 7 | activation view | docs/systems/20-ui.md#components | crates/ui/tests/activation.rs |
 | `UI.attachments` | `UI` | Attachment widgets | `module` | `crates/ui/src/views/chat.rs` | 9 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/attachments.rs |
 | `UI.call` | `UI` | Call view | `module` | `crates/ui/src/views/call.rs` | 10 | call view state | docs/systems/20-ui.md#components | planned: crates/ui/tests/call.rs |
-| `UI.client` | `UI` | D-Bus client | `module` | `crates/ui/src/client.rs` | 7 | connection state | docs/systems/20-ui.md#components | planned: crates/ui/tests/client.rs |
-| `UI.composer` | `UI` | Composer | `module` | `crates/ui/src/views/chat.rs` | 7 | draft state | docs/systems/20-ui.md#components | planned: crates/ui/tests/chat.rs |
-| `UI.conversation` | `UI` | Conversation model | `module` | `crates/ui/src/views/chat.rs` | 7 | message model | docs/systems/20-ui.md#components | planned: crates/ui/tests/chat.rs |
-| `UI.pairing` | `UI` | Pairing view | `module` | `crates/ui/src/views/pairing.rs` | 7 | pairing dialog state | docs/systems/20-ui.md#components | planned: crates/ui/tests/pairing.rs |
-| `UI.peers` | `UI` | Peer list model | `module` | `crates/ui/src/views/peers.rs` | 7 | peer model | docs/systems/20-ui.md#components | planned: crates/ui/tests/peers.rs |
-| `UI.reconnect` | `UI` | Reconnect handling | `module` | `crates/ui/src/client.rs` | 7 | retry timer | docs/systems/20-ui.md#components | planned: crates/ui/tests/reconnect.rs |
+| `UI.client` | `UI` | D-Bus client | `module` | `crates/ui/src/client.rs` | 7 | connection state | docs/systems/20-ui.md#components | crates/ui/tests/client.rs |
+| `UI.composer` | `UI` | Composer | `module` | `crates/ui/src/views/chat.rs` | 7 | draft state | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
+| `UI.conversation` | `UI` | Conversation model | `module` | `crates/ui/src/views/chat.rs` | 7 | message model | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
+| `UI.pairing` | `UI` | Pairing view | `module` | `crates/ui/src/views/pairing.rs` | 7 | pairing dialog state | docs/systems/20-ui.md#components | crates/ui/tests/pairing.rs |
+| `UI.peers` | `UI` | Peer list model | `module` | `crates/ui/src/views/peers.rs` | 7 | peer model | docs/systems/20-ui.md#components | crates/ui/tests/peers.rs |
+| `UI.reconnect` | `UI` | Reconnect handling | `module` | `crates/ui/src/client.rs` | 7 | retry timer | docs/systems/20-ui.md#components | crates/ui/tests/reconnect.rs |
 | `UI.remote` | `UI` | Remote view | `module` | `crates/ui/src/views/remote.rs` | 11 | frame view state | docs/systems/20-ui.md#components | planned: crates/ui/tests/remote.rs |
-| `UI.settings` | `UI` | Settings view | `module` | `crates/ui/src/views/settings.rs` | 7 | settings form state | docs/systems/20-ui.md#components | planned: crates/ui/tests/settings.rs |
-| `UI.shell` | `UI` | Application shell | `module` | `crates/ui/src/app.rs` | 7 | window state | docs/systems/20-ui.md#components | planned: crates/ui/tests/shell.rs |
-| `UI.state-view` | `UI` | Message state view | `module` | `crates/ui/src/views/chat.rs` | 7 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/chat.rs |
+| `UI.settings` | `UI` | Settings view | `module` | `crates/ui/src/views/settings.rs` | 7 | settings form state | docs/systems/20-ui.md#components | crates/ui/tests/settings.rs |
+| `UI.shell` | `UI` | Application shell | `module` | `crates/ui/src/app.rs` | 7 | window state | docs/systems/20-ui.md#components | crates/ui/tests/shell.rs |
+| `UI.state-view` | `UI` | Message state view | `module` | `crates/ui/src/views/chat.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
 | `VID.config` | `VID` | Encoder config | `module` | `crates/media/src/h264/mod.rs` | 11 | encoder config | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.decoder` | `VID` | H264 decoder | `module` | `crates/media/src/h264/decoder.rs` | 11 | decoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.encoder` | `VID` | H264 encoder | `module` | `crates/media/src/h264/encoder.rs` | 11 | encoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |

@@ -296,7 +296,13 @@ impl DaemonService {
             .list_peers()
             .await
             .map_err(database_error)?;
-        Ok(peers.into_iter().map(peer_variant).collect())
+        Ok(peers
+            .into_iter()
+            .map(|peer| {
+                let connected = peer_is_connected(&self.state, &peer.id);
+                peer_variant(peer, connected)
+            })
+            .collect())
     }
 
     async fn list_candidates(&self) -> Vec<HashMap<String, OwnedVariant>> {
@@ -391,7 +397,13 @@ impl DaemonService {
             .list_trusted_peers()
             .await
             .map_err(pairing_error)?;
-        Ok(peers.into_iter().map(peer_variant).collect())
+        Ok(peers
+            .into_iter()
+            .map(|peer| {
+                let connected = peer_is_connected(&self.state, &peer.id);
+                peer_variant(peer, connected)
+            })
+            .collect())
     }
 
     async fn send_message(&self, peer_id: &str, body: &str) -> Result<String, ServiceError> {
@@ -417,6 +429,14 @@ impl DaemonService {
             .await
             .map_err(messaging_error)?;
         Ok(messages.into_iter().map(stored_message_variant).collect())
+    }
+
+    async fn count_messages(&self, conversation_id: &str) -> Result<u32, ServiceError> {
+        self.state
+            .messaging()
+            .count_messages(conversation_id)
+            .await
+            .map_err(messaging_error)
     }
 
     async fn mark_read(
@@ -660,7 +680,7 @@ fn string_variant(value: String) -> OwnedVariant {
     OwnedVariant::from(Str::from(value))
 }
 
-fn peer_variant(peer: Peer) -> HashMap<String, OwnedVariant> {
+fn peer_variant(peer: Peer, connected: bool) -> HashMap<String, OwnedVariant> {
     HashMap::from([
         (ipc::PEER_ID.to_owned(), string_variant(peer.id)),
         (
@@ -685,7 +705,19 @@ fn peer_variant(peer: Peer) -> HashMap<String, OwnedVariant> {
                 u64::try_from(peer.last_seen.unwrap_or_default()).unwrap_or_default(),
             ),
         ),
+        (
+            ipc::PEER_CONNECTED.to_owned(),
+            OwnedVariant::from(connected),
+        ),
     ])
+}
+
+fn peer_is_connected(state: &DaemonState, peer_id: &str) -> bool {
+    peer_id
+        .parse::<ticonnect_core::id::NodeId>()
+        .ok()
+        .and_then(|node_id| state.transport().session_by_node_id(node_id))
+        .is_some()
 }
 
 pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVariant> {

@@ -31,10 +31,32 @@ fails to acquire the name and exits non-zero.
 | `CancelPairing` | `() -> ()` | Cancels the active pairing session. |
 | `ForgetPeer` | `(s) -> b` | Removes trust and closes an active session. |
 | `ListTrustedPeers` | `() -> aa{sv}` | Returns trusted peers. |
+| `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
+| `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
+| `CountMessages` | `(s) -> u` | Returns the number of stored text messages in a conversation. |
+| `MarkRead` | `(s as) -> ()` | Marks inbound messages read and queues receipts. |
+| `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
+| `SetPeerPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one peer. |
+| `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
 Settings writes do not use D-Bus. Any process may update `config.toml` through
 `ticonnect-settings`; the daemon reloads it and emits `SettingsChanged`.
+
+## UI service
+
+The GTK UI owns `org.ticonnect.UI` on the session bus.
+
+- Bus name: `org.ticonnect.UI`
+- Object path: `/org/ticonnect/UI`
+- Interface: `org.ticonnect.UI`
+
+| Method | Signature | Behavior |
+|---|---|---|
+| `Activate` | `(s) -> ()` | Raises the window and switches to `peers`, `chat`, `settings`, or `pairing`. Empty means `chat`; unknown views return `InvalidArgs`. |
+
+The tray uses `Activate("chat")`. Closing the UI does not affect the daemon.
+Starting a second UI forwards `Activate("chat")` to the running instance and exits.
 
 ## Properties
 
@@ -56,6 +78,10 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 | `PairingFailed(s)` | With a stable reason when pairing fails. |
 | `PeerConnected(a{sv})` | When a trusted QUIC session becomes active. |
 | `PeerDisconnected(a{sv})` | When a trusted QUIC session closes. |
+| `MessageReceived(a{sv})` | When an inbound message is stored. |
+| `MessageStateChanged(ss)` | When a message state changes. |
+| `SyncCompleted(su)` | When gap sync finishes for a peer. |
+| `PolicyChanged(ss)` | When a peer policy changes. |
 
 ## Status keys
 
@@ -103,8 +129,9 @@ empty strings. Discovery candidate addresses are comma-separated strings.
 ## Peer keys
 
 `ListPeers` returns one map per peer with `id`, `fingerprint`, `display_name`,
-`policy`, `trusted_at`, and `last_seen`. `policy` is `accept`, `mute`, or
-`ignore`. `last_seen` is `0` when unset.
+`policy`, `trusted_at`, `last_seen`, and `connected`. `policy` is `accept`,
+`mute`, or `ignore`. `last_seen` is `0` when unset. `connected` is true when an
+active transport session exists for that node.
 
 ## Candidate keys
 

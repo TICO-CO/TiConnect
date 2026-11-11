@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TiConnect
+Comment=LAN-only messaging
+Exec=ticonnect-ui
+Icon=org.ticonnect.UI
+Terminal=false
+Categories=Network;InstantMessaging;
+StartupNotify=true

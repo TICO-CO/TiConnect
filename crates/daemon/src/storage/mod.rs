@@ -65,6 +65,7 @@ enum Command {
         offset: u32,
         reply: Reply<Vec<StoredMessage>>,
     },
+    CountHistory(String, Reply<u32>),
     RecordsBetween {
         conversation_id: String,
         from_seq: u64,
@@ -280,6 +281,12 @@ impl DatabaseHandle {
             offset,
             reply,
         })?;
+        receive(receiver).await
+    }
+
+    pub async fn count_history(&self, conversation_id: &str) -> Result<u32, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::CountHistory(conversation_id.to_owned(), reply))?;
         receive(receiver).await
     }
 
@@ -499,6 +506,9 @@ fn dispatch(connection: &Connection, command: Command) {
                 limit,
                 offset,
             ));
+        }
+        Command::CountHistory(conversation_id, reply) => {
+            let _ = reply.send(messages::count(connection, &conversation_id));
         }
         Command::RecordsBetween {
             conversation_id,

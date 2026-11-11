@@ -3,10 +3,10 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
-use ticonnect_cli::client::DaemonProxy;
 use ticonnect_cli::output::{candidate_line, status_human, status_json, variant_text};
 use ticonnect_core::id::NodeId;
 use ticonnect_core::ipc;
+use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::message::conversation_id;
 use ticonnect_settings::Settings;
 

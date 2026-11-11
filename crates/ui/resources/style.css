@@ -1,0 +1,42 @@
+.sidebar {
+  background-color: @sidebar_bg_color;
+  border-right: 1px solid alpha(@borders, 0.35);
+}
+
+.avatar {
+  background-color: alpha(@accent_bg_color, 0.18);
+  border-radius: 17px;
+  color: @accent_fg_color;
+  font-weight: 700;
+}
+
+.presence-online {
+  color: @success_color;
+}
+
+.presence-offline {
+  color: @insensitive_fg_color;
+}
+
+.message-bubble {
+  border-radius: 12px;
+  padding: 8px 11px;
+}
+
+.message-incoming {
+  background-color: alpha(@card_bg_color, 0.9);
+  border: 1px solid alpha(@borders, 0.35);
+}
+
+.message-outgoing {
+  background-color: alpha(@accent_bg_color, 0.22);
+  border: 1px solid alpha(@accent_bg_color, 0.35);
+}
+
+.error {
+  color: @error_color;
+}
+
+.monospace {
+  font-family: monospace;
+}

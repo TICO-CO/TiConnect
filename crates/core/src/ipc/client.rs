@@ -31,6 +31,7 @@ pub trait Daemon {
         limit: u32,
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn count_messages(&self, conversation_id: &str) -> zbus::Result<u32>;
     fn mark_read(&self, conversation_id: &str, message_ids: &[&str]) -> zbus::Result<()>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
@@ -69,4 +70,7 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn policy_changed(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn settings_changed(&self, key: &str) -> zbus::Result<()>;
 }

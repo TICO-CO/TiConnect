@@ -182,7 +182,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 - [ ] Stage 4 — Discovery
 - [x] Stage 5 — Pairing & transport
 - [x] Stage 6 — Messaging
-- [ ] Stage 7 — GTK4 UI
+- [ ] Stage 7 — GTK4 UI (automation complete; manual X11/Wayland and accessibility checks pending)
 - [ ] Stage 8 — Overlay & notifications
 - [ ] Stage 9 — Attachments
 - [ ] Stage 10 — Voice calls

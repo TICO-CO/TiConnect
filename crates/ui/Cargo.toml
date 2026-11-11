@@ -12,5 +12,16 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+futures-util.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+png.workspace = true
+qrcodegen.workspace = true
+relm4.workspace = true
+thiserror.workspace = true
 ticonnect-core.workspace = true
 ticonnect-runtime.workspace = true
+ticonnect-settings.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tracing.workspace = true
+zbus.workspace = true

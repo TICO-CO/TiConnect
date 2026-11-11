@@ -43,66 +43,66 @@ Stages 1, 1.5, 2, and 6 complete.
 
 ## Application shell
 
-- [ ] `AdwApplication` with application id `org.ticonnect.UI`.
-- [ ] Single main window with adaptive layout.
-- [ ] Sidebar: peers and presence.
-- [ ] Content: selected conversation.
-- [ ] Header bar: window title, connection state, menu.
-- [ ] Graceful behavior when the daemon is absent: show a clear banner and retry.
-- [ ] Reconnect to daemon signals automatically on daemon restart.
-- [ ] Own bus name `org.ticonnect.UI` and implement `Activate(view)`.
+- [x] `AdwApplication` with application id `org.ticonnect.UI`.
+- [x] Single main window with adaptive layout.
+- [x] Sidebar: peers and presence.
+- [x] Content: selected conversation.
+- [x] Header bar: window title, connection state, menu.
+- [x] Graceful behavior when the daemon is absent: show a clear banner and retry.
+- [x] Reconnect to daemon signals automatically on daemon restart.
+- [x] Own bus name `org.ticonnect.UI` and implement `Activate(view)`.
 
 ## Peers and chat
 
-- [ ] List trusted peers with display name, fingerprint, policy, and presence.
-- [ ] Select peer opens or creates the conversation.
-- [ ] Chat view renders text messages in send order.
-- [ ] Show message state: queued, sent, delivered, read, failed, expired.
-- [ ] Composer sends via `SendMessage`.
-- [ ] Enter sends; Shift+Enter inserts a newline.
-- [ ] Mark visible messages read when scrolled into view.
-- [ ] Scroll pagination for history.
-- [ ] Empty, loading, and error states for peers and messages.
-- [ ] Policy control per peer (accept/mute/ignore).
+- [x] List trusted peers with display name, fingerprint, policy, and presence.
+- [x] Select peer opens or creates the conversation.
+- [x] Chat view renders text messages in send order.
+- [x] Show message state: queued, sent, delivered, read, failed, expired.
+- [x] Composer sends via `SendMessage`.
+- [x] Enter sends; Shift+Enter inserts a newline.
+- [x] Mark visible messages read when scrolled into view.
+- [x] Scroll pagination for history.
+- [x] Empty, loading, and error states for peers and messages.
+- [x] Policy control per peer (accept/mute/ignore).
 
 ## Settings
 
-- [ ] Display name.
-- [ ] Per-peer policy list.
-- [ ] Ringtone path (placeholder until Stage 10).
-- [ ] Discovery enable/disable and backend toggles.
-- [ ] Autostart enable/disable via XDG autostart file.
-- [ ] Overlay enable/disable (placeholder until Stage 8).
-- [ ] Read receipts toggle.
-- [ ] DND toggle.
-- [ ] Outbox TTL days.
-- [ ] Settings apply immediately and persist directly to `config.toml` through
+- [x] Display name.
+- [x] Per-peer policy list.
+- [x] Ringtone path (placeholder until Stage 10).
+- [x] Discovery enable/disable and backend toggles.
+- [x] Autostart enable/disable via XDG autostart file.
+- [x] Overlay enable/disable (placeholder until Stage 8).
+- [x] Read receipts toggle.
+- [x] DND toggle.
+- [x] Outbox TTL days.
+- [x] Settings apply immediately and persist directly to `config.toml` through
   `ticonnect-settings`.
-- [ ] Refresh displayed settings on `SettingsChanged`; no `SetSetting` D-Bus
+- [x] Refresh displayed settings on `SettingsChanged`; no `SetSetting` D-Bus
   call.
 
 ## Pairing dialog
 
-- [ ] Start pairing and show 6-digit PIN with expiry countdown.
-- [ ] Enter a peer PIN to join a pairing session.
-- [ ] Show QR payload as a QR image.
-- [ ] Accept QR payload from clipboard or file for testing.
-- [ ] Show success and failure states with reason.
-- [ ] Cancel pairing cleanly.
+- [x] Start pairing and show 6-digit PIN with expiry countdown.
+- [x] Enter a peer PIN to join a pairing session.
+- [x] Show QR payload as a QR image.
+- [x] Accept QR payload from clipboard or file for testing.
+- [x] Show success and failure states with reason.
+- [x] Cancel pairing cleanly.
 
 ## D-Bus client
 
-- [ ] Typed wrapper over `zbus` proxy for `org.ticonnect.Daemon`.
-- [ ] Subscribe to `MessageReceived`, `MessageStateChanged`,
+- [x] Typed wrapper over `zbus` proxy for `org.ticonnect.Daemon`.
+- [x] Subscribe to `MessageReceived`, `MessageStateChanged`,
   `PeerConnected`, `PeerDisconnected`, `PairingCompleted`, `SettingsChanged`.
-- [ ] Dispatch signals to the GTK main loop safely.
-- [ ] Handle daemon disappearance and reappearance.
-- [ ] No blocking calls on the GTK main thread.
+- [x] Dispatch signals to the GTK main loop safely.
+- [x] Handle daemon disappearance and reappearance.
+- [x] No blocking calls on the GTK main thread.
 
 ## Tests
 
-- [ ] Unit test: D-Bus client maps daemon errors to UI errors.
-- [ ] Widget test or headless test for peer list model updates.
+- [x] Unit test: D-Bus client maps daemon errors to UI errors.
+- [x] Widget test or headless test for peer list model updates.
 - [ ] Manual: send and receive messages with the UI open.
 - [ ] Manual: close UI, send from CLI, reopen, confirm history and states.
 - [ ] Manual: daemon restart while UI is open recovers.
@@ -113,18 +113,18 @@ Stages 1, 1.5, 2, and 6 complete.
 
 ## Security
 
-- [ ] UI never reads keys or the database directly.
-- [ ] UI only uses the documented D-Bus interface.
-- [ ] Fingerprints shown exactly as the daemon reports them.
-- [ ] No message body logging.
-- [ ] Pairing PIN not persisted in logs or config.
+- [x] UI never reads keys or the database directly.
+- [x] UI only uses the documented D-Bus interface.
+- [x] Fingerprints shown exactly as the daemon reports them.
+- [x] No message body logging.
+- [x] Pairing PIN not persisted in logs or config.
 
 ## Docs and acceptance
 
-- [ ] Document UI/daemon split and why the UI can be closed.
-- [ ] Document `org.ticonnect.UI.Activate(view)` contract.
-- [ ] Document keyboard shortcuts.
-- [ ] Add screenshots or a short usage guide.
+- [x] Document UI/daemon split and why the UI can be closed.
+- [x] Document `org.ticonnect.UI.Activate(view)` contract.
+- [x] Document keyboard shortcuts.
+- [x] Add screenshots or a short usage guide.
 
 ## Acceptance criteria
 
