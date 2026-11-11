@@ -72,6 +72,7 @@
 - `DISC.beacon-codec` — Beacon codec (DISC)
 - `DISC.beacon-socket` — Beacon socket (DISC)
 - `DISC.candidates` — Candidate cache (DISC)
+- `DISC.dbus` — Discovery D-Bus adapter (DISC)
 - `DISC.filters` — Self and version filters (DISC)
 - `DISC.mdns-advertise` — mDNS advertiser (DISC)
 - `DISC.mdns-browse` — mDNS browser (DISC)

@@ -97,14 +97,15 @@
 | `DB.peers` | `DB` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | 3 | peers table | docs/systems/07-storage.md#components | crates/daemon/tests/peers.rs |
 | `DB.transfer-partials` | `DB` | Transfer partials repository | `module` | `crates/daemon/src/storage/transfers.rs` | 9 | transfer partials table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/transfers.rs |
 | `DB.tx` | `DB` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | 3 | active transaction | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
-| `DISC.beacon-codec` | `DISC` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` | 4 |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.beacon-socket` | `DISC` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | 4 | UDP socket | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.candidates` | `DISC` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | 4 | candidate cache | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.filters` | `DISC` | Self and version filters | `module` | `crates/net/src/discovery/candidate.rs` | 4 |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.mdns-advertise` | `DISC` | mDNS advertiser | `module` | `crates/net/src/discovery/mdns.rs` | 4 | advertised service | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.mdns-browse` | `DISC` | mDNS browser | `module` | `crates/net/src/discovery/mdns.rs` | 4 | browse handle | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.supervisor` | `DISC` | Backend supervisor | `module` | `crates/net/src/discovery/mod.rs` | 4 | backend tasks | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.txt-codec` | `DISC` | TXT codec | `module` | `crates/net/src/discovery/mdns.rs` | 4 |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
+| `DISC.beacon-codec` | `DISC` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` | 4 |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.beacon-socket` | `DISC` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | 4 | UDP socket | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.candidates` | `DISC` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | 4 | candidate cache | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.dbus` | `DISC` | Discovery D-Bus adapter | `module` | `crates/daemon/src/discovery_service.rs` | 4 | discovery signal subscription | docs/systems/08-discovery.md#components | crates/runtime/tests/dbus.rs |
+| `DISC.filters` | `DISC` | Self and version filters | `module` | `crates/net/src/discovery/candidate.rs` | 4 |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.mdns-advertise` | `DISC` | mDNS advertiser | `module` | `crates/net/src/discovery/mdns.rs` | 4 | advertised service | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.mdns-browse` | `DISC` | mDNS browser | `module` | `crates/net/src/discovery/mdns.rs` | 4 | browse handle | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.supervisor` | `DISC` | Backend supervisor | `module` | `crates/net/src/discovery/mod.rs` | 4 | backend tasks | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.txt-codec` | `DISC` | TXT codec | `module` | `crates/net/src/discovery/mdns.rs` | 4 |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
 | `DOM.ack` | `DOM` | Ack record | `module` | `crates/core/src/ack.rs` | 6 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ack.rs |
 | `DOM.attachment-ref` | `DOM` | Attachment reference | `module` | `crates/core/src/attachment.rs` | 9 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/attachment.rs |
 | `DOM.canonical` | `DOM` | Canonical encoding | `module` | `crates/core/src/canonical.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/canonical.rs |
@@ -262,7 +263,7 @@
 | `INV-AUD-1` | Microphone access starts only after call acceptance. | planned: crates/daemon/tests/calls.rs | 10 |
 | `INV-CFG-1` | Configuration lives only in config.toml and SQLite stores no configuration. | crates/settings/src/tests.rs and crates/daemon/tests/storage.rs | 1, 3 |
 | `INV-CFG-2` | Config writes are locked and atomically replace the file. | crates/settings/src/tests.rs | 1 |
-| `INV-DISC-1` | Discovery produces candidates only and never implies trust. | planned: crates/net/tests/discovery.rs | 4, 5 |
+| `INV-DISC-1` | Discovery produces candidates only and never implies trust. | crates/net/tests/discovery.rs | 4, 5 |
 | `INV-LIMIT-1` | Every queue, buffer, and frame decoder is bounded or declares its drop policy. | planned: design review plus fuzz tests | 5, 6, 9, 10, 11 |
 | `INV-MSG-1` | Message signatures are verified before storage, acknowledgement, or notification. | planned: crates/daemon/tests/messaging.rs | 6 |
 | `INV-MSG-2` | Messages are immutable and duplicate records are idempotent. | planned: crates/daemon/tests/messaging.rs | 6 |

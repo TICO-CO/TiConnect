@@ -10,6 +10,7 @@ flowchart LR
     n_disc_beacon_codec["DISC.beacon-codec<br/>Beacon codec"]
     n_disc_beacon_socket["DISC.beacon-socket<br/>Beacon socket"]
     n_disc_candidates["DISC.candidates<br/>Candidate cache"]
+    n_disc_dbus["DISC.dbus<br/>Discovery D-Bus adapter"]
     n_disc_filters["DISC.filters<br/>Self and version filters"]
     n_disc_mdns_advertise["DISC.mdns-advertise<br/>mDNS advertiser"]
     n_disc_mdns_browse["DISC.mdns-browse<br/>mDNS browser"]
@@ -18,8 +19,10 @@ flowchart LR
   end
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
+    n_cfg_watch["CFG.watch<br/>CFG"]
     n_id_fingerprint["ID.fingerprint<br/>ID"]
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
+    n_rt_lifecycle["RT.lifecycle<br/>RT"]
     n_tx_dialer["TX.dialer<br/>TX"]
   end
   n_disc_mdns_advertise -->|calls / sync: encode TXT| n_disc_txt_codec
@@ -31,13 +34,16 @@ flowchart LR
   n_disc_supervisor -.->|invokes / async: start beacon| n_disc_beacon_socket
   n_disc_mdns_browse -.->|emits / event: candidate found| n_disc_candidates
   n_disc_beacon_socket -.->|emits / event: beacon candidate| n_disc_candidates
-  n_disc_supervisor -.->|emits / event: CandidateFound and CandidateLost| n_ipc_signal_bus
+  n_disc_dbus -.->|emits / event: CandidateFound and CandidateLost| n_ipc_signal_bus
   n_disc_candidates -.->|emits / event: candidate available| n_tx_dialer
   n_disc_supervisor -->|calls / sync: advertise fingerprint| n_id_fingerprint
   n_disc_supervisor -.->|config-read / sync: discovery settings| n_cfg_file_store
   n_tx_dialer -.->|consumes / event: candidate available| n_disc_candidates
+  n_disc_supervisor -.->|emits / event: candidate and loss events| n_disc_dbus
+  n_rt_lifecycle -.->|invokes / async: start and stop discovery| n_disc_supervisor
+  n_cfg_watch -.->|invokes / async: reconfigure discovery| n_disc_dbus
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_id_fingerprint, n_ipc_signal_bus, n_tx_dialer external;
+  class n_cfg_file_store, n_cfg_watch, n_id_fingerprint, n_ipc_signal_bus, n_rt_lifecycle, n_tx_dialer external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -51,8 +57,11 @@ flowchart LR
 | `DISC.supervisor` | invokes | async | `DISC.beacon-socket` | start beacon |  |  | 4 |
 | `DISC.mdns-browse` | emits | event | `DISC.candidates` | candidate found |  |  | 4 |
 | `DISC.beacon-socket` | emits | event | `DISC.candidates` | beacon candidate |  |  | 4 |
-| `DISC.supervisor` | emits | event | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  | 4 |
+| `DISC.dbus` | emits | event | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  | 4 |
 | `DISC.candidates` | emits | event | `TX.dialer` | candidate available |  |  | 5 |
 | `DISC.supervisor` | calls | sync | `ID.fingerprint` | advertise fingerprint |  |  | 4 |
 | `DISC.supervisor` | config-read | sync | `CFG.file-store` | discovery settings |  |  | 4 |
 | `TX.dialer` | consumes | event | `DISC.candidates` | candidate available |  |  | 5 |
+| `DISC.supervisor` | emits | event | `DISC.dbus` | candidate and loss events |  |  | 4 |
+| `RT.lifecycle` | invokes | async | `DISC.supervisor` | start and stop discovery |  |  | 4 |
+| `CFG.watch` | invokes | async | `DISC.dbus` | reconfigure discovery |  |  | 4 |

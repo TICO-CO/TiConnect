@@ -2,8 +2,9 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use futures_util::StreamExt;
 use ticonnect_cli::client::DaemonProxy;
-use ticonnect_cli::output::{status_human, status_json, variant_text};
+use ticonnect_cli::output::{candidate_line, status_human, status_json, variant_text};
 use ticonnect_core::ipc;
 use ticonnect_settings::Settings;
 
@@ -47,6 +48,11 @@ enum Command {
         #[command(subcommand)]
         command: PeersCommand,
     },
+    /// Inspect discovery candidates.
+    Discover {
+        #[command(subcommand)]
+        command: DiscoverCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -69,6 +75,14 @@ enum SettingsCommand {
 enum PeersCommand {
     /// List known peers.
     List,
+}
+
+#[derive(Debug, Subcommand)]
+enum DiscoverCommand {
+    /// List discovered candidates.
+    List,
+    /// Print candidate found and lost events.
+    Watch,
 }
 
 #[tokio::main]
@@ -146,6 +160,54 @@ async fn run(command: Command) -> Result<()> {
                         peer_value(&peer, ipc::PEER_POLICY),
                         peer_value(&peer, ipc::PEER_DISPLAY_NAME)
                     );
+                }
+            }
+        }
+        Command::Discover { command } => run_discover(command).await?,
+    }
+    Ok(())
+}
+
+async fn run_discover(command: DiscoverCommand) -> Result<()> {
+    let proxy = connect().await?;
+    match command {
+        DiscoverCommand::List => {
+            let candidates = proxy.list_candidates().await.context("list candidates")?;
+            if candidates.is_empty() {
+                println!("no candidates");
+            } else {
+                for candidate in candidates {
+                    println!("{}", candidate_line(&candidate));
+                }
+            }
+        }
+        DiscoverCommand::Watch => {
+            let mut found = proxy
+                .receive_candidate_found()
+                .await
+                .context("subscribe to candidates")?;
+            let mut lost = proxy
+                .receive_candidate_lost()
+                .await
+                .context("subscribe to candidate loss")?;
+
+            loop {
+                tokio::select! {
+                    event = found.next() => {
+                        let Some(event) = event else {
+                            break;
+                        };
+                        let candidate = event.args().context("read candidate event")?;
+                        println!("found {}", candidate_line(&candidate.candidate));
+                    }
+                    event = lost.next() => {
+                        let Some(event) = event else {
+                            break;
+                        };
+                        let event = event.args().context("read candidate loss event")?;
+                        println!("lost {}", event.fingerprint);
+                    }
+                    _ = tokio::signal::ctrl_c() => break,
                 }
             }
         }

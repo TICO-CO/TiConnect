@@ -12,6 +12,7 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+futures-util.workspace = true
 ticonnect-core.workspace = true
 ticonnect-runtime.workspace = true
 ticonnect-settings.workspace = true

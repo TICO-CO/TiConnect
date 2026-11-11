@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use ticonnect_core::ipc;
+use ticonnect_net::discovery::candidate::Candidate;
+use ticonnect_net::discovery::{Discovery, DiscoveryConfig, LanDiscovery};
 use ticonnect_settings::{SettingValue, Settings};
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
@@ -27,6 +29,7 @@ pub struct DaemonState {
     identity: PublicIdentity,
     settings: RwLock<Settings>,
     database: DatabaseHandle,
+    discovery: Arc<LanDiscovery>,
 }
 
 impl DaemonState {
@@ -36,12 +39,14 @@ impl DaemonState {
         settings: Settings,
         database: DatabaseHandle,
     ) -> Self {
+        let discovery = Arc::new(LanDiscovery::new(discovery_config(&settings, &identity)));
         Self {
             started_at: Instant::now(),
             shutdown,
             identity,
             settings: RwLock::new(settings),
             database,
+            discovery,
         }
     }
 
@@ -57,6 +62,10 @@ impl DaemonState {
         &self.database
     }
 
+    pub fn discovery(&self) -> &Arc<LanDiscovery> {
+        &self.discovery
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings
             .read()
@@ -69,6 +78,13 @@ impl DaemonState {
             .settings
             .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = settings;
+    }
+
+    pub async fn reconfigure_discovery(&self) {
+        let config = discovery_config(&self.settings(), &self.identity);
+        if let Err(error) = self.discovery.reconfigure(config).await {
+            tracing::warn!(%error, "failed to reconfigure discovery");
+        }
     }
 }
 
@@ -187,6 +203,49 @@ impl DaemonService {
         Ok(peers.into_iter().map(peer_variant).collect())
     }
 
+    async fn list_candidates(&self) -> Vec<HashMap<String, OwnedVariant>> {
+        self.state
+            .discovery()
+            .snapshot()
+            .into_iter()
+            .map(candidate_variant)
+            .collect()
+    }
+
+    async fn get_discovery_status(&self) -> HashMap<String, OwnedVariant> {
+        let status = self.state.discovery().status();
+        HashMap::from([
+            (
+                ipc::DISCOVERY_ENABLED.to_owned(),
+                OwnedVariant::from(status.enabled),
+            ),
+            (
+                ipc::DISCOVERY_MDNS_ENABLED.to_owned(),
+                OwnedVariant::from(status.mdns_enabled),
+            ),
+            (
+                ipc::DISCOVERY_BROADCAST_ENABLED.to_owned(),
+                OwnedVariant::from(status.broadcast_enabled),
+            ),
+            (
+                ipc::DISCOVERY_MDNS_ACTIVE.to_owned(),
+                OwnedVariant::from(status.mdns_active),
+            ),
+            (
+                ipc::DISCOVERY_BROADCAST_ACTIVE.to_owned(),
+                OwnedVariant::from(status.broadcast_active),
+            ),
+            (
+                ipc::DISCOVERY_CANDIDATE_COUNT.to_owned(),
+                OwnedVariant::from(u32::try_from(status.candidate_count).unwrap_or_default()),
+            ),
+            (
+                ipc::DISCOVERY_DROPPED_PACKETS.to_owned(),
+                OwnedVariant::from(status.dropped_packets),
+            ),
+        ])
+    }
+
     fn shutdown(&self) -> Result<(), ServiceError> {
         if self.state.shutdown().is_requested() {
             return Err(ServiceError::Failed(
@@ -211,6 +270,15 @@ impl DaemonService {
 
     #[zbus(signal)]
     pub async fn settings_changed(emitter: SignalEmitter<'_>, key: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn candidate_found(
+        emitter: SignalEmitter<'_>,
+        candidate: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn candidate_lost(emitter: SignalEmitter<'_>, fingerprint: &str) -> zbus::Result<()>;
 }
 
 fn setting_variant(value: SettingValue) -> OwnedVariant {
@@ -253,6 +321,57 @@ fn peer_variant(peer: Peer) -> HashMap<String, OwnedVariant> {
             ),
         ),
     ])
+}
+
+pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::CANDIDATE_NODE_ID.to_owned(),
+            string_variant(candidate.node_id().to_owned()),
+        ),
+        (
+            ipc::CANDIDATE_FINGERPRINT.to_owned(),
+            string_variant(candidate.fingerprint().to_owned()),
+        ),
+        (
+            ipc::CANDIDATE_DISPLAY_NAME.to_owned(),
+            string_variant(candidate.display_name().to_owned()),
+        ),
+        (
+            ipc::CANDIDATE_ADDRESSES.to_owned(),
+            string_variant(candidate.addresses_display()),
+        ),
+        (
+            ipc::CANDIDATE_PORT.to_owned(),
+            OwnedVariant::from(u32::from(candidate.port())),
+        ),
+        (
+            ipc::CANDIDATE_PROTOCOL_VERSION.to_owned(),
+            OwnedVariant::from(u32::from(candidate.protocol_version())),
+        ),
+        (
+            ipc::CANDIDATE_SOURCE.to_owned(),
+            string_variant(candidate.source().as_str().to_owned()),
+        ),
+        (
+            ipc::CANDIDATE_LAST_SEEN.to_owned(),
+            OwnedVariant::from(candidate.last_seen_unix_ms()),
+        ),
+    ])
+}
+
+fn discovery_config(settings: &Settings, identity: &PublicIdentity) -> DiscoveryConfig {
+    let mut config = DiscoveryConfig::new(
+        settings.identity_display_name(),
+        identity.node_id().to_string(),
+        identity.fingerprint().to_hex(),
+    );
+    config.enabled = settings.discovery_enabled();
+    config.mdns = settings.discovery_mdns();
+    config.broadcast = settings.discovery_broadcast();
+    config.beacon_interval =
+        Duration::from_secs(u64::from(settings.discovery_beacon_interval_secs()));
+    config
 }
 
 fn database_error(error: StorageError) -> ServiceError {

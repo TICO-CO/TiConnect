@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ticonnect_core::ipc;
+use ticonnect_net::discovery::Discovery;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 use zbus::object_server::SignalEmitter;
 
 use crate::config_watch;
+use crate::discovery_service;
 use crate::service::{DaemonService, DaemonState};
 
 #[derive(Clone)]
@@ -64,9 +66,15 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
 
     let watcher =
         config_watch::spawn(connection.clone(), state.clone()).context("start config watcher")?;
+    if let Err(error) = state.discovery().start() {
+        tracing::warn!(%error, "failed to start discovery");
+    }
+    let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
 
     wait_for_shutdown(&connection, state.shutdown()).await?;
     watcher.abort();
+    state.discovery().stop_and_wait().await;
+    discovery_task.abort();
 
     if let Err(error) = emit_stopping(&connection).await {
         tracing::warn!(%error, "failed to emit DaemonStopping");

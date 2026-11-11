@@ -52,6 +52,7 @@ Depends on settings, logging, and daemon service wiring. Does not own domain sta
 | `RT.wiring` | `calls` | `sync` | `IPC.dispatch` | compose daemon service |  |  |
 | `RT.autostart` | `config-read` | `sync` | `CFG.file-store` | autostart setting |  |  |
 | `RT.supervisor` | `invokes` | `async` | `RT.lifecycle` | supervise lifecycle |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `DISC.supervisor` | start and stop discovery |  |  |
 
 ## Invariants
 

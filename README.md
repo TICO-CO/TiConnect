@@ -9,11 +9,13 @@ the UI was never opened.
 ## Status
 
 Stages 1, 1.5, and 3 are implemented. Stage 2 automation is implemented, with
-manual systemd/logout verification pending. This includes workspace, settings,
-logging, typed errors, the architecture graph, the D-Bus daemon, the CLI,
-systemd/autostart packaging, Ed25519 identity, SQLite storage, settings reload,
-and peer CRUD. Discovery, pairing, transport, messaging, and UI stages are not
-implemented yet.
+manual systemd/logout verification pending. Stage 4 discovery is implemented,
+with manual two-machine LAN verification pending. This includes workspace,
+settings, logging, typed errors, the architecture graph, the D-Bus daemon, the
+CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage, settings
+reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast fallback, and
+a discovery candidate cache. Pairing, transport, messaging, and UI stages are
+not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -66,13 +68,16 @@ cargo run --bin ticonnect-cli -- settings get dnd.enabled
 cargo run --bin ticonnect-cli -- settings set dnd.enabled true
 cargo run --bin ticonnect-cli -- settings list
 cargo run --bin ticonnect-cli -- peers list
+cargo run --bin ticonnect-cli -- discover list
+cargo run --bin ticonnect-cli -- discover watch
 cargo run --bin ticonnect-cli -- quit
 cargo run --bin ticonnect-ui
 cargo run --bin ticonnect-ovl
 ```
 
 `ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
-`ticonnect-cli` talks to the daemon for status, identity, peers, ping, and quit.
+`ticonnect-cli` talks to the daemon for status, identity, peers, discovery, ping,
+and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
 directly. The UI and overlay binaries initialize runtime services and exit.
 
@@ -102,7 +107,10 @@ Settings keys:
 | `log_format` | string | `human` | `human` or `json` |
 | `data_dir` | optional path | XDG data dir | Empty value clears it |
 | `identity.display_name` | string | empty | Shown by `id show` and `GetIdentity` |
-| `discovery.enabled` | bool | `true` | Reserved for Stage 4 |
+| `discovery.enabled` | bool | `true` | Enables discovery backends |
+| `discovery.mdns` | bool | `true` | Advertise and browse `_ticonnect._udp.local.` |
+| `discovery.broadcast` | bool | `true` | UDP broadcast fallback |
+| `discovery.beacon_interval_secs` | integer | `5` | Valid range `1..=3600` |
 | `overlay.enabled` | bool | `true` | Reserved for Stage 8 |
 | `read_receipts.enabled` | bool | `true` | Reserved for Stage 6 |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
@@ -138,6 +146,27 @@ Settings keys:
 - Configuration lives only in `config.toml`; SQLite stores no configuration.
 - Changing `data_dir` while the daemon is running does not move an existing database;
   it applies on the next start.
+
+## Discovery
+
+- Discovery advertises this node over mDNS service type `_ticonnect._udp.local.`
+  and browses for peers on the LAN.
+- TXT keys are `v` (protocol version), `id` (node id), `fp` (fingerprint),
+  `name` (display name), and `port` (transport port; `0` until Stage 5).
+- UDP broadcast is the IPv4 fallback. Beacons use port `45870` and are sent to
+  each interface broadcast address every `discovery.beacon_interval_secs`.
+- Candidates expire after three beacon intervals. Stopping discovery or losing a
+  candidate emits `CandidateLost`.
+- Discovery data is untrusted input. Candidates are hints only and never imply
+  pairing, trust, or authentication. Candidate caps, packet size limits, field
+  validation, self-filtering, and protocol version checks are always enforced.
+- A malformed packet is dropped and counted. mDNS failure does not prevent the
+  broadcast backend from running, and disabling mDNS leaves broadcast fallback.
+- Firewall expectations: allow UDP port `5353` for mDNS and UDP port `45870` for
+  broadcast discovery on the local network. Discovery never opens a transport
+  connection.
+- `ticonnect-cli discover list` prints current candidates. `discover watch`
+  prints `found` and `lost` events until interrupted.
 
 ## Documentation
 

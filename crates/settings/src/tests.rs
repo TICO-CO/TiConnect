@@ -321,12 +321,65 @@ fn nested_environment_override_uses_double_underscore() {
         jail.clear_env();
         jail.set_env("TICONNECT_DND__ENABLED", "true");
         jail.set_env("TICONNECT_OUTBOX__TTL_DAYS", "21");
+        jail.set_env("TICONNECT_DISCOVERY__MDNS", "false");
+        jail.set_env("TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS", "9");
 
         let path = jail.directory().join("missing.toml");
         let settings = Settings::load_from(&path).expect("valid settings");
 
         assert!(settings.dnd_enabled());
         assert_eq!(settings.outbox_ttl_days(), 21);
+        assert!(!settings.discovery_mdns());
+        assert_eq!(settings.discovery_beacon_interval_secs(), 9);
+        Ok(())
+    });
+}
+
+#[test]
+fn discovery_settings_round_trip() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        assert!(settings.discovery_enabled());
+        assert!(settings.discovery_mdns());
+        assert!(settings.discovery_broadcast());
+        assert_eq!(settings.discovery_beacon_interval_secs(), 5);
+
+        settings
+            .set_setting("discovery.enabled", "false")
+            .expect("set enabled");
+        settings
+            .set_setting("discovery.mdns", "false")
+            .expect("set mdns");
+        settings
+            .set_setting("discovery.broadcast", "false")
+            .expect("set broadcast");
+        settings
+            .set_setting("discovery.beacon_interval_secs", "17")
+            .expect("set interval");
+        settings.save().expect("save");
+
+        let settings = Settings::load_from(&path).expect("reload");
+        assert!(!settings.discovery_enabled());
+        assert!(!settings.discovery_mdns());
+        assert!(!settings.discovery_broadcast());
+        assert_eq!(settings.discovery_beacon_interval_secs(), 17);
+        Ok(())
+    });
+}
+
+#[test]
+fn invalid_discovery_interval_is_rejected() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.create_file("config.toml", "[discovery]\nbeacon_interval_secs = 0\n")?;
+
+        let path = jail.directory().join("config.toml");
+        let error = Settings::load_from(&path).expect_err("invalid interval");
+
+        assert!(matches!(error, crate::Error::InvalidSetting { .. }));
         Ok(())
     });
 }
@@ -404,6 +457,10 @@ fn key_api_rejects_unknown_and_invalid_values() {
         ));
         assert!(matches!(
             settings.set_setting("dnd.enabled", "maybe"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("discovery.beacon_interval_secs", "0"),
             Err(crate::Error::InvalidSetting { .. })
         ));
         Ok(())

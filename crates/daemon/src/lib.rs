@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod config_watch;
+pub mod discovery_service;
 pub mod identity;
 pub mod runtime;
 pub mod service;

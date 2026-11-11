@@ -53,6 +53,7 @@ flowchart LR
   n_call -->|emits / event| n_ipc
   n_call -->|calls / sync gate:POL.inbound| n_pol
   n_call -->|calls, invokes / async, sync| n_tx
+  n_cfg -->|invokes / async| n_disc
   n_cfg -->|emits / event| n_ipc
   n_cli -->|calls / sync| n_cfg
   n_cli -->|calls / sync| n_ipc
@@ -83,6 +84,7 @@ flowchart LR
   n_rd -->|calls, invokes / async, sync gate:RD.consent| n_tx
   n_rd -->|calls / sync gate:RD.consent| n_vid
   n_rt -->|calls, config-read / sync| n_cfg
+  n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
   n_tray -->|emits / event| n_ipc
@@ -119,7 +121,7 @@ flowchart LR
 | `IPC.dto` | `DOM.ids` | calls | sync | domain id mapping |  |  | 2 |
 | `ID.trust-store` | `DB.peers` | calls | sync | trusted peer rows |  |  | 5 |
 | `ID.key-load` | `CFG.file-store` | config-read | sync | config directory |  |  | 3 |
-| `DISC.supervisor` | `IPC.signal-bus` | emits | event | CandidateFound and CandidateLost |  |  | 4 |
+| `DISC.dbus` | `IPC.signal-bus` | emits | event | CandidateFound and CandidateLost |  |  | 4 |
 | `DISC.candidates` | `TX.dialer` | emits | event | candidate available |  |  | 5 |
 | `DISC.supervisor` | `ID.fingerprint` | calls | sync | advertise fingerprint |  |  | 4 |
 | `DISC.supervisor` | `CFG.file-store` | config-read | sync | discovery settings |  |  | 4 |
@@ -207,3 +209,5 @@ flowchart LR
 | `TRAY.item` | `IPC.signal-bus` | emits | event | tray status |  |  | 6 |
 | `CLI.daemon` | `IPC.client` | calls | sync | daemon proxy |  |  | 2 |
 | `CLI.settings` | `CFG.file-store` | calls | sync | settings read and write |  |  | 3 |
+| `RT.lifecycle` | `DISC.supervisor` | invokes | async | start and stop discovery |  |  | 4 |
+| `CFG.watch` | `DISC.dbus` | invokes | async | reconfigure discovery |  |  | 4 |

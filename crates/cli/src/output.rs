@@ -39,6 +39,23 @@ fn status_value(status: &HashMap<String, OwnedVariant>, key: &str) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
+pub fn candidate_line(candidate: &HashMap<String, OwnedVariant>) -> String {
+    format!(
+        "{} {} {} {} {}",
+        map_value(candidate, ipc::CANDIDATE_NODE_ID),
+        map_value(candidate, ipc::CANDIDATE_FINGERPRINT),
+        map_value(candidate, ipc::CANDIDATE_SOURCE),
+        map_value(candidate, ipc::CANDIDATE_ADDRESSES),
+        map_value(candidate, ipc::CANDIDATE_DISPLAY_NAME),
+    )
+}
+
+fn map_value(map: &HashMap<String, OwnedVariant>, key: &str) -> String {
+    map.get(key)
+        .map(display)
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
 pub fn variant_text(value: &OwnedVariant) -> String {
     display(value)
 }

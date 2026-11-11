@@ -17,6 +17,7 @@ flowchart LR
   end
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
+    n_disc_supervisor["DISC.supervisor<br/>DISC"]
     n_ipc_dispatch["IPC.dispatch<br/>IPC"]
     n_log_subscriber["LOG.subscriber<br/>LOG"]
   end
@@ -29,8 +30,9 @@ flowchart LR
   n_rt_wiring -->|calls / sync: compose daemon service| n_ipc_dispatch
   n_rt_autostart -.->|config-read / sync: autostart setting| n_cfg_file_store
   n_rt_supervisor -.->|invokes / async: supervise lifecycle| n_rt_lifecycle
+  n_rt_lifecycle -.->|invokes / async: start and stop discovery| n_disc_supervisor
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_ipc_dispatch, n_log_subscriber external;
+  class n_cfg_file_store, n_disc_supervisor, n_ipc_dispatch, n_log_subscriber external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -44,3 +46,4 @@ flowchart LR
 | `RT.wiring` | calls | sync | `IPC.dispatch` | compose daemon service |  |  | 2 |
 | `RT.autostart` | config-read | sync | `CFG.file-store` | autostart setting |  |  | 2 |
 | `RT.supervisor` | invokes | async | `RT.lifecycle` | supervise lifecycle |  |  | 2 |
+| `RT.lifecycle` | invokes | async | `DISC.supervisor` | start and stop discovery |  |  | 4 |

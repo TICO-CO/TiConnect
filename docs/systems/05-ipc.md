@@ -54,7 +54,7 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 | `IPC.client` | `calls` | `sync` | `IPC.errors` | map remote errors |  |  |
 | `IPC.signal-bus` | `calls` | `sync` | `IPC.dto` | signal payload |  |  |
 | `IPC.version` | `calls` | `sync` | `IPC.schema` | compatibility check |  |  |
-| `DISC.supervisor` | `emits` | `event` | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  |
+| `DISC.dbus` | `emits` | `event` | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  |
 | `PAIR.commit` | `emits` | `event` | `IPC.signal-bus` | PairingCompleted or PairingFailed |  |  |
 | `TX.session` | `emits` | `event` | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  |
 | `MSG.events` | `emits` | `event` | `IPC.signal-bus` | MessageReceived and MessageStateChanged |  |  |

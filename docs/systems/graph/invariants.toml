@@ -6,7 +6,7 @@ invariants = [
   { id = "INV-SEC-1", statement = "No secret, key, message body, or keystroke is logged by default.", test = "planned: logging redaction tests", stages = [1, 5, 6, 10, 11] },
   { id = "INV-TRUST-1", statement = "No non-pairing feature is reachable before trust is established.", test = "planned: crates/net/tests/unpaired_rejected.rs", stages = [5, 6, 9, 10, 11] },
   { id = "INV-TLS-1", statement = "Certificate pinning fails closed on unknown or mismatched fingerprints.", test = "planned: crates/net/tests/tls.rs", stages = [5] },
-  { id = "INV-DISC-1", statement = "Discovery produces candidates only and never implies trust.", test = "planned: crates/net/tests/discovery.rs", stages = [4, 5] },
+  { id = "INV-DISC-1", statement = "Discovery produces candidates only and never implies trust.", test = "crates/net/tests/discovery.rs", stages = [4, 5] },
   { id = "INV-MSG-1", statement = "Message signatures are verified before storage, acknowledgement, or notification.", test = "planned: crates/daemon/tests/messaging.rs", stages = [6] },
   { id = "INV-MSG-2", statement = "Messages are immutable and duplicate records are idempotent.", test = "planned: crates/daemon/tests/messaging.rs", stages = [6] },
   { id = "INV-POL-1", statement = "Ignore policy is enforced before storage; DND suppresses notifications but not storage.", test = "planned: crates/daemon/tests/policy.rs", stages = [6] },

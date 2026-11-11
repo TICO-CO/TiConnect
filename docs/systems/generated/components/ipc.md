@@ -20,7 +20,7 @@ flowchart LR
     n_call_state["CALL.state<br/>CALL"]
     n_cfg_watch["CFG.watch<br/>CFG"]
     n_cli_daemon["CLI.daemon<br/>CLI"]
-    n_disc_supervisor["DISC.supervisor<br/>DISC"]
+    n_disc_dbus["DISC.dbus<br/>DISC"]
     n_dom_ids["DOM.ids<br/>DOM"]
     n_msg_events["MSG.events<br/>MSG"]
     n_ovl_client["OVL.client<br/>OVL"]
@@ -46,7 +46,7 @@ flowchart LR
   n_ipc_client -->|calls / sync: map remote errors| n_ipc_errors
   n_ipc_signal_bus -->|calls / sync: signal payload| n_ipc_dto
   n_ipc_version -->|calls / sync: compatibility check| n_ipc_schema
-  n_disc_supervisor -.->|emits / event: CandidateFound and CandidateLost| n_ipc_signal_bus
+  n_disc_dbus -.->|emits / event: CandidateFound and CandidateLost| n_ipc_signal_bus
   n_pair_commit -.->|emits / event: PairingCompleted or PairingFailed| n_ipc_signal_bus
   n_tx_session -.->|emits / event: PeerConnected and PeerDisconnected| n_ipc_signal_bus
   n_msg_events -.->|emits / event: MessageReceived and MessageStateChanged| n_ipc_signal_bus
@@ -63,7 +63,7 @@ flowchart LR
   n_tray_item -.->|emits / event: tray status| n_ipc_signal_bus
   n_cli_daemon -->|calls / sync: daemon proxy| n_ipc_client
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_supervisor, n_dom_ids, n_msg_events, n_ovl_client, n_pair_commit, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_tx_session, n_ui_client external;
+  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_dbus, n_dom_ids, n_msg_events, n_ovl_client, n_pair_commit, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_tx_session, n_ui_client external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -79,7 +79,7 @@ flowchart LR
 | `IPC.client` | calls | sync | `IPC.errors` | map remote errors |  |  | 2 |
 | `IPC.signal-bus` | calls | sync | `IPC.dto` | signal payload |  |  | 2 |
 | `IPC.version` | calls | sync | `IPC.schema` | compatibility check |  |  | 2 |
-| `DISC.supervisor` | emits | event | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  | 4 |
+| `DISC.dbus` | emits | event | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  | 4 |
 | `PAIR.commit` | emits | event | `IPC.signal-bus` | PairingCompleted or PairingFailed |  |  | 5 |
 | `TX.session` | emits | event | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  | 5 |
 | `MSG.events` | emits | event | `IPC.signal-bus` | MessageReceived and MessageStateChanged |  |  | 6 |

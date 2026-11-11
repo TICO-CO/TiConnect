@@ -19,6 +19,7 @@ flowchart LR
   subgraph ext["External"]
     n_aud_ringtone["AUD.ringtone<br/>AUD"]
     n_cli_settings["CLI.settings<br/>CLI"]
+    n_disc_dbus["DISC.dbus<br/>DISC"]
     n_disc_supervisor["DISC.supervisor<br/>DISC"]
     n_id_key_load["ID.key-load<br/>ID"]
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
@@ -47,8 +48,9 @@ flowchart LR
   n_ui_settings -.->|consumes / event: SettingsChanged| n_cfg_watch
   n_ovl_client -.->|config-read / sync: overlay enabled| n_cfg_file_store
   n_cli_settings -->|calls / sync: settings read and write| n_cfg_file_store
+  n_cfg_watch -.->|invokes / async: reconfigure discovery| n_disc_dbus
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_aud_ringtone, n_cli_settings, n_disc_supervisor, n_id_key_load, n_ipc_signal_bus, n_ovl_client, n_pol_dnd, n_rt_autostart, n_rt_wiring, n_ui_settings external;
+  class n_aud_ringtone, n_cli_settings, n_disc_dbus, n_disc_supervisor, n_id_key_load, n_ipc_signal_bus, n_ovl_client, n_pol_dnd, n_rt_autostart, n_rt_wiring, n_ui_settings external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -72,3 +74,4 @@ flowchart LR
 | `UI.settings` | consumes | event | `CFG.watch` | SettingsChanged |  |  | 7 |
 | `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled |  |  | 8 |
 | `CLI.settings` | calls | sync | `CFG.file-store` | settings read and write |  |  | 3 |
+| `CFG.watch` | invokes | async | `DISC.dbus` | reconfigure discovery |  |  | 4 |

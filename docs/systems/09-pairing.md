@@ -58,7 +58,7 @@ Owns pairing state and endpoint. Unpaired peers can reach only this endpoint. Co
 
 ## Invariants
 
-- `INV-DISC-1` — Discovery produces candidates only and never implies trust. Test: planned: crates/net/tests/discovery.rs
+- `INV-DISC-1` — Discovery produces candidates only and never implies trust. Test: crates/net/tests/discovery.rs
 - `INV-LIMIT-1` — Every queue, buffer, and frame decoder is bounded or declares its drop policy. Test: planned: design review plus fuzz tests
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check

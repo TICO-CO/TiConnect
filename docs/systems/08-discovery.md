@@ -23,14 +23,15 @@ Owns sockets and candidate cache. Does not pair, connect, or authenticate. Emits
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `DISC.beacon-codec` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.beacon-socket` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | UDP socket | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.candidates` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | candidate cache | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.filters` | Self and version filters | `module` | `crates/net/src/discovery/candidate.rs` |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.mdns-advertise` | mDNS advertiser | `module` | `crates/net/src/discovery/mdns.rs` | advertised service | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.mdns-browse` | mDNS browser | `module` | `crates/net/src/discovery/mdns.rs` | browse handle | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.supervisor` | Backend supervisor | `module` | `crates/net/src/discovery/mod.rs` | backend tasks | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
-| `DISC.txt-codec` | TXT codec | `module` | `crates/net/src/discovery/mdns.rs` |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
+| `DISC.beacon-codec` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.beacon-socket` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | UDP socket | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.candidates` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | candidate cache | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.dbus` | Discovery D-Bus adapter | `module` | `crates/daemon/src/discovery_service.rs` | discovery signal subscription | docs/systems/08-discovery.md#components | crates/runtime/tests/dbus.rs |
+| `DISC.filters` | Self and version filters | `module` | `crates/net/src/discovery/candidate.rs` |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.mdns-advertise` | mDNS advertiser | `module` | `crates/net/src/discovery/mdns.rs` | advertised service | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.mdns-browse` | mDNS browser | `module` | `crates/net/src/discovery/mdns.rs` | browse handle | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.supervisor` | Backend supervisor | `module` | `crates/net/src/discovery/mod.rs` | backend tasks | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
+| `DISC.txt-codec` | TXT codec | `module` | `crates/net/src/discovery/mdns.rs` |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
 
 ## Interfaces
 
@@ -52,15 +53,18 @@ Owns sockets and candidate cache. Does not pair, connect, or authenticate. Emits
 | `DISC.supervisor` | `invokes` | `async` | `DISC.beacon-socket` | start beacon |  |  |
 | `DISC.mdns-browse` | `emits` | `event` | `DISC.candidates` | candidate found |  |  |
 | `DISC.beacon-socket` | `emits` | `event` | `DISC.candidates` | beacon candidate |  |  |
-| `DISC.supervisor` | `emits` | `event` | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  |
+| `DISC.dbus` | `emits` | `event` | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  |
 | `DISC.candidates` | `emits` | `event` | `TX.dialer` | candidate available |  |  |
 | `DISC.supervisor` | `calls` | `sync` | `ID.fingerprint` | advertise fingerprint |  |  |
 | `DISC.supervisor` | `config-read` | `sync` | `CFG.file-store` | discovery settings |  |  |
 | `TX.dialer` | `consumes` | `event` | `DISC.candidates` | candidate available |  |  |
+| `DISC.supervisor` | `emits` | `event` | `DISC.dbus` | candidate and loss events |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `DISC.supervisor` | start and stop discovery |  |  |
+| `CFG.watch` | `invokes` | `async` | `DISC.dbus` | reconfigure discovery |  |  |
 
 ## Invariants
 
-- `INV-DISC-1` — Discovery produces candidates only and never implies trust. Test: planned: crates/net/tests/discovery.rs
+- `INV-DISC-1` — Discovery produces candidates only and never implies trust. Test: crates/net/tests/discovery.rs
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
 
 ## Failure semantics
@@ -71,6 +75,6 @@ Owns sockets and candidate cache. Does not pair, connect, or authenticate. Emits
 
 ## Open decisions
 
-- candidate expiry policy
-- transport port advertisement
-- IPv6 scope
+- candidate expiry is three beacon intervals
+- transport port remains 0 until Stage 5
+- IPv6 discovery is deferred; Stage 4 is IPv4-only

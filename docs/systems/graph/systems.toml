@@ -108,7 +108,7 @@ boundary = "Owns sockets and candidate cache. Does not pair, connect, or authent
 owned_state = ["candidate cache"]
 interfaces = ["mDNS TXT records", "UDP beacon", "candidate list", "candidate signals"]
 failure_semantics = ["malformed packets dropped and counted", "candidate caps enforced", "mDNS failure falls back to broadcast"]
-open_decisions = ["candidate expiry policy", "transport port advertisement", "IPv6 scope"]
+open_decisions = ["candidate expiry is three beacon intervals", "transport port remains 0 until Stage 5", "IPv6 discovery is deferred; Stage 4 is IPv4-only"]
 
 [[systems]]
 id = "PAIR"

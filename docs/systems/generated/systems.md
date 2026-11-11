@@ -51,6 +51,7 @@ flowchart LR
   n_call -->|emits / event| n_ipc
   n_call -->|calls / sync gate:POL.inbound| n_pol
   n_call -->|calls, invokes / async, sync| n_tx
+  n_cfg -->|invokes / async| n_disc
   n_cfg -->|emits / event| n_ipc
   n_cli -->|calls / sync| n_cfg
   n_cli -->|calls / sync| n_ipc
@@ -81,6 +82,7 @@ flowchart LR
   n_rd -->|calls, invokes / async, sync gate:RD.consent| n_tx
   n_rd -->|calls / sync gate:RD.consent| n_vid
   n_rt -->|calls, config-read / sync| n_cfg
+  n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
   n_tray -->|emits / event| n_ipc
@@ -120,6 +122,7 @@ flowchart LR
 | `CALL` | `IPC` | emits | event |  | 1 |
 | `CALL` | `POL` | calls | sync | POL.inbound | 1 |
 | `CALL` | `TX` | calls, invokes | async, sync |  | 3 |
+| `CFG` | `DISC` | invokes | async |  | 1 |
 | `CFG` | `IPC` | emits | event |  | 1 |
 | `CLI` | `CFG` | calls | sync |  | 1 |
 | `CLI` | `IPC` | calls | sync |  | 1 |
@@ -150,6 +153,7 @@ flowchart LR
 | `RD` | `TX` | calls, invokes | async, sync | RD.consent | 3 |
 | `RD` | `VID` | calls | sync | RD.consent | 1 |
 | `RT` | `CFG` | calls, config-read | sync |  | 2 |
+| `RT` | `DISC` | invokes | async |  | 1 |
 | `RT` | `IPC` | calls | sync |  | 1 |
 | `RT` | `LOG` | calls | sync |  | 1 |
 | `TRAY` | `IPC` | emits | event |  | 1 |

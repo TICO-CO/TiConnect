@@ -23,6 +23,8 @@ fails to acquire the name and exits non-zero.
 | `GetSetting` | `(s) -> v` | Returns one effective setting; unknown keys return `NotFound`. |
 | `ListSettings` | `() -> a{sv}` | Returns all effective settings. |
 | `ListPeers` | `() -> aa{sv}` | Returns known peers; empty before pairing. |
+| `ListCandidates` | `() -> aa{sv}` | Returns current discovery candidates. |
+| `GetDiscoveryStatus` | `() -> a{sv}` | Returns discovery backend state and counters. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
 Settings writes do not use D-Bus. Any process may update `config.toml` through
@@ -41,6 +43,8 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 | `DaemonStarted` | After the bus name and objects are ready. |
 | `DaemonStopping` | Before the bus name is released. |
 | `SettingsChanged(s)` | Once per setting changed by a config reload. |
+| `CandidateFound(a{sv})` | When discovery adds or refreshes a candidate identity. |
+| `CandidateLost(s)` | When a candidate expires, is removed, or discovery stops. |
 
 ## Status keys
 
@@ -67,14 +71,45 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 
 `GetSetting` and `ListSettings` use the keys `log_level`, `log_file`,
 `log_format`, `data_dir`, `identity.display_name`, `discovery.enabled`,
+`discovery.mdns`, `discovery.broadcast`, `discovery.beacon_interval_secs`,
 `overlay.enabled`, `read_receipts.enabled`, `outbox.ttl_days`, `ringtone.path`,
 and `dnd.enabled`. Paths are strings; unset optional paths are empty strings.
+Discovery candidate addresses are comma-separated strings.
 
 ## Peer keys
 
 `ListPeers` returns one map per peer with `id`, `fingerprint`, `display_name`,
 `policy`, `trusted_at`, and `last_seen`. `policy` is `accept`, `mute`, or
 `ignore`. `last_seen` is `0` when unset.
+
+## Candidate keys
+
+`ListCandidates` and `CandidateFound` return one map per candidate:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `node_id` | `s` | Candidate UUIDv7 node id. |
+| `fingerprint` | `s` | Lowercase hex BLAKE3 fingerprint. |
+| `display_name` | `s` | Advertised display name, possibly empty. |
+| `addresses` | `s` | Comma-separated validated IP addresses. |
+| `port` | `u32` | Advertised transport port; `0` before Stage 5. |
+| `protocol_version` | `u32` | Discovery protocol version. |
+| `source` | `s` | `mdns` or `broadcast`. |
+| `last_seen` | `u64` | Unix milliseconds of the last sighting. |
+
+## Discovery status keys
+
+`GetDiscoveryStatus` returns:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `enabled` | `b` | Whether discovery is enabled. |
+| `mdns_enabled` | `b` | Whether mDNS is configured. |
+| `broadcast_enabled` | `b` | Whether UDP broadcast is configured. |
+| `mdns_active` | `b` | Whether the mDNS backend is running. |
+| `broadcast_active` | `b` | Whether the broadcast backend is running. |
+| `candidate_count` | `u32` | Current candidate count. |
+| `dropped_packets` | `u64` | Invalid or discarded packets and candidates. |
 
 ## Errors
 
@@ -92,6 +127,8 @@ ticonnect-cli version
 ticonnect-cli ping
 ticonnect-cli id show
 ticonnect-cli peers list
+ticonnect-cli discover list
+ticonnect-cli discover watch
 ticonnect-cli quit
 ```
 

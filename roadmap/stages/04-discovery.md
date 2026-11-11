@@ -41,71 +41,71 @@ Stages 1, 1.5, and 3 complete.
 
 ## Protocol
 
-- [ ] Service type `_ticonnect._udp.local.`.
-- [ ] Instance name is the display name or node id, sanitized.
-- [ ] TXT keys: `v` (protocol version), `id` (node id), `fp` (fingerprint),
+- [x] Service type `_ticonnect._udp.local.`.
+- [x] Instance name is the display name or node id, sanitized.
+- [x] TXT keys: `v` (protocol version), `id` (node id), `fp` (fingerprint),
   `name` (display name), `port` (transport port placeholder).
-- [ ] UDP fallback beacon on a fixed port with a magic header, version, node id,
+- [x] UDP fallback beacon on a fixed port with a magic header, version, node id,
   fingerprint, and address.
-- [ ] Beacon interval configurable; default 5 seconds.
-- [ ] Candidate expiry: 3 missed intervals or a fixed TTL, whichever is clearer.
-- [ ] Ignore own node id and own fingerprint.
-- [ ] Reject candidates with a mismatched protocol major version.
+- [x] Beacon interval configurable; default 5 seconds.
+- [x] Candidate expiry: 3 missed intervals or a fixed TTL, whichever is clearer.
+- [x] Ignore own node id and own fingerprint.
+- [x] Reject candidates with a mismatched protocol major version.
 
 ## Implementation
 
-- [ ] `Discovery` trait with `start`, `stop`, `snapshot`, `subscribe`.
-- [ ] mDNS backend advertises on start and browses continuously.
-- [ ] Handle `ServiceResolved`, `ServiceRemoved`, and TXT updates.
-- [ ] Broadcast backend opens a UDP socket, sets `SO_BROADCAST`, and sends
+- [x] `Discovery` trait with `start`, `stop`, `snapshot`, `subscribe`.
+- [x] mDNS backend advertises on start and browses continuously.
+- [x] Handle `ServiceResolved`, `ServiceRemoved`, and TXT updates.
+- [x] Broadcast backend opens a UDP socket, sets `SO_BROADCAST`, and sends
   beacons to the subnet broadcast address.
-- [ ] Broadcast listener parses and validates beacons; malformed packets are
+- [x] Broadcast listener parses and validates beacons; malformed packets are
   dropped and counted.
-- [ ] Run mDNS and broadcast concurrently; deduplicate by fingerprint.
-- [ ] Candidate struct: node id, fingerprint, display name, addresses, port,
+- [x] Run mDNS and broadcast concurrently; deduplicate by fingerprint.
+- [x] Candidate struct: node id, fingerprint, display name, addresses, port,
   protocol version, source (`mdns` or `broadcast`), last_seen.
-- [ ] Candidate store is behind a lock or actor; snapshot is cheap.
-- [ ] Graceful stop closes sockets and stops advertise/browse.
-- [ ] Config keys: `discovery.enabled`, `discovery.mdns`,
+- [x] Candidate store is behind a lock or actor; snapshot is cheap.
+- [x] Graceful stop closes sockets and stops advertise/browse.
+- [x] Config keys: `discovery.enabled`, `discovery.mdns`,
   `discovery.broadcast`, `discovery.beacon_interval_secs`.
 
 ## D-Bus additions
 
-- [ ] `ListCandidates() -> aa{sv}`.
-- [ ] Signal `CandidateFound(a{sv})`.
-- [ ] Signal `CandidateLost(s)` with fingerprint or node id.
-- [ ] `GetDiscoveryStatus() -> a{sv}` with enabled backends and candidate count.
+- [x] `ListCandidates() -> aa{sv}`.
+- [x] Signal `CandidateFound(a{sv})`.
+- [x] Signal `CandidateLost(s)` with fingerprint or node id.
+- [x] `GetDiscoveryStatus() -> a{sv}` with enabled backends and candidate count.
 
 ## CLI additions
 
-- [ ] `ticonnect-cli discover list`.
-- [ ] `ticonnect-cli discover watch` prints found/lost events.
+- [x] `ticonnect-cli discover list`.
+- [x] `ticonnect-cli discover watch` prints found/lost events.
 
 ## Tests
 
-- [ ] Unit test: TXT record encode/decode round-trip.
-- [ ] Unit test: beacon encode/decode round-trip.
-- [ ] Unit test: malformed and truncated packets are rejected without panic.
-- [ ] Unit test: self-candidate is ignored.
-- [ ] Unit test: duplicate candidates from mDNS and broadcast deduplicate.
-- [ ] Integration test: two discovery instances on loopback find each other via
+- [x] Unit test: TXT record encode/decode round-trip.
+- [x] Unit test: beacon encode/decode round-trip.
+- [x] Unit test: malformed and truncated packets are rejected without panic.
+- [x] Unit test: self-candidate is ignored.
+- [x] Unit test: duplicate candidates from mDNS and broadcast deduplicate.
+- [x] Integration test: two discovery instances on loopback find each other via
   broadcast.
 - [ ] Manual test: two machines on the same LAN find each other via mDNS.
 - [ ] Manual test: disable mDNS and confirm broadcast fallback still works.
 
 ## Security
 
-- [ ] Discovery data is untrusted input; validate every field.
-- [ ] Cap candidate count and packet size to prevent memory abuse.
-- [ ] Do not attempt any connection or data exchange from discovery alone.
-- [ ] Do not log full fingerprints at info level by default.
-- [ ] Document that discovery is not authentication.
+- [x] Discovery data is untrusted input; validate every field.
+- [x] Cap candidate count and packet size to prevent memory abuse.
+- [x] Do not attempt any connection or data exchange from discovery alone.
+- [x] Do not log full fingerprints at info level by default.
+- [x] Document that discovery is not authentication.
 
 ## Docs and acceptance
 
-- [ ] Document TXT keys and beacon format.
-- [ ] Document ports and firewall expectations.
-- [ ] Document behavior when mDNS is blocked or unavailable.
+- [x] Document TXT keys and beacon format.
+- [x] Document ports and firewall expectations.
+- [x] Document behavior when mDNS is blocked or unavailable.
 
 ## Acceptance criteria
 

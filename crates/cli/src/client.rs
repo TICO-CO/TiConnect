@@ -16,5 +16,13 @@ pub trait Daemon {
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn candidate_found(&self, candidate: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn candidate_lost(&self, fingerprint: &str) -> zbus::Result<()>;
 }

@@ -14,11 +14,19 @@ pub struct IdentitySettings {
 #[serde(default)]
 pub struct DiscoverySettings {
     pub enabled: bool,
+    pub mdns: bool,
+    pub broadcast: bool,
+    pub beacon_interval_secs: u32,
 }
 
 impl Default for DiscoverySettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            mdns: true,
+            broadcast: true,
+            beacon_interval_secs: 5,
+        }
     }
 }
 
@@ -98,12 +106,18 @@ pub const SETTING_KEYS: &[&str] = &[
     "data_dir",
     "identity.display_name",
     "discovery.enabled",
+    "discovery.mdns",
+    "discovery.broadcast",
+    "discovery.beacon_interval_secs",
     "overlay.enabled",
     "read_receipts.enabled",
     "outbox.ttl_days",
     "ringtone.path",
     "dnd.enabled",
 ];
+
+pub const BEACON_INTERVAL_MIN_SECS: u32 = 1;
+pub const BEACON_INTERVAL_MAX_SECS: u32 = 3600;
 
 pub const OUTBOX_TTL_MIN_DAYS: u32 = 1;
 pub const OUTBOX_TTL_MAX_DAYS: u32 = 365;
@@ -237,6 +251,33 @@ impl Settings {
         self.active.discovery.enabled = enabled;
     }
 
+    pub fn discovery_mdns(&self) -> bool {
+        self.active.discovery.mdns
+    }
+
+    pub fn set_discovery_mdns(&mut self, enabled: bool) {
+        self.changes.discovery = true;
+        self.active.discovery.mdns = enabled;
+    }
+
+    pub fn discovery_broadcast(&self) -> bool {
+        self.active.discovery.broadcast
+    }
+
+    pub fn set_discovery_broadcast(&mut self, enabled: bool) {
+        self.changes.discovery = true;
+        self.active.discovery.broadcast = enabled;
+    }
+
+    pub fn discovery_beacon_interval_secs(&self) -> u32 {
+        self.active.discovery.beacon_interval_secs
+    }
+
+    pub fn set_discovery_beacon_interval_secs(&mut self, secs: u32) {
+        self.changes.discovery = true;
+        self.active.discovery.beacon_interval_secs = secs;
+    }
+
     pub fn overlay_enabled(&self) -> bool {
         self.active.overlay.enabled
     }
@@ -292,6 +333,11 @@ impl Settings {
                 self.identity_display_name().to_owned(),
             )),
             "discovery.enabled" => Ok(SettingValue::Bool(self.discovery_enabled())),
+            "discovery.mdns" => Ok(SettingValue::Bool(self.discovery_mdns())),
+            "discovery.broadcast" => Ok(SettingValue::Bool(self.discovery_broadcast())),
+            "discovery.beacon_interval_secs" => {
+                Ok(SettingValue::Integer(self.discovery_beacon_interval_secs()))
+            }
             "overlay.enabled" => Ok(SettingValue::Bool(self.overlay_enabled())),
             "read_receipts.enabled" => Ok(SettingValue::Bool(self.read_receipts_enabled())),
             "outbox.ttl_days" => Ok(SettingValue::Integer(self.outbox_ttl_days())),
@@ -312,6 +358,29 @@ impl Settings {
             "identity.display_name" => self.set_identity_display_name(value),
             "discovery.enabled" => {
                 self.set_discovery_enabled(parse_bool(key, value)?);
+            }
+            "discovery.mdns" => {
+                self.set_discovery_mdns(parse_bool(key, value)?);
+            }
+            "discovery.broadcast" => {
+                self.set_discovery_broadcast(parse_bool(key, value)?);
+            }
+            "discovery.beacon_interval_secs" => {
+                let secs = value.parse::<u32>().map_err(|_| Error::InvalidSetting {
+                    key: key.to_owned(),
+                    value: value.to_owned(),
+                    reason: "expected an integer".to_owned(),
+                })?;
+                if !(BEACON_INTERVAL_MIN_SECS..=BEACON_INTERVAL_MAX_SECS).contains(&secs) {
+                    return Err(Error::InvalidSetting {
+                        key: key.to_owned(),
+                        value: value.to_owned(),
+                        reason: format!(
+                            "expected a value between {BEACON_INTERVAL_MIN_SECS} and {BEACON_INTERVAL_MAX_SECS}"
+                        ),
+                    });
+                }
+                self.set_discovery_beacon_interval_secs(secs);
             }
             "overlay.enabled" => self.set_overlay_enabled(parse_bool(key, value)?),
             "read_receipts.enabled" => {
@@ -356,6 +425,17 @@ impl Settings {
                 value: self.outbox_ttl_days().to_string(),
                 reason: format!(
                     "expected a value between {OUTBOX_TTL_MIN_DAYS} and {OUTBOX_TTL_MAX_DAYS}"
+                ),
+            });
+        }
+        if !(BEACON_INTERVAL_MIN_SECS..=BEACON_INTERVAL_MAX_SECS)
+            .contains(&self.discovery_beacon_interval_secs())
+        {
+            return Err(Error::InvalidSetting {
+                key: "discovery.beacon_interval_secs".to_owned(),
+                value: self.discovery_beacon_interval_secs().to_string(),
+                reason: format!(
+                    "expected a value between {BEACON_INTERVAL_MIN_SECS} and {BEACON_INTERVAL_MAX_SECS}"
                 ),
             });
         }

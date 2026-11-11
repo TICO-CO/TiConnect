@@ -62,6 +62,7 @@ Leaf crate. No domain, network, storage, or logging dependency. Exposes effectiv
 | `UI.settings` | `consumes` | `event` | `CFG.watch` | SettingsChanged |  |  |
 | `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled |  |  |
 | `CLI.settings` | `calls` | `sync` | `CFG.file-store` | settings read and write |  |  |
+| `CFG.watch` | `invokes` | `async` | `DISC.dbus` | reconfigure discovery |  |  |
 
 ## Invariants
 

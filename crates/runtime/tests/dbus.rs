@@ -21,6 +21,8 @@ trait Daemon {
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -95,6 +97,26 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
     assert!(proxy.get_setting("missing.key").await.is_err());
     assert!(proxy.list_peers().await.expect("peers").is_empty());
+    assert!(
+        proxy
+            .list_candidates()
+            .await
+            .expect("candidates")
+            .is_empty()
+    );
+    let discovery = proxy
+        .get_discovery_status()
+        .await
+        .expect("discovery status");
+    assert!(bool::try_from(&discovery[ipc::DISCOVERY_ENABLED]).expect("discovery enabled"));
+    assert!(bool::try_from(&discovery[ipc::DISCOVERY_MDNS_ENABLED]).expect("mdns enabled"));
+    assert!(
+        bool::try_from(&discovery[ipc::DISCOVERY_BROADCAST_ENABLED]).expect("broadcast enabled")
+    );
+    assert_eq!(
+        u32::try_from(&discovery[ipc::DISCOVERY_CANDIDATE_COUNT]).expect("candidate count"),
+        0
+    );
 
     assert!(config_dir.join("identity.key").is_file());
     assert!(config_dir.join("identity.toml").is_file());
@@ -105,13 +127,35 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         .await
         .expect("settings signal stream");
     tokio::time::sleep(Duration::from_millis(150)).await;
-    fs::write(config_dir.join("config.toml"), "[dnd]\nenabled = true\n").expect("write settings");
+    fs::write(
+        config_dir.join("config.toml"),
+        "[dnd]\nenabled = true\n\n[discovery]\nenabled = false\n",
+    )
+    .expect("write settings");
     tokio::time::timeout(Duration::from_secs(5), settings_signals.next())
         .await
         .expect("settings signal timeout")
         .expect("settings signal");
     assert!(
         bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("dnd bool")
+    );
+    let discovery = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let status = proxy
+                .get_discovery_status()
+                .await
+                .expect("discovery status");
+            if !bool::try_from(&status[ipc::DISCOVERY_ENABLED]).expect("discovery enabled") {
+                return status;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await
+    .expect("discovery reload timeout");
+    assert!(!bool::try_from(&discovery[ipc::DISCOVERY_MDNS_ACTIVE]).expect("mdns active"));
+    assert!(
+        !bool::try_from(&discovery[ipc::DISCOVERY_BROADCAST_ACTIVE]).expect("broadcast active")
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))
