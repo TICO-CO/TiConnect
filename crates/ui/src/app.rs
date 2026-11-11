@@ -14,6 +14,16 @@ use crate::views::pairing::PairingView;
 use crate::views::peers::PeersView;
 use crate::views::settings::SettingsView;
 
+trait SendInput {
+    fn send_input(&self, message: Msg);
+}
+
+impl SendInput for ComponentSender<App> {
+    fn send_input(&self, message: Msg) {
+        let _ = self.input_sender().send(message);
+    }
+}
+
 #[derive(Debug)]
 pub enum Msg {
     Daemon(DaemonEvent),
@@ -112,61 +122,61 @@ impl SimpleComponent for App {
         let peers_view = PeersView::new(
             {
                 let sender = sender.clone();
-                move |peer_id| sender.input(Msg::SelectPeer(peer_id))
+                move |peer_id| sender.send_input(Msg::SelectPeer(peer_id))
             },
             {
                 let sender = sender.clone();
-                move || sender.input(Msg::OpenPairing)
+                move || sender.send_input(Msg::OpenPairing)
             },
         );
         let chat_view = ChatView::new(
             {
                 let sender = sender.clone();
-                move |body| sender.input(Msg::Send(body))
+                move |body| sender.send_input(Msg::Send(body))
             },
             {
                 let sender = sender.clone();
-                move || sender.input(Msg::LoadOlder)
+                move || sender.send_input(Msg::LoadOlder)
             },
             {
                 let sender = sender.clone();
-                move || sender.input(Msg::MarkRead)
+                move || sender.send_input(Msg::MarkRead)
             },
         );
         let settings_view = SettingsView::new(
             {
                 let sender = sender.clone();
-                move |key, value| sender.input(Msg::SetSetting(key, value))
+                move |key, value| sender.send_input(Msg::SetSetting(key, value))
             },
             {
                 let sender = sender.clone();
-                move |enabled| sender.input(Msg::SetDnd(enabled))
+                move |enabled| sender.send_input(Msg::SetDnd(enabled))
             },
             {
                 let sender = sender.clone();
-                move |enabled| sender.input(Msg::SetAutostart(enabled))
+                move |enabled| sender.send_input(Msg::SetAutostart(enabled))
             },
             {
                 let sender = sender.clone();
-                move |peer_id, policy| sender.input(Msg::SetPolicy(peer_id, policy))
+                move |peer_id, policy| sender.send_input(Msg::SetPolicy(peer_id, policy))
             },
         );
         let pairing_view = PairingView::new(
             {
                 let sender = sender.clone();
-                move || sender.input(Msg::StartPairing)
+                move || sender.send_input(Msg::StartPairing)
             },
             {
                 let sender = sender.clone();
-                move || sender.input(Msg::CancelPairing)
+                move || sender.send_input(Msg::CancelPairing)
             },
             {
                 let sender = sender.clone();
-                move |node_id, pin| sender.input(Msg::PairWithPin(node_id, pin))
+                move |node_id, pin| sender.send_input(Msg::PairWithPin(node_id, pin))
             },
             {
                 let sender = sender.clone();
-                move |payload| sender.input(Msg::PairWithQr(payload))
+                move |payload| sender.send_input(Msg::PairWithQr(payload))
             },
         );
 
@@ -189,7 +199,8 @@ impl SimpleComponent for App {
         chat_button.add_css_class("flat");
         {
             let sender = sender.clone();
-            chat_button.connect_clicked(move |_| sender.input(Msg::ShowView("chat".to_owned())));
+            chat_button
+                .connect_clicked(move |_| sender.send_input(Msg::ShowView("chat".to_owned())));
         }
         header.pack_end(&chat_button);
 
@@ -200,7 +211,7 @@ impl SimpleComponent for App {
         {
             let sender = sender.clone();
             settings_button
-                .connect_clicked(move |_| sender.input(Msg::ShowView("settings".to_owned())));
+                .connect_clicked(move |_| sender.send_input(Msg::ShowView("settings".to_owned())));
         }
         header.pack_end(&settings_button);
 
@@ -210,7 +221,7 @@ impl SimpleComponent for App {
         pair_button.add_css_class("flat");
         {
             let sender = sender.clone();
-            pair_button.connect_clicked(move |_| sender.input(Msg::OpenPairing));
+            pair_button.connect_clicked(move |_| sender.send_input(Msg::OpenPairing));
         }
         header.pack_end(&pair_button);
 
@@ -258,7 +269,7 @@ impl SimpleComponent for App {
         let event_sender = sender.clone();
         relm4::spawn(async move {
             while let Some(event) = events_receiver.recv().await {
-                event_sender.input(Msg::Daemon(event));
+                event_sender.send_input(Msg::Daemon(event));
             }
         });
 
@@ -268,10 +279,10 @@ impl SimpleComponent for App {
             while let Some(event) = activation_receiver.recv().await {
                 match event {
                     ActivationEvent::Show(view) => {
-                        activation_msgs.input(Msg::ShowView(view));
+                        activation_msgs.send_input(Msg::ShowView(view));
                     }
                     ActivationEvent::Duplicate => {
-                        activation_msgs.input(Msg::DuplicateInstance);
+                        activation_msgs.send_input(Msg::DuplicateInstance);
                     }
                 }
             }
@@ -284,7 +295,7 @@ impl SimpleComponent for App {
 
         let tick_sender = sender.clone();
         gtk::glib::timeout_add_seconds_local(1, move || {
-            tick_sender.input(Msg::Tick);
+            tick_sender.send_input(Msg::Tick);
             gtk::glib::ControlFlow::Continue
         });
 
@@ -311,7 +322,7 @@ impl SimpleComponent for App {
                 };
                 match message {
                     Some(message) => {
-                        sender.input(message);
+                        sender.send_input(message);
                         gtk::glib::Propagation::Stop
                     }
                     None => gtk::glib::Propagation::Proceed,
@@ -369,7 +380,7 @@ impl SimpleComponent for App {
                             .send_message(peer_id, body.clone())
                             .await
                             .map_err(|error| error.to_string());
-                        sender.input(Msg::SendResult { body, result });
+                        sender.send_input(Msg::SendResult { body, result });
                     });
                 }
             }
@@ -386,7 +397,7 @@ impl SimpleComponent for App {
                         .list_messages(conversation_id, limit, offset)
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::OlderLoaded { messages, scroll });
+                    sender.send_input(Msg::OlderLoaded { messages, scroll });
                 });
             }
             Msg::MarkRead => {
@@ -408,7 +419,7 @@ impl SimpleComponent for App {
                         .start_pairing()
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::PairingStarted(result));
+                    sender.send_input(Msg::PairingStarted(result));
                 });
             }
             Msg::PairWithPin(node_id, pin) => {
@@ -422,7 +433,7 @@ impl SimpleComponent for App {
                         .pair_with_pin(node_id, pin)
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::PairingActionResult(result));
+                    sender.send_input(Msg::PairingActionResult(result));
                 });
             }
             Msg::PairWithQr(payload) => {
@@ -436,7 +447,7 @@ impl SimpleComponent for App {
                         .pair_with_qr(payload)
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::PairingActionResult(result));
+                    sender.send_input(Msg::PairingActionResult(result));
                 });
             }
             Msg::CancelPairing => {
@@ -447,7 +458,7 @@ impl SimpleComponent for App {
                         .cancel_pairing()
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::PairingActionResult(result));
+                    sender.send_input(Msg::PairingActionResult(result));
                 });
                 self.pairing_view.close();
                 self.pairing_view.reset();
@@ -460,7 +471,7 @@ impl SimpleComponent for App {
                 let sender = sender.clone();
                 relm4::spawn_blocking(move || {
                     let result = save_setting(&key, &value).map_err(|error| error.to_string());
-                    sender.input(Msg::SettingSaved(result));
+                    sender.send_input(Msg::SettingSaved(result));
                 });
             }
             Msg::SetDnd(enabled) => {
@@ -468,7 +479,7 @@ impl SimpleComponent for App {
                 let sender = sender.clone();
                 relm4::spawn(async move {
                     if let Err(error) = link.set_dnd(enabled).await {
-                        sender.input(Msg::Error(error.to_string()));
+                        sender.send_input(Msg::Error(error.to_string()));
                     }
                 });
             }
@@ -478,7 +489,7 @@ impl SimpleComponent for App {
                     let result = autostart::set_enabled(enabled)
                         .map(|()| enabled)
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::AutostartSaved(result));
+                    sender.send_input(Msg::AutostartSaved(result));
                 });
             }
             Msg::SetPolicy(peer_id, policy) => {
@@ -491,7 +502,7 @@ impl SimpleComponent for App {
                         .set_peer_policy(peer_id, policy)
                         .await
                         .map_err(|error| error.to_string());
-                    sender.input(Msg::PolicySaved(result));
+                    sender.send_input(Msg::PolicySaved(result));
                 });
             }
             Msg::ShowView(view) => self.show_view(&view, &sender),
@@ -508,7 +519,7 @@ impl SimpleComponent for App {
                             .cancel_pairing()
                             .await
                             .map_err(|error| error.to_string());
-                        sender.input(Msg::PairingActionResult(result));
+                        sender.send_input(Msg::PairingActionResult(result));
                     });
                 }
                 if self.stack.visible_child_name().as_deref() == Some("settings") {
@@ -837,7 +848,7 @@ impl App {
                 Ok((total, messages)) => (total, Ok(messages)),
                 Err(error) => (0, Err(error)),
             };
-            sender.input(Msg::ConversationLoaded {
+            sender.send_input(Msg::ConversationLoaded {
                 peer_id,
                 conversation_id,
                 total,
@@ -866,7 +877,7 @@ impl App {
                 .mark_read(conversation_id, ids)
                 .await
                 .map_err(|error| error.to_string());
-            sender.input(Msg::MarkReadResult(result));
+            sender.send_input(Msg::MarkReadResult(result));
         });
     }
 
@@ -902,7 +913,7 @@ impl App {
         let sender = sender.clone();
         relm4::spawn(async move {
             let result = link.identity().await.map_err(|error| error.to_string());
-            sender.input(Msg::IdentityLoaded(result));
+            sender.send_input(Msg::IdentityLoaded(result));
         });
     }
 
@@ -911,7 +922,7 @@ impl App {
         let sender = sender.clone();
         relm4::spawn(async move {
             let result = link.list_peers().await.map_err(|error| error.to_string());
-            sender.input(Msg::PeersLoaded(result));
+            sender.send_input(Msg::PeersLoaded(result));
         });
     }
 
@@ -923,7 +934,7 @@ impl App {
                 .list_candidates()
                 .await
                 .map_err(|error| error.to_string());
-            sender.input(Msg::CandidatesLoaded(result));
+            sender.send_input(Msg::CandidatesLoaded(result));
         });
     }
 
@@ -935,7 +946,7 @@ impl App {
                 .list_settings()
                 .await
                 .map_err(|error| error.to_string());
-            sender.input(Msg::SettingsLoaded(result));
+            sender.send_input(Msg::SettingsLoaded(result));
         });
     }
 
@@ -944,7 +955,7 @@ impl App {
         let sender = sender.clone();
         relm4::spawn(async move {
             let result = link.status().await.map_err(|error| error.to_string());
-            sender.input(Msg::StatusLoaded(result));
+            sender.send_input(Msg::StatusLoaded(result));
         });
     }
 
