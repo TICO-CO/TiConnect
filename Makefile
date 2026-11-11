@@ -7,8 +7,10 @@ AUTOSTART_DIR ?= $(HOME)/.config/autostart
 
 install-user: target/release/ticonnectd
 	install -Dm755 target/release/ticonnectd $(BINDIR)/ticonnectd
-	install -Dm644 packaging/systemd/ticonnectd.service $(SYSTEMD_USER_DIR)/ticonnectd.service
-	install -Dm644 packaging/autostart/ticonnect.desktop $(AUTOSTART_DIR)/ticonnect.desktop
+	install -d $(SYSTEMD_USER_DIR) $(AUTOSTART_DIR)
+	sed 's|@BINDIR@|$(BINDIR)|g' packaging/systemd/ticonnectd.service > $(SYSTEMD_USER_DIR)/ticonnectd.service
+	sed 's|@BINDIR@|$(BINDIR)|g' packaging/autostart/ticonnect.desktop > $(AUTOSTART_DIR)/ticonnect.desktop
+	chmod 644 $(SYSTEMD_USER_DIR)/ticonnectd.service $(AUTOSTART_DIR)/ticonnect.desktop
 
 target/release/ticonnectd:
 	cargo build --release --bin ticonnectd

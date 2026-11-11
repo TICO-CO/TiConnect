@@ -39,6 +39,10 @@ fn status_value(status: &HashMap<String, OwnedVariant>, key: &str) -> String {
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
+pub fn variant_text(value: &OwnedVariant) -> String {
+    display(value)
+}
+
 fn display(value: &OwnedVariant) -> String {
     if let Ok(value) = u64::try_from(value) {
         value.to_string()
@@ -72,6 +76,18 @@ mod tests {
         assert_eq!(json["peer_count"], 0);
         assert_eq!(json["outbox_depth"], 0);
         assert_eq!(json["transport_state"], "offline");
+    }
+
+    #[test]
+    fn status_json_serializes_and_parses_with_expected_keys() {
+        let text = serde_json::to_string(&status_json("0.1.0", &fixture())).expect("serialize");
+        let parsed: Value = serde_json::from_str(&text).expect("parse");
+
+        assert_eq!(parsed["version"], "0.1.0");
+        assert_eq!(parsed["uptime_seconds"], 7);
+        assert_eq!(parsed["peer_count"], 0);
+        assert_eq!(parsed["outbox_depth"], 0);
+        assert_eq!(parsed["transport_state"], "offline");
     }
 
     fn fixture() -> HashMap<String, OwnedVariant> {

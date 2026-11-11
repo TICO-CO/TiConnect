@@ -293,3 +293,119 @@ fn environment_config_dir_selects_default_settings_file() {
         Ok(())
     });
 }
+
+#[test]
+fn nested_settings_save_as_toml_tables() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        settings.set_dnd_enabled(true);
+        settings.set_outbox_ttl_days(14);
+        settings.set_identity_display_name("Desk");
+        settings.save().expect("save");
+
+        let contents = fs::read_to_string(&path).expect("saved settings");
+        let table: toml::Table = toml::from_str(&contents).expect("valid toml");
+        assert_eq!(table["dnd"]["enabled"].as_bool(), Some(true));
+        assert_eq!(table["outbox"]["ttl_days"].as_integer(), Some(14));
+        assert_eq!(table["identity"]["display_name"].as_str(), Some("Desk"));
+        Ok(())
+    });
+}
+
+#[test]
+fn nested_environment_override_uses_double_underscore() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.set_env("TICONNECT_DND__ENABLED", "true");
+        jail.set_env("TICONNECT_OUTBOX__TTL_DAYS", "21");
+
+        let path = jail.directory().join("missing.toml");
+        let settings = Settings::load_from(&path).expect("valid settings");
+
+        assert!(settings.dnd_enabled());
+        assert_eq!(settings.outbox_ttl_days(), 21);
+        Ok(())
+    });
+}
+
+#[test]
+fn invalid_outbox_ttl_is_rejected_on_load() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.create_file("config.toml", "[outbox]\nttl_days = 0\n")?;
+
+        let path = jail.directory().join("config.toml");
+        let error = Settings::load_from(&path).expect_err("invalid ttl");
+
+        assert!(matches!(error, crate::Error::InvalidSetting { .. }));
+        Ok(())
+    });
+}
+
+#[test]
+fn key_api_sets_and_reads_typed_values() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        settings.set_setting("dnd.enabled", "yes").expect("set dnd");
+        settings
+            .set_setting("ringtone.path", "/tmp/ring.ogg")
+            .expect("set ringtone");
+        settings
+            .set_setting("outbox.ttl_days", "30")
+            .expect("set ttl");
+        settings.save().expect("save");
+
+        let settings = Settings::load_from(&path).expect("reload");
+        assert_eq!(
+            settings.get_setting("dnd.enabled").expect("get dnd"),
+            crate::SettingValue::Bool(true)
+        );
+        assert_eq!(
+            settings.get_setting("outbox.ttl_days").expect("get ttl"),
+            crate::SettingValue::Integer(30)
+        );
+        assert_eq!(
+            settings
+                .get_setting("ringtone.path")
+                .expect("get ringtone")
+                .render(),
+            "/tmp/ring.ogg"
+        );
+        assert!(
+            settings
+                .list_settings()
+                .expect("list")
+                .contains_key("discovery.enabled")
+        );
+        Ok(())
+    });
+}
+
+#[test]
+fn key_api_rejects_unknown_and_invalid_values() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        assert!(matches!(
+            settings.get_setting("missing.key"),
+            Err(crate::Error::UnknownSetting(_))
+        ));
+        assert!(matches!(
+            settings.set_setting("outbox.ttl_days", "999"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("dnd.enabled", "maybe"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        Ok(())
+    });
+}

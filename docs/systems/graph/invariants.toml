@@ -1,7 +1,7 @@
 invariants = [
   { id = "INV-STATE-1", statement = "Every persistent store has exactly one owner component.", test = "cargo xtask systems --check", stages = [1] },
   { id = "INV-STAGE-1", statement = "Every stage demo uses only components from that stage or earlier stages.", test = "cargo xtask systems --check", stages = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] },
-  { id = "INV-CFG-1", statement = "Configuration lives only in config.toml and SQLite stores no configuration.", test = "planned: crates/settings and crates/daemon tests", stages = [1, 3] },
+  { id = "INV-CFG-1", statement = "Configuration lives only in config.toml and SQLite stores no configuration.", test = "crates/settings/src/tests.rs and crates/daemon/tests/storage.rs", stages = [1, 3] },
   { id = "INV-CFG-2", statement = "Config writes are locked and atomically replace the file.", test = "crates/settings/src/tests.rs", stages = [1] },
   { id = "INV-SEC-1", statement = "No secret, key, message body, or keystroke is logged by default.", test = "planned: logging redaction tests", stages = [1, 5, 6, 10, 11] },
   { id = "INV-TRUST-1", statement = "No non-pairing feature is reachable before trust is established.", test = "planned: crates/net/tests/unpaired_rejected.rs", stages = [5, 6, 9, 10, 11] },

@@ -108,16 +108,14 @@ None.
   `ticonnect-core`; it owns its own `Error`/`Result`, parses the log level into
   `LogLevel` and validates `LogFormat` at `LogSettings::new`, and initializes
   `tracing-subscriber` with `EnvFilter`.
-- [x] Each binary entrypoint loads `Settings`, builds `LogSettings`, and calls
-  `Logging::init`. This composition is duplicated across the four entrypoints
-  for now; `ticonnect-runtime` will centralize it in a later stage.
+- [x] Each binary entrypoint originally loaded `Settings`, built `LogSettings`,
+  and called `Logging::init`. `ticonnect-runtime` now centralizes this
+  composition.
 - [x] `core` depends on neither `ticonnect-settings` nor `ticonnect-logging`
   and never exposes logging-specific error variants.
 - [x] Logging supports human-readable output and optional JSON output.
-- [x] A future `ticonnect-runtime` crate is reserved in the roadmap for composing
-  `settings` + `logging` and process lifecycle. Binaries currently instantiate
-  logging directly; migration to `runtime` is the intended direction and is not
-  part of this stage.
+- [x] `ticonnect-runtime` was reserved in this stage and is now the composition
+  root for `settings`, `logging`, process lifecycle, and the daemon binary.
 - [x] `core` exposes `version()` from `CARGO_PKG_VERSION`.
 - [x] Each dependent crate has an empty `lib.rs` that compiles and depends on
   `core` per the dependency direction rule.

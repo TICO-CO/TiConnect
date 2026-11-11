@@ -1,6 +1,7 @@
 stores = [
   { id = "CFG.config-file", system = "CFG", kind = "toml-file", owner_component = "CFG.file-store", path = "$XDG_CONFIG_HOME/ticonnect/config.toml" },
   { id = "ID.key-store", system = "ID", kind = "key-file", owner_component = "ID.key-load", path = "$XDG_CONFIG_HOME/ticonnect/identity.key" },
+  { id = "ID.meta-store", system = "ID", kind = "toml-file", owner_component = "ID.key-load", path = "$XDG_CONFIG_HOME/ticonnect/identity.toml" },
   { id = "DB.schema-store", system = "DB", kind = "sqlite-table", owner_component = "DB.migrations", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version" },
   { id = "DB.peers-store", system = "DB", kind = "sqlite-table", owner_component = "DB.peers", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#peers" },
   { id = "DB.conversations-store", system = "DB", kind = "sqlite-table", owner_component = "DB.conversations", path = "$XDG_DATA_HOME/ticonnect/ticonnect.db#conversations" },

@@ -46,7 +46,7 @@ Leaf crate. No settings, core, domain, or network dependency. Runtime passes val
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-CFG-2` — Config writes are locked and atomically replace the file. Test: crates/settings/src/tests.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check

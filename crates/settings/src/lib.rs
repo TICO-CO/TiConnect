@@ -11,3 +11,4 @@ mod tests;
 
 pub use error::{Error, Result};
 pub use settings::Settings;
+pub use settings::schema::{SETTING_KEYS, SettingValue};

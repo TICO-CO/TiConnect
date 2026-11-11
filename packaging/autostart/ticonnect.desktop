@@ -2,7 +2,7 @@
 Type=Application
 Name=TiConnect
 Comment=LAN-only messaging, calls, and remote desktop
-Exec=ticonnectd
+Exec=@BINDIR@/ticonnectd
 Hidden=false
 NoDisplay=true
 X-GNOME-Autostart-enabled=true

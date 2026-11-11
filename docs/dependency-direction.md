@@ -36,9 +36,11 @@ settings   logging        leaf crates
   `ticonnect-logging`.
 - `ticonnect-net`, `ticonnect-media`, and `ticonnect-desktop` depend on
   `ticonnect-core`.
-- `ticonnect-daemon` composes the service crates.
-- `ticonnect-ui`, `ticonnect-overlay`, and `ticonnect-cli` never depend on
-  daemon internals.
+- `ticonnect-daemon` composes the service crates and exposes its library API.
+- `ticonnect-runtime` owns settings/logging bootstrap, daemon state composition,
+  supervision, and the `ticonnectd` binary. It depends on `ticonnect-daemon`.
+- `ticonnect-ui`, `ticonnect-overlay`, and `ticonnect-cli` depend on runtime for
+  bootstrap and never import daemon internals directly.
 - `ticonnect-settings` never depends on `ticonnect-logging`.
 
 ## Errors
@@ -50,9 +52,9 @@ settings   logging        leaf crates
 - There is no workspace-wide catch-all error enum.
 - Only binary entry points use `anyhow`, adding context around startup steps.
 
-## Interim composition
+## Composition
 
-Each binary currently loads `Settings`, builds `LogSettings`, and initializes
-`Logging` directly. This glue is duplicated across the four entrypoints on
-purpose. A future `ticonnect-runtime` crate will own settings, logging, process
-lifecycle, and daemon wiring.
+`ticonnect-runtime` is the composition root. It loads `Settings`, initializes
+`Logging`, composes identity and database state, and supervises the daemon
+lifecycle. Binaries use runtime bootstrap instead of duplicating settings and
+logging wiring.

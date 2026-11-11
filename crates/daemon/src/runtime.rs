@@ -6,7 +6,8 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 use zbus::object_server::SignalEmitter;
 
-use crate::service::DaemonService;
+use crate::config_watch;
+use crate::service::{DaemonService, DaemonState};
 
 #[derive(Clone)]
 pub struct Shutdown {
@@ -46,9 +47,8 @@ impl Default for Shutdown {
     }
 }
 
-pub async fn run() -> Result<()> {
-    let shutdown = Arc::new(Shutdown::new());
-    let service = DaemonService::new(shutdown.clone());
+pub async fn run(state: Arc<DaemonState>) -> Result<()> {
+    let service = DaemonService::new(state.clone());
 
     let connection = zbus::connection::Builder::session()
         .name(ipc::DAEMON_BUS_NAME)
@@ -62,7 +62,11 @@ pub async fn run() -> Result<()> {
     tracing::info!(bus = ipc::DAEMON_BUS_NAME, "daemon started");
     emit_started(&connection).await?;
 
-    wait_for_shutdown(&connection, &shutdown).await?;
+    let watcher =
+        config_watch::spawn(connection.clone(), state.clone()).context("start config watcher")?;
+
+    wait_for_shutdown(&connection, state.shutdown()).await?;
+    watcher.abort();
 
     if let Err(error) = emit_stopping(&connection).await {
         tracing::warn!(%error, "failed to emit DaemonStopping");

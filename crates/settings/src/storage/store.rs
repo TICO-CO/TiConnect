@@ -35,6 +35,18 @@ impl Storage {
         &self.stored
     }
 
+    pub fn config_file(&self) -> &Path {
+        self.location.file()
+    }
+
+    pub fn config_dir(&self) -> &Path {
+        self.location.dir()
+    }
+
+    pub fn ensure_config_dir(&self) -> Result<()> {
+        self.location.prepare_dir()
+    }
+
     pub fn update(&mut self, active: &SettingsValues, changes: &SettingsChanges) -> Result<()> {
         if changes.is_empty() {
             return Ok(());
@@ -67,16 +79,6 @@ impl Storage {
 
         self.stored = SettingsValues::default();
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub fn config_file(&self) -> &Path {
-        self.location.file()
-    }
-
-    #[cfg(test)]
-    pub fn config_dir(&self) -> &Path {
-        self.location.dir()
     }
 
     fn from_location(location: Location) -> Result<Self> {

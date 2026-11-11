@@ -13,7 +13,7 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 ticonnect-core.workspace = true
-ticonnect-logging.workspace = true
+ticonnect-runtime.workspace = true
 ticonnect-settings.workspace = true
 clap.workspace = true
 serde_json.workspace = true

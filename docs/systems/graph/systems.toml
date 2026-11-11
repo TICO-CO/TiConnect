@@ -1,7 +1,7 @@
 [[systems]]
 id = "RT"
 name = "Runtime and composition"
-owner = "ticonnect-daemon"
+owner = "ticonnect-runtime"
 layer = "daemon"
 stage = 2
 doc = "01-runtime.md"
@@ -10,7 +10,7 @@ boundary = "Depends on settings, logging, and daemon service wiring. Does not ow
 owned_state = ["process lifecycle", "shutdown signal"]
 interfaces = ["binary entrypoints", "SIGTERM and SIGINT", "systemd user unit", "XDG autostart"]
 failure_semantics = ["exit non-zero on startup failure", "release bus name on shutdown", "never run as root"]
-open_decisions = ["introduce ticonnect-runtime in Stage 2 or defer"]
+open_decisions = ["ticonnect-runtime adopted in Stage 2; daemon keeps D-Bus lifecycle"]
 
 [[systems]]
 id = "CFG"
@@ -52,7 +52,7 @@ boundary = "Pure domain types. No I/O, no settings, no logging, no database, no 
 owned_state = []
 interfaces = ["IDs", "canonical encoding", "signature envelope", "message and ack records", "attachment reference", "wire frame types"]
 failure_semantics = ["malformed input returns local typed errors", "canonical encoding rejects non-deterministic data", "signature verification fails closed"]
-open_decisions = ["node id derivation", "peer id derivation", "conversation id derivation", "canonical fingerprint encoding"]
+open_decisions = ["node id derivation resolved as UUIDv7 in Stage 3", "peer id derivation", "conversation id derivation", "canonical fingerprint encoding"]
 
 [[systems]]
 id = "IPC"
@@ -80,7 +80,7 @@ boundary = "Owns identity key material and trust decisions. Uses storage for pee
 owned_state = ["identity.key", "trusted peer table"]
 interfaces = ["identity key file", "fingerprint", "node id", "trust store", "certificate binding"]
 failure_semantics = ["refuse world-readable key", "pin mismatch aborts handshake", "revocation closes sessions"]
-open_decisions = ["node id from fingerprint or UUIDv7", "certificate fingerprint versus identity fingerprint"]
+open_decisions = ["node id is UUIDv7 stored in identity.toml", "certificate fingerprint versus identity fingerprint"]
 
 [[systems]]
 id = "DB"
@@ -94,7 +94,7 @@ boundary = "Daemon-only. Stores no configuration. Repositories expose typed oper
 owned_state = ["ticonnect.db tables", "schema version"]
 interfaces = ["SQLite", "migrations", "peers repo", "messages repo", "outbox repo", "attachments repo", "peer_state repo", "transfer partials repo"]
 failure_semantics = ["transaction rollback on error", "WAL mode", "migration failure refuses startup", "no configuration in SQLite"]
-open_decisions = ["backup and export policy", "disk quota policy", "schema migration compatibility window"]
+open_decisions = ["key and database backup/export are out of scope for v1", "disk quota policy", "schema migration compatibility window"]
 
 [[systems]]
 id = "DISC"

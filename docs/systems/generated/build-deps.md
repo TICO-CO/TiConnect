@@ -7,11 +7,10 @@ Generated from `docs/systems/graph/` and checked against `cargo metadata`.
 ```mermaid
 flowchart LR
   p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_core["ticonnect-core"]
-  p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_logging["ticonnect-logging"]
+  p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_runtime["ticonnect-runtime"]
   p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_settings["ticonnect-settings"]
   p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_desktop["ticonnect-desktop"]
-  p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_logging["ticonnect-logging"]
   p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_media["ticonnect-media"]
   p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_net["ticonnect-net"]
   p_ticonnect_daemon["ticonnect-daemon"] --> p_ticonnect_settings["ticonnect-settings"]
@@ -19,21 +18,21 @@ flowchart LR
   p_ticonnect_media["ticonnect-media"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_net["ticonnect-net"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_core["ticonnect-core"]
-  p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_logging["ticonnect-logging"]
-  p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_settings["ticonnect-settings"]
+  p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_runtime["ticonnect-runtime"]
+  p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_daemon["ticonnect-daemon"]
+  p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_logging["ticonnect-logging"]
+  p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_settings["ticonnect-settings"]
   p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_core["ticonnect-core"]
-  p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_logging["ticonnect-logging"]
-  p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_settings["ticonnect-settings"]
+  p_ticonnect_ui["ticonnect-ui"] --> p_ticonnect_runtime["ticonnect-runtime"]
 ```
 
 | From | To |
 |---|---|
 | `ticonnect-cli` | `ticonnect-core` |
-| `ticonnect-cli` | `ticonnect-logging` |
+| `ticonnect-cli` | `ticonnect-runtime` |
 | `ticonnect-cli` | `ticonnect-settings` |
 | `ticonnect-daemon` | `ticonnect-core` |
 | `ticonnect-daemon` | `ticonnect-desktop` |
-| `ticonnect-daemon` | `ticonnect-logging` |
 | `ticonnect-daemon` | `ticonnect-media` |
 | `ticonnect-daemon` | `ticonnect-net` |
 | `ticonnect-daemon` | `ticonnect-settings` |
@@ -41,11 +40,12 @@ flowchart LR
 | `ticonnect-media` | `ticonnect-core` |
 | `ticonnect-net` | `ticonnect-core` |
 | `ticonnect-overlay` | `ticonnect-core` |
-| `ticonnect-overlay` | `ticonnect-logging` |
-| `ticonnect-overlay` | `ticonnect-settings` |
+| `ticonnect-overlay` | `ticonnect-runtime` |
+| `ticonnect-runtime` | `ticonnect-daemon` |
+| `ticonnect-runtime` | `ticonnect-logging` |
+| `ticonnect-runtime` | `ticonnect-settings` |
 | `ticonnect-ui` | `ticonnect-core` |
-| `ticonnect-ui` | `ticonnect-logging` |
-| `ticonnect-ui` | `ticonnect-settings` |
+| `ticonnect-ui` | `ticonnect-runtime` |
 
 ## Build rules
 

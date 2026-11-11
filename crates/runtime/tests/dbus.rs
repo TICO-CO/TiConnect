@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use tokio::process::Command;
 use zbus::OwnedVariant;
@@ -16,7 +17,17 @@ trait Daemon {
     fn ping(&self) -> zbus::Result<String>;
     fn get_version(&self) -> zbus::Result<String>;
     fn get_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_identity(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
+    fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn shutdown(&self) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn daemon_stopping(&self) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn settings_changed(&self, key: &str) -> zbus::Result<()>;
 }
 
 #[tokio::test]
@@ -27,11 +38,16 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     }
 
     let dir = std::env::temp_dir().join(format!("ticonnect-dbus-{}", std::process::id()));
+    let config_dir = dir.join("config");
+    let data_dir = dir.join("data");
     let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).expect("create config dir");
+    fs::create_dir_all(&config_dir).expect("create config dir");
 
     let mut daemon = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))
-        .env("TICONNECT_CONFIG_DIR", &dir)
+        .env("TICONNECT_CONFIG_DIR", &config_dir)
+        .env("TICONNECT_DATA_DIR", &data_dir)
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
         .spawn()
         .expect("start daemon");
 
@@ -57,8 +73,52 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         ipc::TRANSPORT_OFFLINE
     );
 
+    let identity = proxy.get_identity().await.expect("identity");
+    assert!(
+        <&str>::try_from(&identity[ipc::IDENTITY_NODE_ID])
+            .expect("node id")
+            .contains('-')
+    );
+    assert_eq!(
+        <&str>::try_from(&identity[ipc::IDENTITY_FINGERPRINT])
+            .expect("fingerprint")
+            .len(),
+        64
+    );
+    assert_eq!(
+        <&str>::try_from(&identity[ipc::IDENTITY_DISPLAY_NAME]).expect("display name"),
+        ""
+    );
+
+    let settings = proxy.list_settings().await.expect("settings");
+    assert!(settings.contains_key("dnd.enabled"));
+    assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
+    assert!(proxy.get_setting("missing.key").await.is_err());
+    assert!(proxy.list_peers().await.expect("peers").is_empty());
+
+    assert!(config_dir.join("identity.key").is_file());
+    assert!(config_dir.join("identity.toml").is_file());
+    assert!(data_dir.join("ticonnect.db").is_file());
+
+    let mut settings_signals = proxy
+        .receive_settings_changed()
+        .await
+        .expect("settings signal stream");
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    fs::write(config_dir.join("config.toml"), "[dnd]\nenabled = true\n").expect("write settings");
+    tokio::time::timeout(Duration::from_secs(5), settings_signals.next())
+        .await
+        .expect("settings signal timeout")
+        .expect("settings signal");
+    assert!(
+        bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("dnd bool")
+    );
+
     let second = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))
-        .env("TICONNECT_CONFIG_DIR", dir.join("second"))
+        .env("TICONNECT_CONFIG_DIR", dir.join("second-config"))
+        .env("TICONNECT_DATA_DIR", dir.join("second-data"))
+        .env_remove("DISPLAY")
+        .env_remove("WAYLAND_DISPLAY")
         .output()
         .await
         .expect("run second daemon");
@@ -67,6 +127,10 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         "second instance must not acquire the bus name"
     );
 
+    let mut stopping = proxy
+        .receive_daemon_stopping()
+        .await
+        .expect("stopping signal stream");
     let pid = daemon.id().expect("daemon pid");
     let kill = Command::new("kill")
         .arg("-TERM")
@@ -75,6 +139,11 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         .await
         .expect("send SIGTERM");
     assert!(kill.success());
+
+    tokio::time::timeout(Duration::from_secs(5), stopping.next())
+        .await
+        .expect("DaemonStopping timeout")
+        .expect("DaemonStopping signal");
 
     let status = tokio::time::timeout(Duration::from_secs(5), daemon.wait())
         .await
@@ -86,7 +155,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
 }
 
 async fn wait_for_daemon(proxy: &DaemonProxy<'_>) {
-    for _ in 0..50 {
+    for _ in 0..150 {
         if proxy.ping().await.is_ok() {
             return;
         }

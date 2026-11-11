@@ -26,9 +26,9 @@ Pure domain types. No I/O, no settings, no logging, no database, no network.
 | `DOM.ack` | Ack record | `module` | `crates/core/src/ack.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ack.rs |
 | `DOM.attachment-ref` | Attachment reference | `module` | `crates/core/src/attachment.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/attachment.rs |
 | `DOM.canonical` | Canonical encoding | `module` | `crates/core/src/canonical.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/canonical.rs |
-| `DOM.fingerprint` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/fingerprint.rs |
-| `DOM.identity-types` | Identity types | `module` | `crates/core/src/identity.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/identity.rs |
-| `DOM.ids` | Identifiers | `module` | `crates/core/src/id.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ids.rs |
+| `DOM.fingerprint` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/fingerprint.rs |
+| `DOM.identity-types` | Identity types | `module` | `crates/core/src/identity.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/identity.rs |
+| `DOM.ids` | Identifiers | `module` | `crates/core/src/id.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/ids.rs |
 | `DOM.message` | Message record | `module` | `crates/core/src/message.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/message.rs |
 | `DOM.signed-envelope` | Signed envelope | `module` | `crates/core/src/sign.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/sign.rs |
 | `DOM.version` | Protocol version | `module` | `crates/core/src/lib.rs` |  | docs/systems/04-domain.md#components | crates/core/src/lib.rs |
@@ -67,7 +67,7 @@ Pure domain types. No I/O, no settings, no logging, no database, no network.
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-CFG-2` — Config writes are locked and atomically replace the file. Test: crates/settings/src/tests.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
@@ -81,7 +81,7 @@ Pure domain types. No I/O, no settings, no logging, no database, no network.
 
 ## Open decisions
 
-- node id derivation
+- node id derivation resolved as UUIDv7 in Stage 3
 - peer id derivation
 - conversation id derivation
 - canonical fingerprint encoding

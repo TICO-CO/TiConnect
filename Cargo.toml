@@ -17,6 +17,7 @@ ticonnect-net = { path = "crates/net" }
 ticonnect-media = { path = "crates/media" }
 ticonnect-desktop = { path = "crates/desktop" }
 ticonnect-daemon = { path = "crates/daemon" }
+ticonnect-runtime = { path = "crates/runtime" }
 ticonnect-ui = { path = "crates/ui" }
 ticonnect-overlay = { path = "crates/overlay" }
 ticonnect-cli = { path = "crates/cli" }
@@ -33,3 +34,11 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
 figment = { version = "0.10", features = ["env", "toml"] }
 directories = "6"
+blake3 = "1"
+futures-util = "0.3"
+ed25519-dalek = { version = "2", features = ["rand_core", "zeroize"] }
+hex = "0.4"
+notify = "7"
+rand_core = { version = "0.6", features = ["getrandom"] }
+rusqlite = { version = "0.42", features = ["bundled"] }
+uuid = { version = "1", features = ["rng", "v7"] }

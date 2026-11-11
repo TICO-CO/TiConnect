@@ -47,12 +47,12 @@ Cargo.toml                  workspace
 crates/
   settings/                 persisted + effective settings (leaf)
   logging/                  tracing setup (leaf)
-  runtime/                  future: composition root, settings + logging + lifecycle
+  runtime/                  composition root, settings + logging + ticonnectd
   core/                     protocol types, identity, pairing, crypto
   net/                      mDNS discovery, QUIC transport, sessions
   media/                    cpal audio, opus, openh264, jitter buffer
   desktop/                  portals, screencast, libei/XTEST input
-  daemon/                   D-Bus service, SQLite, policy, ringtone
+  daemon/                   D-Bus service, identity, SQLite (library)
   ui/                       GTK4 main window
   overlay/                  layer-shell toast agent
   cli/                      command-line client
@@ -64,19 +64,11 @@ Component contracts, state ownership, and relation graphs live in
 Dependency direction: `settings` and `logging` are leaf crates. `logging` is a
 pure tracing wrapper and depends on neither `settings` nor `core`. `core`
 depends on neither. `net`, `media`, `desktop` depend on `core`. `daemon`
-composes them. `ui`, `overlay`, `cli` depend on `core`, `settings`, and D-Bus
-types, never on daemon internals.
-
-Interim composition: each binary loads `Settings`, builds `LogSettings` with
-`LogSettings::new`, and initializes `Logging` in its entrypoint. `Settings`
-stores effective values only; `ticonnect-logging` parses the log level into
-`LogLevel` and validates `LogFormat` when constructing `LogSettings`. This glue
-is intentionally duplicated across the four entrypoints for now. A future
-`ticonnect-runtime` crate will own this composition, plus process lifecycle;
-binaries will then depend on `runtime` instead of wiring `settings` and
-`logging` individually. Runtime is a composition root: it consumes `settings`
-and `logging` as leaves and does not own the settings model. `core` stays free
-of both.
+composes them into the D-Bus service library. `runtime` is the composition
+root: it owns settings/logging bootstrap, identity and database composition,
+supervision, and the `ticonnectd` binary. `ui`, `overlay`, and `cli` use runtime
+bootstrap and never import daemon internals directly. `core` stays free of
+settings and logging.
 
 Each fallible library crate owns its `Error` and `Result` types and maps
 failures from its dependencies into them. `core` exposes domain types only and

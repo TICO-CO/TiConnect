@@ -25,11 +25,11 @@ Owns identity key material and trust decisions. Uses storage for peer rows. Neve
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
 | `ID.cert-binding` | Certificate binding | `module` | `crates/net/src/tls.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/net/tests/tls.rs |
-| `ID.fingerprint` | Fingerprint derivation | `module` | `crates/core/src/fingerprint.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/fingerprint.rs |
-| `ID.key-load` | Key load and store | `module` | `crates/daemon/src/identity.rs` | identity.key | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/identity.rs |
-| `ID.keygen` | Key generation | `module` | `crates/core/src/identity.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/identity.rs |
-| `ID.node-id` | Node id | `module` | `crates/core/src/id.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/ids.rs |
-| `ID.permissions` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/identity.rs |
+| `ID.fingerprint` | Fingerprint derivation | `module` | `crates/core/src/fingerprint.rs` |  | docs/systems/06-identity-trust.md#components | crates/core/tests/fingerprint.rs |
+| `ID.key-load` | Key load and store | `module` | `crates/daemon/src/identity.rs` | identity.key | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
+| `ID.keygen` | Key generation | `module` | `crates/core/src/identity.rs` |  | docs/systems/06-identity-trust.md#components | crates/core/tests/identity.rs |
+| `ID.node-id` | Node id | `module` | `crates/core/src/id.rs` |  | docs/systems/06-identity-trust.md#components | crates/core/tests/ids.rs |
+| `ID.permissions` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
 | `ID.revoke` | Revocation | `module` | `crates/daemon/src/trust.rs` |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
 | `ID.trust-store` | Trust store | `module` | `crates/daemon/src/trust.rs` | trusted peer table | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
 
@@ -61,10 +61,11 @@ Owns identity key material and trust decisions. Uses storage for peer rows. Neve
 | `PAIR.qr` | `calls` | `sync` | `ID.fingerprint` | QR fingerprint |  |  |
 | `TX.verifier` | `calls` | `sync` | `ID.trust-store` | pinned trust lookup | ID.trust-store |  |
 | `TX.tls-cert` | `calls` | `sync` | `ID.cert-binding` | certificate binding | ID.cert-binding |  |
+| `ID.key-load` | `owns` | `sync` | `ID.meta-store` | identity metadata ownership |  |  |
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
 
 ## Failure semantics
@@ -75,5 +76,5 @@ Owns identity key material and trust decisions. Uses storage for peer rows. Neve
 
 ## Open decisions
 
-- node id from fingerprint or UUIDv7
+- node id is UUIDv7 stored in identity.toml
 - certificate fingerprint versus identity fingerprint

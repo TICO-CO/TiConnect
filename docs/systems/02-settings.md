@@ -30,7 +30,7 @@ Leaf crate. No domain, network, storage, or logging dependency. Exposes effectiv
 | `CFG.lock-atomic` | Lock and atomic replace | `module` | `crates/settings/src/storage.rs` | advisory lock | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
 | `CFG.schema` | Settings schema | `module` | `crates/settings/src/settings.rs` | effective settings | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
 | `CFG.validation` | Validation | `module` | `crates/settings/src/settings.rs` |  | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
-| `CFG.watch` | Change watch | `module` | `crates/daemon/src/config_watch.rs` | watch handle | docs/systems/02-settings.md#components | planned: crates/daemon/tests/config_watch.rs |
+| `CFG.watch` | Change watch | `module` | `crates/daemon/src/config_watch.rs` | watch handle | docs/systems/02-settings.md#components | crates/runtime/tests/dbus.rs |
 
 ## Interfaces
 
@@ -65,7 +65,7 @@ Leaf crate. No domain, network, storage, or logging dependency. Exposes effectiv
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-CFG-2` — Config writes are locked and atomically replace the file. Test: crates/settings/src/tests.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check

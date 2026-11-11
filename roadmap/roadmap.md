@@ -48,12 +48,12 @@ be split.
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 1.5, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 
-Future extraction: binaries currently duplicate the `ticonnect-settings` +
-`ticonnect-logging` bootstrap in their entrypoints. `ticonnect-runtime` will
-own that composition, process lifecycle, and daemon wiring, so binaries depend
-on `runtime` instead. This keeps `ticonnect-core` free of settings and logging
-dependencies. Errors stay crate-local; `core` never depends on `settings` or
-`logging`, and no crate imports a catch-all workspace error enum.
+Composition root: `ticonnect-runtime` owns the `ticonnect-settings` +
+`ticonnect-logging` bootstrap, identity/database composition, supervision, and
+the `ticonnectd` binary. Other binaries depend on `runtime` instead of wiring
+settings and logging individually. This keeps `ticonnect-core` free of settings
+and logging dependencies. Errors stay crate-local; `core` never depends on
+`settings` or `logging`, and no crate imports a catch-all workspace error enum.
 
 ## Dependency graph
 
@@ -177,8 +177,8 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 
 - [x] Stage 1 — Foundation
 - [x] Stage 1.5 — Architecture contracts & graph
-- [ ] Stage 2 — Daemon & IPC
-- [ ] Stage 3 — Identity & storage
+- [ ] Stage 2 — Daemon & IPC (automation complete; manual systemd/logout verification pending)
+- [x] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery
 - [ ] Stage 5 — Pairing & transport
 - [ ] Stage 6 — Messaging

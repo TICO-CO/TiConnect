@@ -34,7 +34,7 @@ Cross-cutting verification. Observes and tests all systems. Ships no runtime fea
 | `ASR.fake-transport` | Fake transport | `module` | `crates/testkit/src/transport.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/transport.rs |
 | `ASR.fake-trust` | Fake trust | `module` | `crates/testkit/src/trust.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/trust.rs |
 | `ASR.fuzz` | Fuzz targets | `module` | `fuzz/` |  | docs/systems/24-assurance.md#components | planned: fuzz targets |
-| `ASR.migrations` | Migration matrix | `module` | `crates/daemon/tests/migrations.rs` |  | docs/systems/24-assurance.md#components | planned: crates/daemon/tests/migrations.rs |
+| `ASR.migrations` | Migration matrix | `module` | `crates/daemon/tests/migrations.rs` |  | docs/systems/24-assurance.md#components | crates/daemon/tests/migrations.rs |
 | `ASR.packaging` | Packaging validation | `module` | `packaging/` |  | docs/systems/24-assurance.md#components | planned: Flatpak build |
 | `ASR.private-bus` | Private D-Bus | `module` | `crates/testkit/src/dbus.rs` |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/dbus.rs |
 | `ASR.threat` | Threat model | `module` | `docs/security.md` |  | docs/systems/24-assurance.md#components | planned: security review |
@@ -69,7 +69,7 @@ Cross-cutting verification. Observes and tests all systems. Ships no runtime fea
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-CFG-2` — Config writes are locked and atomically replace the file. Test: crates/settings/src/tests.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check

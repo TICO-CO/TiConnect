@@ -3,7 +3,9 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use ticonnect_cli::client::DaemonProxy;
-use ticonnect_cli::output::{status_human, status_json};
+use ticonnect_cli::output::{status_human, status_json, variant_text};
+use ticonnect_core::ipc;
+use ticonnect_settings::Settings;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -30,18 +32,48 @@ enum Command {
     Ping,
     /// Ask the daemon to stop.
     Quit,
+    /// Show this node's identity.
+    Id {
+        #[command(subcommand)]
+        command: IdCommand,
+    },
+    /// Read or write settings.
+    Settings {
+        #[command(subcommand)]
+        command: SettingsCommand,
+    },
+    /// Inspect known peers.
+    Peers {
+        #[command(subcommand)]
+        command: PeersCommand,
+    },
+}
+
+#[derive(Debug, Subcommand)]
+enum IdCommand {
+    /// Print node id and fingerprint.
+    Show,
+}
+
+#[derive(Debug, Subcommand)]
+enum SettingsCommand {
+    /// Print one setting.
+    Get { key: String },
+    /// Set one setting and save it.
+    Set { key: String, value: String },
+    /// List all known settings.
+    List,
+}
+
+#[derive(Debug, Subcommand)]
+enum PeersCommand {
+    /// List known peers.
+    List,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let settings = ticonnect_settings::Settings::load().context("failed to load settings")?;
-    let log_settings = ticonnect_logging::LogSettings::new(
-        settings.log_level(),
-        settings.log_file(),
-        settings.log_format(),
-    )
-    .context("invalid logging settings")?;
-    ticonnect_logging::Logging::init(&log_settings).context("failed to initialize logging")?;
+    ticonnect_runtime::init().context("initialize runtime")?;
 
     let cli = Cli::parse();
     run(cli.command).await
@@ -79,8 +111,92 @@ async fn run(command: Command) -> Result<()> {
             proxy.shutdown().await.context("shut down daemon")?;
             println!("daemon stopping");
         }
+        Command::Id {
+            command: IdCommand::Show,
+        } => {
+            let proxy = connect().await?;
+            let identity = proxy.get_identity().await.context("get daemon identity")?;
+            println!(
+                "node_id: {}",
+                identity_value(&identity, ipc::IDENTITY_NODE_ID)
+            );
+            println!(
+                "fingerprint: {}",
+                group_fingerprint(&identity_value(&identity, ipc::IDENTITY_FINGERPRINT))
+            );
+            println!(
+                "display_name: {}",
+                identity_value(&identity, ipc::IDENTITY_DISPLAY_NAME)
+            );
+        }
+        Command::Settings { command } => run_settings(command)?,
+        Command::Peers {
+            command: PeersCommand::List,
+        } => {
+            let proxy = connect().await?;
+            let peers = proxy.list_peers().await.context("list peers")?;
+            if peers.is_empty() {
+                println!("no peers");
+            } else {
+                for peer in peers {
+                    println!(
+                        "{} {} {} {}",
+                        peer_value(&peer, ipc::PEER_ID),
+                        peer_value(&peer, ipc::PEER_FINGERPRINT),
+                        peer_value(&peer, ipc::PEER_POLICY),
+                        peer_value(&peer, ipc::PEER_DISPLAY_NAME)
+                    );
+                }
+            }
+        }
     }
     Ok(())
+}
+
+fn run_settings(command: SettingsCommand) -> Result<()> {
+    let mut settings = Settings::load().context("load settings")?;
+    match command {
+        SettingsCommand::Get { key } => {
+            let value = settings.get_setting(&key).context("get setting")?;
+            println!("{}", value.render());
+        }
+        SettingsCommand::Set { key, value } => {
+            settings.set_setting(&key, &value).context("set setting")?;
+            settings.save().context("save settings")?;
+            println!("{} = {}", key, value);
+        }
+        SettingsCommand::List => {
+            for (key, value) in settings.list_settings().context("list settings")? {
+                println!("{key} = {}", value.render());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn group_fingerprint(value: &str) -> String {
+    value
+        .as_bytes()
+        .chunks(4)
+        .map(|chunk| std::str::from_utf8(chunk).unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn identity_value(
+    identity: &std::collections::HashMap<String, zbus::OwnedVariant>,
+    key: &str,
+) -> String {
+    identity
+        .get(key)
+        .map(variant_text)
+        .unwrap_or_else(|| "unknown".to_owned())
+}
+
+fn peer_value(peer: &std::collections::HashMap<String, zbus::OwnedVariant>, key: &str) -> String {
+    peer.get(key)
+        .map(variant_text)
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 async fn connect() -> Result<DaemonProxy<'static>> {

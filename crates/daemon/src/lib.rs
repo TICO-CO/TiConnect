@@ -1,7 +1,10 @@
 #![forbid(unsafe_code)]
 
+pub mod config_watch;
+pub mod identity;
 pub mod runtime;
 pub mod service;
+pub mod storage;
 
 #[cfg(test)]
 mod tests {

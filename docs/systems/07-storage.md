@@ -26,15 +26,15 @@ Daemon-only. Stores no configuration. Repositories expose typed operations. Netw
 |---|---|---|---|---|---|---|
 | `DB.attachments` | Attachments repository | `module` | `crates/daemon/src/storage/attachments.rs` | attachments table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/attachments.rs |
 | `DB.conversations` | Conversations repository | `module` | `crates/daemon/src/storage/conversations.rs` | conversations table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/conversations.rs |
-| `DB.integrity` | Integrity and quota | `module` | `crates/daemon/src/storage/mod.rs` |  | docs/systems/07-storage.md#components | planned: crates/daemon/tests/integrity.rs |
+| `DB.integrity` | Integrity and quota | `module` | `crates/daemon/src/storage/mod.rs` |  | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.messages` | Messages repository | `module` | `crates/daemon/src/storage/messages.rs` | messages table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/messages.rs |
-| `DB.migrations` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | schema version | docs/systems/07-storage.md#components | planned: crates/daemon/tests/migrations.rs |
-| `DB.open` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | database connection | docs/systems/07-storage.md#components | planned: crates/daemon/tests/storage.rs |
+| `DB.migrations` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | schema version | docs/systems/07-storage.md#components | crates/daemon/tests/migrations.rs |
+| `DB.open` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | database connection | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.outbox` | Outbox repository | `module` | `crates/daemon/src/storage/outbox.rs` | outbox table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/outbox.rs |
 | `DB.peer-state` | Peer state repository | `module` | `crates/daemon/src/storage/peer_state.rs` | peer_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peer_state.rs |
-| `DB.peers` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | peers table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peers.rs |
+| `DB.peers` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | peers table | docs/systems/07-storage.md#components | crates/daemon/tests/peers.rs |
 | `DB.transfer-partials` | Transfer partials repository | `module` | `crates/daemon/src/storage/transfers.rs` | transfer partials table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/transfers.rs |
-| `DB.tx` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | active transaction | docs/systems/07-storage.md#components | planned: crates/daemon/tests/storage.rs |
+| `DB.tx` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | active transaction | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 
 ## Interfaces
 
@@ -83,7 +83,7 @@ Daemon-only. Stores no configuration. Repositories expose typed operations. Netw
 
 ## Invariants
 
-- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: planned: crates/settings and crates/daemon tests
+- `INV-CFG-1` — Configuration lives only in config.toml and SQLite stores no configuration. Test: crates/settings/src/tests.rs and crates/daemon/tests/storage.rs
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
 
 ## Failure semantics
@@ -95,6 +95,6 @@ Daemon-only. Stores no configuration. Repositories expose typed operations. Netw
 
 ## Open decisions
 
-- backup and export policy
+- key and database backup/export are out of scope for v1
 - disk quota policy
 - schema migration compatibility window

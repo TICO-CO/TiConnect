@@ -23,11 +23,11 @@ Client process. Talks to daemon over D-Bus and settings directly. No storage or 
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `CLI.daemon` | Daemon client | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.debug` | Debug commands | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.output` | Output format | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.parser` | Command parser | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.settings` | Settings client | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
+| `CLI.daemon` | Daemon client | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.debug` | Debug commands | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.output` | Output format | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.parser` | Command parser | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.settings` | Settings client | `module` | `crates/cli/src/main.rs` |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
 
 ## Interfaces
 

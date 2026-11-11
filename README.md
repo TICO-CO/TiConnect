@@ -8,10 +8,12 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, and 2 are implemented: workspace, settings, logging, typed
-errors, binary scaffolds, the canonical architecture graph, the D-Bus daemon,
-the CLI, and systemd/autostart packaging. Identity, discovery, transport,
-messaging, and UI stages are not implemented yet.
+Stages 1, 1.5, and 3 are implemented. Stage 2 automation is implemented, with
+manual systemd/logout verification pending. This includes workspace, settings,
+logging, typed errors, the architecture graph, the D-Bus daemon, the CLI,
+systemd/autostart packaging, Ed25519 identity, SQLite storage, settings reload,
+and peer CRUD. Discovery, pairing, transport, messaging, and UI stages are not
+implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -23,11 +25,12 @@ staged delivery.
 | --- | --- |
 | `ticonnect-settings` | Persisted and effective settings, leaf crate |
 | `ticonnect-logging` | `tracing-subscriber` setup, leaf crate |
-| `ticonnect-core` | Shared domain types |
+| `ticonnect-core` | Shared domain types, identity, fingerprints, node IDs |
 | `ticonnect-net` | Discovery and transport |
 | `ticonnect-media` | Audio and video codecs |
 | `ticonnect-desktop` | Capture and input integration |
-| `ticonnect-daemon` | Background daemon, binary `ticonnectd` |
+| `ticonnect-daemon` | Daemon service library: D-Bus, identity, SQLite |
+| `ticonnect-runtime` | Composition root and binary `ticonnectd` |
 | `ticonnect-ui` | GTK4 main window, binary `ticonnect-ui` |
 | `ticonnect-overlay` | Toast overlay, binary `ticonnect-ovl` |
 | `ticonnect-cli` | Command-line client, binary `ticonnect-cli` |
@@ -56,15 +59,22 @@ Architecture docs are generated. After editing `docs/systems/graph/` or
 ```sh
 cargo run --bin ticonnectd
 cargo run --bin ticonnect-cli -- status
+cargo run --bin ticonnect-cli -- status --json
 cargo run --bin ticonnect-cli -- ping
+cargo run --bin ticonnect-cli -- id show
+cargo run --bin ticonnect-cli -- settings get dnd.enabled
+cargo run --bin ticonnect-cli -- settings set dnd.enabled true
+cargo run --bin ticonnect-cli -- settings list
+cargo run --bin ticonnect-cli -- peers list
 cargo run --bin ticonnect-cli -- quit
 cargo run --bin ticonnect-ui
 cargo run --bin ticonnect-ovl
 ```
 
 `ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
-`ticonnect-cli` exposes `status`, `version`, `ping`, and `quit`. The UI and
-overlay binaries still load settings, initialize logging, and exit.
+`ticonnect-cli` talks to the daemon for status, identity, peers, ping, and quit.
+`settings get`, `settings set`, and `settings list` read and write `config.toml`
+directly. The UI and overlay binaries initialize runtime services and exit.
 
 ## Configuration
 
@@ -73,11 +83,61 @@ overlay binaries still load settings, initialize logging, and exit.
 - `TICONNECT_CONFIG_DIR` selects the config directory before settings load. It is
   bootstrap-only and is never persisted.
 - `TICONNECT_*` environment variables override settings at runtime. They are not
-  persisted.
+  persisted. Nested keys use a double underscore delimiter, for example
+  `TICONNECT_DND__ENABLED=true`.
 - The discovered config directory is created with mode `0700`; `config.toml` is
   written with mode `0600`.
 - Settings writes use an in-process mutex, an OS advisory lock, and atomic
-  replacement. Saves persist explicit changes only.
+  replacement. Saves persist explicit changes only. Concurrent writers are
+  last-writer-wins per save.
+- The daemon watches the config directory and reloads `config.toml` after
+  external writes. Each changed setting is reported with `SettingsChanged`.
+
+Settings keys:
+
+| Key | Type | Default | Notes |
+| --- | --- | --- | --- |
+| `log_level` | string | `info` | `off`, `error`, `warn`, `info`, `debug`, `trace` |
+| `log_file` | optional path | unset | Empty value clears it |
+| `log_format` | string | `human` | `human` or `json` |
+| `data_dir` | optional path | XDG data dir | Empty value clears it |
+| `identity.display_name` | string | empty | Shown by `id show` and `GetIdentity` |
+| `discovery.enabled` | bool | `true` | Reserved for Stage 4 |
+| `overlay.enabled` | bool | `true` | Reserved for Stage 8 |
+| `read_receipts.enabled` | bool | `true` | Reserved for Stage 6 |
+| `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
+| `ringtone.path` | optional path | unset | Empty value clears it |
+| `dnd.enabled` | bool | `false` | Global do-not-disturb |
+
+## Identity
+
+- Private key: `$XDG_CONFIG_HOME/ticonnect/identity.key`, exactly 32 raw bytes,
+  mode `0600`.
+- Identity metadata: `$XDG_CONFIG_HOME/ticonnect/identity.toml`, mode `0600`.
+  It contains the UUIDv7 `node_id`; the public key is derived from the private
+  key.
+- The config directory is mode `0700`. A key with any group or other permission
+  bit is rejected at startup.
+- The fingerprint is BLAKE3 of the Ed25519 public key, rendered as lowercase hex
+  with groups of four for display.
+- Deleting `identity.key` creates a new key and a new node ID on the next start.
+  If the key exists but `identity.toml` is missing, startup fails rather than
+  silently changing the node ID.
+- Key rotation and key backup/export are out of scope for v1. Losing the key
+  makes this node untrusted to existing peers.
+
+## Data storage
+
+- Database: `$XDG_DATA_HOME/ticonnect/ticonnect.db`, mode `0600`; its directory is
+  mode `0700`.
+- SQLite uses WAL mode and foreign keys.
+- Schema version is stored in `schema_version` and migrations run on every open.
+  Migration failure refuses startup.
+- Stage 3 creates `peers`, `conversations`, `messages`, `outbox`, `attachments`,
+  and `peer_state`. Only the peers repository is active in Stage 3.
+- Configuration lives only in `config.toml`; SQLite stores no configuration.
+- Changing `data_dir` while the daemon is running does not move an existing database;
+  it applies on the next start.
 
 ## Documentation
 

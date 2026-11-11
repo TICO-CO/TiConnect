@@ -54,6 +54,7 @@ edges = [
   { id = "E049", from = "ID.trust-store", to = "DB.peers", kind = "calls", mode = "sync", contract = "trusted peer rows", stage = 5 },
   { id = "E050", from = "ID.key-load", to = "CFG.file-store", kind = "config-read", mode = "sync", contract = "config directory", stage = 3 },
   { id = "E051", from = "ID.key-load", to = "ID.key-store", kind = "owns", mode = "sync", contract = "identity key ownership", stage = 3 },
+  { id = "E303", from = "ID.key-load", to = "ID.meta-store", kind = "owns", mode = "sync", contract = "identity metadata ownership", stage = 3 },
 
   { id = "E052", from = "DB.open", to = "DB.migrations", kind = "calls", mode = "sync", contract = "migrate on open", stage = 3 },
   { id = "E053", from = "DB.migrations", to = "DB.tx", kind = "calls", mode = "sync", contract = "migration transaction", stage = 3 },

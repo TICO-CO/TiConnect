@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 
+pub mod fingerprint;
+pub mod id;
+pub mod identity;
 pub mod ipc;
 
 pub fn version() -> &'static str {

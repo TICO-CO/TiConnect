@@ -16,6 +16,7 @@ flowchart LR
     n_id_revoke["ID.revoke<br/>Revocation"]
     n_id_trust_store["ID.trust-store<br/>Trust store"]
     n_id_key_store[("ID.key-store (key-file)")]
+    n_id_meta_store[("ID.meta-store (toml-file)")]
   end
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
@@ -42,6 +43,7 @@ flowchart LR
   n_pair_qr -->|calls / sync: QR fingerprint| n_id_fingerprint
   n_tx_verifier -->|calls / sync gate:ID.trust-store: pinned trust lookup| n_id_trust_store
   n_tx_tls_cert -->|calls / sync gate:ID.cert-binding: certificate binding| n_id_cert_binding
+  n_id_key_load -->|owns / sync: identity metadata ownership| n_id_meta_store
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
   class n_cfg_file_store, n_db_peers, n_disc_supervisor, n_pair_commit, n_pair_qr, n_tx_tls_cert, n_tx_verifier external;
 ```
@@ -64,3 +66,4 @@ flowchart LR
 | `PAIR.qr` | calls | sync | `ID.fingerprint` | QR fingerprint |  |  | 5 |
 | `TX.verifier` | calls | sync | `ID.trust-store` | pinned trust lookup | ID.trust-store |  | 5 |
 | `TX.tls-cert` | calls | sync | `ID.cert-binding` | certificate binding | ID.cert-binding |  | 5 |
+| `ID.key-load` | owns | sync | `ID.meta-store` | identity metadata ownership |  |  | 3 |

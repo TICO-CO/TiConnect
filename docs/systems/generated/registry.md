@@ -22,7 +22,7 @@
 | `PAIR` | Pairing | `ticonnect-net` | `services` | 5 | [09-pairing.md](../09-pairing.md) |
 | `POL` | Policy | `ticonnect-daemon` | `daemon` | 6 | [13-policy.md](../13-policy.md) |
 | `RD` | Remote desktop | `ticonnect-daemon` | `daemon` | 11 | [19-remote-desktop.md](../19-remote-desktop.md) |
-| `RT` | Runtime and composition | `ticonnect-daemon` | `daemon` | 2 | [01-runtime.md](../01-runtime.md) |
+| `RT` | Runtime and composition | `ticonnect-runtime` | `daemon` | 2 | [01-runtime.md](../01-runtime.md) |
 | `TRAY` | Tray | `ticonnect-daemon` | `clients` | 6 | [22-tray.md](../22-tray.md) |
 | `TX` | Transport | `ticonnect-net` | `services` | 5 | [10-transport.md](../10-transport.md) |
 | `UI` | GTK4 user interface | `ticonnect-ui` | `clients` | 7 | [20-ui.md](../20-ui.md) |
@@ -43,7 +43,7 @@
 | `ASR.fake-transport` | `ASR` | Fake transport | `module` | `crates/testkit/src/transport.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/transport.rs |
 | `ASR.fake-trust` | `ASR` | Fake trust | `module` | `crates/testkit/src/trust.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/trust.rs |
 | `ASR.fuzz` | `ASR` | Fuzz targets | `module` | `fuzz/` | 5 |  | docs/systems/24-assurance.md#components | planned: fuzz targets |
-| `ASR.migrations` | `ASR` | Migration matrix | `module` | `crates/daemon/tests/migrations.rs` | 3 |  | docs/systems/24-assurance.md#components | planned: crates/daemon/tests/migrations.rs |
+| `ASR.migrations` | `ASR` | Migration matrix | `module` | `crates/daemon/tests/migrations.rs` | 3 |  | docs/systems/24-assurance.md#components | crates/daemon/tests/migrations.rs |
 | `ASR.packaging` | `ASR` | Packaging validation | `module` | `packaging/` | 12 |  | docs/systems/24-assurance.md#components | planned: Flatpak build |
 | `ASR.private-bus` | `ASR` | Private D-Bus | `module` | `crates/testkit/src/dbus.rs` | 1 |  | docs/systems/24-assurance.md#components | planned: crates/testkit/tests/dbus.rs |
 | `ASR.threat` | `ASR` | Threat model | `module` | `docs/security.md` | 5 |  | docs/systems/24-assurance.md#components | planned: security review |
@@ -80,23 +80,23 @@
 | `CFG.lock-atomic` | `CFG` | Lock and atomic replace | `module` | `crates/settings/src/storage.rs` | 1 | advisory lock | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
 | `CFG.schema` | `CFG` | Settings schema | `module` | `crates/settings/src/settings.rs` | 1 | effective settings | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
 | `CFG.validation` | `CFG` | Validation | `module` | `crates/settings/src/settings.rs` | 1 |  | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
-| `CFG.watch` | `CFG` | Change watch | `module` | `crates/daemon/src/config_watch.rs` | 3 | watch handle | docs/systems/02-settings.md#components | planned: crates/daemon/tests/config_watch.rs |
-| `CLI.daemon` | `CLI` | Daemon client | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.debug` | `CLI` | Debug commands | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.output` | `CLI` | Output format | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.parser` | `CLI` | Command parser | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
-| `CLI.settings` | `CLI` | Settings client | `module` | `crates/cli/src/main.rs` | 3 |  | docs/systems/23-cli.md#components | planned: crates/cli/tests/cli.rs |
+| `CFG.watch` | `CFG` | Change watch | `module` | `crates/daemon/src/config_watch.rs` | 3 | watch handle | docs/systems/02-settings.md#components | crates/runtime/tests/dbus.rs |
+| `CLI.daemon` | `CLI` | Daemon client | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.debug` | `CLI` | Debug commands | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.output` | `CLI` | Output format | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.parser` | `CLI` | Command parser | `module` | `crates/cli/src/main.rs` | 2 |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
+| `CLI.settings` | `CLI` | Settings client | `module` | `crates/cli/src/main.rs` | 3 |  | docs/systems/23-cli.md#components | crates/cli/tests/cli.rs |
 | `DB.attachments` | `DB` | Attachments repository | `module` | `crates/daemon/src/storage/attachments.rs` | 9 | attachments table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/attachments.rs |
 | `DB.conversations` | `DB` | Conversations repository | `module` | `crates/daemon/src/storage/conversations.rs` | 6 | conversations table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/conversations.rs |
-| `DB.integrity` | `DB` | Integrity and quota | `module` | `crates/daemon/src/storage/mod.rs` | 3 |  | docs/systems/07-storage.md#components | planned: crates/daemon/tests/integrity.rs |
+| `DB.integrity` | `DB` | Integrity and quota | `module` | `crates/daemon/src/storage/mod.rs` | 3 |  | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.messages` | `DB` | Messages repository | `module` | `crates/daemon/src/storage/messages.rs` | 6 | messages table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/messages.rs |
-| `DB.migrations` | `DB` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | 3 | schema version | docs/systems/07-storage.md#components | planned: crates/daemon/tests/migrations.rs |
-| `DB.open` | `DB` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | 3 | database connection | docs/systems/07-storage.md#components | planned: crates/daemon/tests/storage.rs |
+| `DB.migrations` | `DB` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | 3 | schema version | docs/systems/07-storage.md#components | crates/daemon/tests/migrations.rs |
+| `DB.open` | `DB` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | 3 | database connection | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.outbox` | `DB` | Outbox repository | `module` | `crates/daemon/src/storage/outbox.rs` | 6 | outbox table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/outbox.rs |
 | `DB.peer-state` | `DB` | Peer state repository | `module` | `crates/daemon/src/storage/peer_state.rs` | 6 | peer_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peer_state.rs |
-| `DB.peers` | `DB` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | 3 | peers table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peers.rs |
+| `DB.peers` | `DB` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | 3 | peers table | docs/systems/07-storage.md#components | crates/daemon/tests/peers.rs |
 | `DB.transfer-partials` | `DB` | Transfer partials repository | `module` | `crates/daemon/src/storage/transfers.rs` | 9 | transfer partials table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/transfers.rs |
-| `DB.tx` | `DB` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | 3 | active transaction | docs/systems/07-storage.md#components | planned: crates/daemon/tests/storage.rs |
+| `DB.tx` | `DB` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | 3 | active transaction | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DISC.beacon-codec` | `DISC` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` | 4 |  | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
 | `DISC.beacon-socket` | `DISC` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | 4 | UDP socket | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
 | `DISC.candidates` | `DISC` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | 4 | candidate cache | docs/systems/08-discovery.md#components | planned: crates/net/tests/discovery.rs |
@@ -108,9 +108,9 @@
 | `DOM.ack` | `DOM` | Ack record | `module` | `crates/core/src/ack.rs` | 6 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ack.rs |
 | `DOM.attachment-ref` | `DOM` | Attachment reference | `module` | `crates/core/src/attachment.rs` | 9 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/attachment.rs |
 | `DOM.canonical` | `DOM` | Canonical encoding | `module` | `crates/core/src/canonical.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/canonical.rs |
-| `DOM.fingerprint` | `DOM` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/fingerprint.rs |
-| `DOM.identity-types` | `DOM` | Identity types | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/identity.rs |
-| `DOM.ids` | `DOM` | Identifiers | `module` | `crates/core/src/id.rs` | 1 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ids.rs |
+| `DOM.fingerprint` | `DOM` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/04-domain.md#components | crates/core/tests/fingerprint.rs |
+| `DOM.identity-types` | `DOM` | Identity types | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/04-domain.md#components | crates/core/tests/identity.rs |
+| `DOM.ids` | `DOM` | Identifiers | `module` | `crates/core/src/id.rs` | 1 |  | docs/systems/04-domain.md#components | crates/core/tests/ids.rs |
 | `DOM.message` | `DOM` | Message record | `module` | `crates/core/src/message.rs` | 6 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/message.rs |
 | `DOM.signed-envelope` | `DOM` | Signed envelope | `module` | `crates/core/src/sign.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/sign.rs |
 | `DOM.version` | `DOM` | Protocol version | `module` | `crates/core/src/lib.rs` | 1 |  | docs/systems/04-domain.md#components | crates/core/src/lib.rs |
@@ -124,20 +124,20 @@
 | `DT.validate` | `DT` | Input validation | `module` | `crates/desktop/src/input/mod.rs` | 11 |  | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
 | `DT.xtest` | `DT` | XTEST backend | `module` | `crates/desktop/src/input/xtest.rs` | 11 | X11 connection | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
 | `ID.cert-binding` | `ID` | Certificate binding | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/06-identity-trust.md#components | planned: crates/net/tests/tls.rs |
-| `ID.fingerprint` | `ID` | Fingerprint derivation | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/fingerprint.rs |
-| `ID.key-load` | `ID` | Key load and store | `module` | `crates/daemon/src/identity.rs` | 3 | identity.key | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/identity.rs |
-| `ID.keygen` | `ID` | Key generation | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/identity.rs |
-| `ID.node-id` | `ID` | Node id | `module` | `crates/core/src/id.rs` | 3 |  | docs/systems/06-identity-trust.md#components | planned: crates/core/tests/ids.rs |
-| `ID.permissions` | `ID` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/identity.rs |
+| `ID.fingerprint` | `ID` | Fingerprint derivation | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/fingerprint.rs |
+| `ID.key-load` | `ID` | Key load and store | `module` | `crates/daemon/src/identity.rs` | 3 | identity.key | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
+| `ID.keygen` | `ID` | Key generation | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/identity.rs |
+| `ID.node-id` | `ID` | Node id | `module` | `crates/core/src/id.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/ids.rs |
+| `ID.permissions` | `ID` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
 | `ID.revoke` | `ID` | Revocation | `module` | `crates/daemon/src/trust.rs` | 5 |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
 | `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted peer table | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
-| `IPC.client` | `IPC` | Client proxy | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.dispatch` | `IPC` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.errors` | `IPC` | Error mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.schema` | `IPC` | Interface schema | `module` | `crates/core/src/ipc.rs` | 2 | interface version | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.signal-bus` | `IPC` | Signal bus | `module` | `crates/daemon/src/service.rs` | 2 | signal subscriptions | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.version` | `IPC` | Compatibility version | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.client` | `IPC` | Client proxy | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.dispatch` | `IPC` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
+| `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.errors` | `IPC` | Error mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.schema` | `IPC` | Interface schema | `module` | `crates/core/src/ipc.rs` | 2 | interface version | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.signal-bus` | `IPC` | Signal bus | `module` | `crates/daemon/src/service.rs` | 2 | signal subscriptions | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
+| `IPC.version` | `IPC` | Compatibility version | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
 | `LOG.parse` | `LOG` | Level and format parser | `module` | `crates/logging/src/config.rs` | 1 |  | docs/systems/03-observability.md#components | crates/logging/src/config.rs |
 | `LOG.redaction` | `LOG` | Redaction | `module` | `crates/logging/src/logging.rs` | 1 |  | docs/systems/03-observability.md#components | planned: crates/logging/tests/redaction.rs |
 | `LOG.sinks` | `LOG` | Output sinks | `module` | `crates/logging/src/output.rs` | 1 | stdout or file sink | docs/systems/03-observability.md#components | crates/logging/src/output.rs |
@@ -182,13 +182,13 @@
 | `RD.state` | `RD` | Remote session state | `module` | `crates/daemon/src/remote/state.rs` | 11 | remote session state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.teardown` | `RD` | Session teardown | `module` | `crates/daemon/src/remote/session.rs` | 11 |  | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.transport` | `RD` | Remote transport routing | `module` | `crates/daemon/src/remote/session.rs` | 11 | frame routes | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
-| `RT.autostart` | `RT` | Autostart adapter | `module` | `packaging/autostart` | 2 |  | docs/systems/01-runtime.md#components | planned: packaging tests |
-| `RT.lifecycle` | `RT` | Lifecycle | `module` | `crates/daemon/src/runtime.rs` | 2 | process lifecycle | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/lifecycle.rs |
-| `RT.shutdown` | `RT` | Shutdown coordinator | `module` | `crates/daemon/src/runtime.rs` | 2 | shutdown signal | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/shutdown.rs |
-| `RT.signals` | `RT` | Signal handling | `module` | `crates/daemon/src/runtime.rs` | 2 |  | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/signals.rs |
-| `RT.single-instance` | `RT` | Single instance guard | `module` | `crates/daemon/src/runtime.rs` | 2 | bus name ownership | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/single_instance.rs |
-| `RT.supervisor` | `RT` | Actor supervisor | `module` | `ticonnect-runtime` | 2 | child task handles | docs/systems/01-runtime.md#components | planned: crates/runtime/tests/supervisor.rs |
-| `RT.wiring` | `RT` | Composition wiring | `crate` | `ticonnect-runtime` | 2 |  | docs/systems/01-runtime.md#components | planned: crates/runtime/tests/wiring.rs |
+| `RT.autostart` | `RT` | Autostart adapter | `module` | `packaging/autostart` | 2 |  | docs/systems/01-runtime.md#components | crates/runtime/tests/packaging.rs |
+| `RT.lifecycle` | `RT` | Lifecycle | `module` | `crates/daemon/src/runtime.rs` | 2 | process lifecycle | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.shutdown` | `RT` | Shutdown coordinator | `module` | `crates/daemon/src/runtime.rs` | 2 | shutdown signal | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.signals` | `RT` | Signal handling | `module` | `crates/daemon/src/runtime.rs` | 2 |  | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.single-instance` | `RT` | Single instance guard | `module` | `crates/daemon/src/runtime.rs` | 2 | bus name ownership | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.supervisor` | `RT` | Actor supervisor | `module` | `crates/runtime/src/supervisor.rs` | 2 | child task handles | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.wiring` | `RT` | Composition wiring | `module` | `crates/runtime/src/daemon.rs` | 2 |  | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
 | `TRAY.activate` | `TRAY` | Window activation | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
 | `TRAY.fallback` | `TRAY` | Tray fallback | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
 | `TRAY.item` | `TRAY` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | 6 | tray item | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
@@ -252,6 +252,7 @@
 | `DB.schema-store` | `DB` | `sqlite-table` | `DB.migrations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version |
 | `DB.transfer-partials-store` | `DB` | `sqlite-table` | `DB.transfer-partials` | $XDG_DATA_HOME/ticonnect/ticonnect.db#transfer_partials |
 | `ID.key-store` | `ID` | `key-file` | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.key |
+| `ID.meta-store` | `ID` | `toml-file` | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.toml |
 
 ## Invariants
 
@@ -259,7 +260,7 @@
 |---|---|---|---|
 | `INV-ATT-1` | Attachment hash is verified before the file is published into the content store. | planned: crates/daemon/tests/attachments.rs | 9 |
 | `INV-AUD-1` | Microphone access starts only after call acceptance. | planned: crates/daemon/tests/calls.rs | 10 |
-| `INV-CFG-1` | Configuration lives only in config.toml and SQLite stores no configuration. | planned: crates/settings and crates/daemon tests | 1, 3 |
+| `INV-CFG-1` | Configuration lives only in config.toml and SQLite stores no configuration. | crates/settings/src/tests.rs and crates/daemon/tests/storage.rs | 1, 3 |
 | `INV-CFG-2` | Config writes are locked and atomically replace the file. | crates/settings/src/tests.rs | 1 |
 | `INV-DISC-1` | Discovery produces candidates only and never implies trust. | planned: crates/net/tests/discovery.rs | 4, 5 |
 | `INV-LIMIT-1` | Every queue, buffer, and frame decoder is bounded or declares its drop policy. | planned: design review plus fuzz tests | 5, 6, 9, 10, 11 |

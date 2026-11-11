@@ -1,0 +1,25 @@
+[package]
+name = "ticonnect-runtime"
+description = "TiConnect composition root and binaries"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ticonnectd"
+path = "src/bin/ticonnectd.rs"
+
+[dependencies]
+anyhow.workspace = true
+thiserror.workspace = true
+ticonnect-daemon.workspace = true
+ticonnect-logging.workspace = true
+ticonnect-settings.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal"] }
+
+[dev-dependencies]
+futures-util.workspace = true
+ticonnect-core.workspace = true
+tokio = { workspace = true, features = ["macros", "process", "rt-multi-thread", "signal", "time"] }
+zbus.workspace = true

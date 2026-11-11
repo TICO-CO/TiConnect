@@ -12,5 +12,9 @@ pub trait Daemon {
     fn ping(&self) -> zbus::Result<String>;
     fn get_version(&self) -> zbus::Result<String>;
     fn get_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_identity(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
+    fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn shutdown(&self) -> zbus::Result<()>;
 }

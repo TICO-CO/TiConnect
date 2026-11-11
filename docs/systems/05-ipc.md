@@ -23,13 +23,13 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `IPC.client` | Client proxy | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.dispatch` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` |  | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.dto` | DTO mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.errors` | Error mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.schema` | Interface schema | `module` | `crates/core/src/ipc.rs` | interface version | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
-| `IPC.signal-bus` | Signal bus | `module` | `crates/daemon/src/service.rs` | signal subscriptions | docs/systems/05-ipc.md#components | planned: crates/daemon/tests/dbus.rs |
-| `IPC.version` | Compatibility version | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | planned: crates/core/tests/ipc.rs |
+| `IPC.client` | Client proxy | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.dispatch` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` |  | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
+| `IPC.dto` | DTO mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.errors` | Error mapping | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.schema` | Interface schema | `module` | `crates/core/src/ipc.rs` | interface version | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
+| `IPC.signal-bus` | Signal bus | `module` | `crates/daemon/src/service.rs` | signal subscriptions | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
+| `IPC.version` | Compatibility version | `module` | `crates/core/src/ipc.rs` |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
 
 ## Interfaces
 

@@ -15,6 +15,7 @@ flowchart LR
   s_n_db_migrations["DB.migrations"] -->|owns| st_n_db_schema_store[("DB.schema-store")]
   s_n_db_transfer_partials["DB.transfer-partials"] -->|owns| st_n_db_transfer_partials_store[("DB.transfer-partials-store")]
   s_n_id_key_load["ID.key-load"] -->|owns| st_n_id_key_store[("ID.key-store")]
+  s_n_id_key_load["ID.key-load"] -->|owns| st_n_id_meta_store[("ID.meta-store")]
 ```
 
 | Store | Kind | Owner | Path |
@@ -30,3 +31,4 @@ flowchart LR
 | `DB.schema-store` | sqlite-table | `DB.migrations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version |
 | `DB.transfer-partials-store` | sqlite-table | `DB.transfer-partials` | $XDG_DATA_HOME/ticonnect/ticonnect.db#transfer_partials |
 | `ID.key-store` | key-file | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.key |
+| `ID.meta-store` | toml-file | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.toml |

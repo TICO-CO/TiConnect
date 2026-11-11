@@ -2,7 +2,7 @@
 
 # RT — Runtime and composition
 
-- Owner: `ticonnect-daemon`
+- Owner: `ticonnect-runtime`
 - Stage: 2
 - Layer: `daemon`
 - Component graph: [generated/components/rt.md](generated/components/rt.md)
@@ -24,13 +24,13 @@ Depends on settings, logging, and daemon service wiring. Does not own domain sta
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `RT.autostart` | Autostart adapter | `module` | `packaging/autostart` |  | docs/systems/01-runtime.md#components | planned: packaging tests |
-| `RT.lifecycle` | Lifecycle | `module` | `crates/daemon/src/runtime.rs` | process lifecycle | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/lifecycle.rs |
-| `RT.shutdown` | Shutdown coordinator | `module` | `crates/daemon/src/runtime.rs` | shutdown signal | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/shutdown.rs |
-| `RT.signals` | Signal handling | `module` | `crates/daemon/src/runtime.rs` |  | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/signals.rs |
-| `RT.single-instance` | Single instance guard | `module` | `crates/daemon/src/runtime.rs` | bus name ownership | docs/systems/01-runtime.md#components | planned: crates/daemon/tests/single_instance.rs |
-| `RT.supervisor` | Actor supervisor | `module` | `ticonnect-runtime` | child task handles | docs/systems/01-runtime.md#components | planned: crates/runtime/tests/supervisor.rs |
-| `RT.wiring` | Composition wiring | `crate` | `ticonnect-runtime` |  | docs/systems/01-runtime.md#components | planned: crates/runtime/tests/wiring.rs |
+| `RT.autostart` | Autostart adapter | `module` | `packaging/autostart` |  | docs/systems/01-runtime.md#components | crates/runtime/tests/packaging.rs |
+| `RT.lifecycle` | Lifecycle | `module` | `crates/daemon/src/runtime.rs` | process lifecycle | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.shutdown` | Shutdown coordinator | `module` | `crates/daemon/src/runtime.rs` | shutdown signal | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.signals` | Signal handling | `module` | `crates/daemon/src/runtime.rs` |  | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.single-instance` | Single instance guard | `module` | `crates/daemon/src/runtime.rs` | bus name ownership | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.supervisor` | Actor supervisor | `module` | `crates/runtime/src/supervisor.rs` | child task handles | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
+| `RT.wiring` | Composition wiring | `module` | `crates/runtime/src/daemon.rs` |  | docs/systems/01-runtime.md#components | crates/runtime/tests/dbus.rs |
 
 ## Interfaces
 
@@ -65,4 +65,4 @@ Depends on settings, logging, and daemon service wiring. Does not own domain sta
 
 ## Open decisions
 
-- introduce ticonnect-runtime in Stage 2 or defer
+- ticonnect-runtime adopted in Stage 2; daemon keeps D-Bus lifecycle

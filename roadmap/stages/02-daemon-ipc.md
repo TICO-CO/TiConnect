@@ -14,7 +14,7 @@ Component graphs: [RT](../../docs/systems/generated/components/rt.md), [IPC](../
 
 ## Scope
 
-- `ticonnectd` binary in `crates/daemon`.
+- `ticonnectd` binary in `crates/runtime`.
 - `zbus` service with methods, properties, and signals.
 - `ticonnect-cli` that talks to the daemon over D-Bus.
 - systemd user unit and XDG autostart entry.
@@ -34,10 +34,11 @@ Stages 1 and 1.5 complete.
 
 ## Deliverables
 
-- `crates/daemon/src/main.rs` — replace the Stage 1 stub with runtime setup and
-  `anyhow` error reporting.
+- `crates/runtime/src/bin/ticonnectd.rs` — binary entrypoint with `anyhow` error
+  reporting.
+- `crates/runtime/src/daemon.rs` — bootstrap and daemon composition.
 - `crates/daemon/src/service.rs` — D-Bus object implementation.
-- `crates/daemon/src/runtime.rs` — tokio runtime, shutdown handling.
+- `crates/daemon/src/runtime.rs` — D-Bus lifecycle, shutdown handling.
 - `crates/cli/src/main.rs` — replace the Stage 1 stub with subcommands `status`,
   `version`, `ping`, `quit`, keeping `anyhow` error reporting.
 - `packaging/systemd/ticonnectd.service`
@@ -46,73 +47,73 @@ Stages 1 and 1.5 complete.
 
 ## D-Bus interface (initial)
 
-- [ ] Bus name `org.ticonnect.Daemon`.
-- [ ] Object path `/org/ticonnect/Daemon`.
-- [ ] Interface `org.ticonnect.Daemon`.
-- [ ] Method `Ping() -> s` returns `pong`.
-- [ ] Method `GetVersion() -> s`.
-- [ ] Method `GetStatus() -> a{sv}` with `uptime_seconds`, `peer_count`,
+- [x] Bus name `org.ticonnect.Daemon`.
+- [x] Object path `/org/ticonnect/Daemon`.
+- [x] Interface `org.ticonnect.Daemon`.
+- [x] Method `Ping() -> s` returns `pong`.
+- [x] Method `GetVersion() -> s`.
+- [x] Method `GetStatus() -> a{sv}` with `uptime_seconds`, `peer_count`,
   `outbox_depth`, `transport_state`.
-- [ ] Method `Shutdown()` stops the daemon cleanly.
-- [ ] Property `Version` (read).
-- [ ] Signal `DaemonStarted()`, `DaemonStopping()`.
-- [ ] D-Bus errors mapped from daemon and dependency errors to stable error names.
+- [x] Method `Shutdown()` stops the daemon cleanly.
+- [x] Property `Version` (read).
+- [x] Signal `DaemonStarted()`, `DaemonStopping()`.
+- [x] D-Bus errors mapped from daemon and dependency errors to stable error names.
 
 ## Setup
 
-- [ ] Add `zbus` and `tokio` to the daemon crate.
-- [ ] Add `clap` to the CLI crate.
-- [ ] Create a bus-name acquisition helper that exits non-zero if another
+- [x] Add `zbus` and `tokio` to the daemon crate.
+- [x] Add `clap` to the CLI crate.
+- [x] Create a bus-name acquisition helper that exits non-zero if another
   instance owns the name.
-- [ ] Add a single-instance guard using the well-known bus name.
+- [x] Add a single-instance guard using the well-known bus name.
 
 ## Implementation
 
-- [ ] Daemon starts, acquires the bus name, and emits `DaemonStarted`.
-- [ ] Runtime handles SIGTERM, SIGINT, and bus disconnection.
-- [ ] On shutdown, emit `DaemonStopping`, release the name, and exit `0`.
-- [ ] `GetStatus` returns live values from a shared state struct.
-- [ ] CLI `status` prints human-readable output and supports `--json`.
-- [ ] CLI `ping` exits non-zero with a clear message when the daemon is absent.
-- [ ] CLI `quit` calls `Shutdown`.
-- [ ] Daemon logs startup, shutdown, and D-Bus errors via `tracing`.
-- [ ] Daemon runs correctly with `DISPLAY` and `WAYLAND_DISPLAY` unset.
+- [x] Daemon starts, acquires the bus name, and emits `DaemonStarted`.
+- [x] Runtime handles SIGTERM, SIGINT, and bus disconnection.
+- [x] On shutdown, emit `DaemonStopping`, release the name, and exit `0`.
+- [x] `GetStatus` returns live values from a shared state struct.
+- [x] CLI `status` prints human-readable output and supports `--json`.
+- [x] CLI `ping` exits non-zero with a clear message when the daemon is absent.
+- [x] CLI `quit` calls `Shutdown`.
+- [x] Daemon logs startup, shutdown, and D-Bus errors via `tracing`.
+- [x] Daemon runs correctly with `DISPLAY` and `WAYLAND_DISPLAY` unset.
 
 ## systemd and autostart
 
-- [ ] Unit is `Type=dbus` or `Type=notify` with correct `BusName`.
-- [ ] Unit uses `ExecStart` pointing to the installed daemon path.
-- [ ] Unit sets `Restart=on-failure` and a sane `RestartSec`.
-- [ ] Unit includes hardening: `NoNewPrivileges=yes`, `PrivateTmp=yes`,
+- [x] Unit is `Type=dbus` or `Type=notify` with correct `BusName`.
+- [x] Unit uses `ExecStart` pointing to the installed daemon path.
+- [x] Unit sets `Restart=on-failure` and a sane `RestartSec`.
+- [x] Unit includes hardening: `NoNewPrivileges=yes`, `PrivateTmp=yes`,
   `ProtectSystem=strict`, `ProtectHome=read-only` with writable config/data
   paths via `ReadWritePaths`.
-- [ ] Autostart `.desktop` uses `X-GNOME-Autostart-enabled=true` and
+- [x] Autostart `.desktop` uses `X-GNOME-Autostart-enabled=true` and
   `Hidden=false`.
-- [ ] Install script or Makefile target installs both files for the current user.
-- [ ] Document `systemctl --user daemon-reload` and enable steps.
+- [x] Install script or Makefile target installs both files for the current user.
+- [x] Document `systemctl --user daemon-reload` and enable steps.
 
 ## Tests
 
-- [ ] Integration test starts the daemon on a private session bus, calls
+- [x] Integration test starts the daemon on a private session bus, calls
   `Ping`, `GetVersion`, `GetStatus`, and `Shutdown`.
-- [ ] Test second instance fails to acquire the name and exits non-zero.
-- [ ] Test SIGTERM triggers clean shutdown and `DaemonStopping`.
-- [ ] Test CLI `status --json` parses and contains expected keys.
-- [ ] Manual test: daemon starts from systemd user unit and survives logout/login.
+- [x] Test second instance fails to acquire the name and exits non-zero.
+- [x] Test SIGTERM triggers clean shutdown and `DaemonStopping`.
+- [x] Test CLI `status --json` parses and contains expected keys.
+- [ ] Manual test: daemon starts from systemd user unit and survives logout/login. Automated tests and install steps are complete; host systemd verification is pending.
 
 ## Security
 
-- [ ] Unit runs as the user, never root.
-- [ ] No `--system` service, no polkit rule.
-- [ ] D-Bus policy does not widen access beyond the session bus default.
-- [ ] `Shutdown` is allowed only on the session bus.
-- [ ] Logs contain no environment dumps or secrets.
+- [x] Unit runs as the user, never root.
+- [x] No `--system` service, no polkit rule.
+- [x] D-Bus policy does not widen access beyond the session bus default.
+- [x] `Shutdown` is allowed only on the session bus.
+- [x] Logs contain no environment dumps or secrets.
 
 ## Docs and acceptance
 
-- [ ] Document the D-Bus interface in `docs/ipc.md`.
-- [ ] Document install, enable, status, and uninstall commands.
-- [ ] Document how to run the daemon in the foreground for debugging.
+- [x] Document the D-Bus interface in `docs/ipc.md`.
+- [x] Document install, enable, status, and uninstall commands.
+- [x] Document how to run the daemon in the foreground for debugging.
 
 ## Acceptance criteria
 

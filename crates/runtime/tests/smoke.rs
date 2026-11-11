@@ -10,6 +10,7 @@ fn daemon_without_session_bus_fails_cleanly() {
     let output = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))
         .env_clear()
         .env("TICONNECT_CONFIG_DIR", &dir)
+        .env("TICONNECT_DATA_DIR", dir.join("data"))
         .env(
             "DBUS_SESSION_BUS_ADDRESS",
             "unix:path=/nonexistent/ticonnect-bus",
