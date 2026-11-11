@@ -18,6 +18,12 @@ pub trait Daemon {
     fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn start_pairing(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn pair_with_pin(&self, node_id: &str, pin: &str) -> zbus::Result<bool>;
+    fn pair_with_qr(&self, payload: &str) -> zbus::Result<bool>;
+    fn cancel_pairing(&self) -> zbus::Result<()>;
+    fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
+    fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -25,4 +31,19 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn candidate_lost(&self, fingerprint: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn pairing_started(&self, pairing: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn pairing_completed(&self, peer_id: &str, fingerprint: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn pairing_failed(&self, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn peer_connected(&self, peer: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn peer_disconnected(&self, peer: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
 }

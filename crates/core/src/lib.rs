@@ -1,9 +1,12 @@
 #![forbid(unsafe_code)]
 
+pub mod canonical;
 pub mod fingerprint;
 pub mod id;
 pub mod identity;
 pub mod ipc;
+pub mod sign;
+pub mod wire;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

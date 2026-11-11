@@ -73,8 +73,9 @@ flowchart LR
   n_ovl -->|config-read / sync| n_cfg
   n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
-  n_pair -->|calls / sync gate:PAIR.confirm| n_id
+  n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
   n_pair -->|emits / event| n_ipc
+  n_pair -->|consumes, invokes / async, event| n_tx
   n_pair -->|calls / sync| n_wire
   n_pol -->|config-read / sync| n_cfg
   n_pol -->|calls / sync| n_db
@@ -87,6 +88,8 @@ flowchart LR
   n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
+  n_rt -->|invokes / async| n_pair
+  n_rt -->|invokes / async| n_tx
   n_tray -->|emits / event| n_ipc
   n_tray -->|calls / sync gate:POL.store| n_pol
   n_tray -->|calls / sync| n_ui
@@ -211,3 +214,9 @@ flowchart LR
 | `CLI.settings` | `CFG.file-store` | calls | sync | settings read and write |  |  | 3 |
 | `RT.lifecycle` | `DISC.supervisor` | invokes | async | start and stop discovery |  |  | 4 |
 | `CFG.watch` | `DISC.dbus` | invokes | async | reconfigure discovery |  |  | 4 |
+| `PAIR.dbus` | `ID.trust-store` | calls | sync | commit and forget peers | ID.trust-store |  | 5 |
+| `PAIR.dbus` | `IPC.signal-bus` | emits | event | PairingStarted, PairingCompleted, and PairingFailed |  |  | 5 |
+| `PAIR.dbus` | `TX.session` | consumes | event | peer connected and disconnected events |  |  | 5 |
+| `PAIR.dbus` | `TX.dialer` | invokes | async | open pairing connection |  |  | 5 |
+| `RT.lifecycle` | `PAIR.dbus` | invokes | async | start and stop pairing service |  |  | 5 |
+| `RT.lifecycle` | `TX.endpoint` | invokes | async | bind and stop transport |  |  | 5 |

@@ -53,6 +53,11 @@ enum Command {
         #[command(subcommand)]
         command: DiscoverCommand,
     },
+    /// Pair with another node.
+    Pair {
+        #[command(subcommand)]
+        command: PairCommand,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -83,6 +88,20 @@ enum DiscoverCommand {
     List,
     /// Print candidate found and lost events.
     Watch,
+}
+
+#[derive(Debug, Subcommand)]
+enum PairCommand {
+    /// Start a pairing session and print the PIN and QR payload.
+    Start,
+    /// Pair with a discovered node using a PIN.
+    WithPin { node_id: String, pin: String },
+    /// Pair using a QR payload.
+    WithQr { payload: String },
+    /// Cancel the active pairing session.
+    Cancel,
+    /// Forget a trusted peer and close its session.
+    Forget { peer_id: String },
 }
 
 #[tokio::main]
@@ -164,6 +183,43 @@ async fn run(command: Command) -> Result<()> {
             }
         }
         Command::Discover { command } => run_discover(command).await?,
+        Command::Pair { command } => run_pair(command).await?,
+    }
+    Ok(())
+}
+
+async fn run_pair(command: PairCommand) -> Result<()> {
+    let proxy = connect().await?;
+    match command {
+        PairCommand::Start => {
+            let started = proxy.start_pairing().await.context("start pairing")?;
+            println!("pin: {}", identity_value(&started, ipc::PAIRING_PIN));
+            println!("qr: {}", identity_value(&started, ipc::PAIRING_QR));
+            println!(
+                "expires_at: {}",
+                identity_value(&started, ipc::PAIRING_EXPIRES_AT)
+            );
+            println!("port: {}", identity_value(&started, ipc::PAIRING_PORT));
+        }
+        PairCommand::WithPin { node_id, pin } => {
+            proxy
+                .pair_with_pin(&node_id, &pin)
+                .await
+                .context("pair with pin")?;
+            println!("paired");
+        }
+        PairCommand::WithQr { payload } => {
+            proxy.pair_with_qr(&payload).await.context("pair with qr")?;
+            println!("paired");
+        }
+        PairCommand::Cancel => {
+            proxy.cancel_pairing().await.context("cancel pairing")?;
+            println!("pairing cancelled");
+        }
+        PairCommand::Forget { peer_id } => {
+            proxy.forget_peer(&peer_id).await.context("forget peer")?;
+            println!("peer forgotten");
+        }
     }
     Ok(())
 }

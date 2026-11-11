@@ -53,6 +53,8 @@ Depends on settings, logging, and daemon service wiring. Does not own domain sta
 | `RT.autostart` | `config-read` | `sync` | `CFG.file-store` | autostart setting |  |  |
 | `RT.supervisor` | `invokes` | `async` | `RT.lifecycle` | supervise lifecycle |  |  |
 | `RT.lifecycle` | `invokes` | `async` | `DISC.supervisor` | start and stop discovery |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `PAIR.dbus` | start and stop pairing service |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `TX.endpoint` | bind and stop transport |  |  |
 
 ## Invariants
 

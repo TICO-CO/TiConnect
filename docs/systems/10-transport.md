@@ -24,17 +24,17 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `TX.alpn` | ALPN routing | `module` | `crates/net/src/transport/server.rs` |  | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.datagrams` | Datagram router | `module` | `crates/net/src/transport/session.rs` | datagram routes | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.dialer` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | backoff state | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.endpoint` | QUIC endpoint | `module` | `crates/net/src/transport/server.rs` | QUIC endpoint | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.metrics` | Transport metrics | `module` | `crates/net/src/transport/mod.rs` | counters | docs/systems/10-transport.md#components | planned: crates/net/tests/metrics.rs |
-| `TX.reconnect` | Reconnect policy | `module` | `crates/net/src/transport/client.rs` | reconnect timers | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.replay` | Replay policy | `module` | `crates/net/src/transport/mod.rs` |  | docs/systems/10-transport.md#components | planned: crates/net/tests/replay.rs |
-| `TX.session` | Session actor | `module` | `crates/net/src/transport/session.rs` | active session | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.streams` | Stream registry | `module` | `crates/net/src/transport/session.rs` | open streams | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.tls-cert` | TLS certificate | `module` | `crates/net/src/tls.rs` | self-signed certificate | docs/systems/10-transport.md#components | planned: crates/net/tests/tls.rs |
-| `TX.verifier` | Certificate verifier | `module` | `crates/net/src/tls.rs` |  | docs/systems/10-transport.md#components | planned: crates/net/tests/tls.rs |
+| `TX.alpn` | ALPN routing | `module` | `crates/net/src/transport/server.rs` |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.datagrams` | Datagram router | `module` | `crates/net/src/transport/session.rs` | datagram routes | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.dialer` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | backoff state | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.endpoint` | QUIC endpoint | `module` | `crates/net/src/transport/server.rs` | QUIC endpoint | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.metrics` | Transport metrics | `module` | `crates/net/src/transport/mod.rs` | counters | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.reconnect` | Reconnect policy | `module` | `crates/net/src/transport/client.rs` | reconnect timers | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.replay` | Replay policy | `module` | `crates/net/src/transport/mod.rs` |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.session` | Session actor | `module` | `crates/net/src/transport/session.rs` | active session | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.streams` | Stream registry | `module` | `crates/net/src/transport/session.rs` | open streams | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.tls-cert` | TLS certificate | `module` | `crates/net/src/tls.rs` | self-signed certificate | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
+| `TX.verifier` | Certificate verifier | `module` | `crates/net/src/tls.rs` |  | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
 
 ## Interfaces
 
@@ -83,6 +83,9 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 | `RD.transport` | `invokes` | `async` | `TX.streams` | remote frame stream | RD.consent |  |
 | `RD.transport` | `invokes` | `async` | `TX.datagrams` | remote input datagram | RD.consent |  |
 | `RD.teardown` | `calls` | `sync` | `TX.session` | close remote transport |  |  |
+| `PAIR.dbus` | `consumes` | `event` | `TX.session` | peer connected and disconnected events |  |  |
+| `PAIR.dbus` | `invokes` | `async` | `TX.dialer` | open pairing connection |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `TX.endpoint` | bind and stop transport |  |  |
 
 ## Invariants
 
@@ -102,6 +105,6 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 
 ## Open decisions
 
-- certificate binding mechanism
-- reconnect state preservation
-- datagram replay policy
+- certificates reuse the Ed25519 identity key
+- reconnect preserves no session state
+- datagram replay policy applies from Stage 10

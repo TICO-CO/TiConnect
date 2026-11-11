@@ -25,6 +25,7 @@ flowchart LR
     n_msg_events["MSG.events<br/>MSG"]
     n_ovl_client["OVL.client<br/>OVL"]
     n_pair_commit["PAIR.commit<br/>PAIR"]
+    n_pair_dbus["PAIR.dbus<br/>PAIR"]
     n_pol_notify["POL.notify<br/>POL"]
     n_pol_store["POL.store<br/>POL"]
     n_rd_consent["RD.consent<br/>RD"]
@@ -62,8 +63,9 @@ flowchart LR
   n_ovl_client -->|calls / sync: daemon signal proxy| n_ipc_client
   n_tray_item -.->|emits / event: tray status| n_ipc_signal_bus
   n_cli_daemon -->|calls / sync: daemon proxy| n_ipc_client
+  n_pair_dbus -.->|emits / event: PairingStarted, PairingCompleted, and PairingFailed| n_ipc_signal_bus
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_dbus, n_dom_ids, n_msg_events, n_ovl_client, n_pair_commit, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_tx_session, n_ui_client external;
+  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_dbus, n_dom_ids, n_msg_events, n_ovl_client, n_pair_commit, n_pair_dbus, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_tx_session, n_ui_client external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -95,3 +97,4 @@ flowchart LR
 | `OVL.client` | calls | sync | `IPC.client` | daemon signal proxy |  |  | 8 |
 | `TRAY.item` | emits | event | `IPC.signal-bus` | tray status |  |  | 6 |
 | `CLI.daemon` | calls | sync | `IPC.client` | daemon proxy |  |  | 2 |
+| `PAIR.dbus` | emits | event | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  | 5 |

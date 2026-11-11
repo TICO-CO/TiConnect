@@ -1,0 +1,29 @@
+[package]
+name = "ticonnect-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+ticonnect-core = { path = "../crates/core" }
+ticonnect-net = { path = "../crates/net" }
+
+[workspace]
+
+[[bin]]
+name = "wire_decode"
+path = "fuzz_targets/wire_decode.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pairing_decode"
+path = "fuzz_targets/pairing_decode.rs"
+test = false
+doc = false
+bench = false

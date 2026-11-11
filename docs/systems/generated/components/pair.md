@@ -9,6 +9,7 @@ flowchart LR
   subgraph sys["Pairing"]
     n_pair_commit["PAIR.commit<br/>Trust commit"]
     n_pair_confirm["PAIR.confirm<br/>Transcript confirmation"]
+    n_pair_dbus["PAIR.dbus<br/>Pairing D-Bus adapter"]
     n_pair_endpoint["PAIR.endpoint<br/>Pairing endpoint"]
     n_pair_frames["PAIR.frames<br/>Pairing frame codec"]
     n_pair_pin["PAIR.pin<br/>PIN policy"]
@@ -19,7 +20,10 @@ flowchart LR
     n_id_fingerprint["ID.fingerprint<br/>ID"]
     n_id_trust_store["ID.trust-store<br/>ID"]
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
+    n_rt_lifecycle["RT.lifecycle<br/>RT"]
     n_tx_alpn["TX.alpn<br/>TX"]
+    n_tx_dialer["TX.dialer<br/>TX"]
+    n_tx_session["TX.session<br/>TX"]
     n_wire_envelope["WIRE.envelope<br/>WIRE"]
   end
   n_pair_spake2 -->|calls / sync: confirmation value| n_pair_confirm
@@ -33,8 +37,14 @@ flowchart LR
   n_pair_endpoint -->|calls / sync: pairing frame envelope| n_wire_envelope
   n_pair_qr -->|calls / sync: QR fingerprint| n_id_fingerprint
   n_tx_alpn -->|calls / sync gate:PAIR.endpoint: pairing ALPN| n_pair_endpoint
+  n_pair_dbus -.->|invokes / async: run pairing exchange| n_pair_endpoint
+  n_pair_dbus -->|calls / sync gate:ID.trust-store: commit and forget peers| n_id_trust_store
+  n_pair_dbus -.->|emits / event: PairingStarted, PairingCompleted, and PairingFailed| n_ipc_signal_bus
+  n_pair_dbus -.->|consumes / event: peer connected and disconnected events| n_tx_session
+  n_pair_dbus -.->|invokes / async: open pairing connection| n_tx_dialer
+  n_rt_lifecycle -.->|invokes / async: start and stop pairing service| n_pair_dbus
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_id_fingerprint, n_id_trust_store, n_ipc_signal_bus, n_tx_alpn, n_wire_envelope external;
+  class n_id_fingerprint, n_id_trust_store, n_ipc_signal_bus, n_rt_lifecycle, n_tx_alpn, n_tx_dialer, n_tx_session, n_wire_envelope external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -50,3 +60,9 @@ flowchart LR
 | `PAIR.endpoint` | calls | sync | `WIRE.envelope` | pairing frame envelope |  |  | 5 |
 | `PAIR.qr` | calls | sync | `ID.fingerprint` | QR fingerprint |  |  | 5 |
 | `TX.alpn` | calls | sync | `PAIR.endpoint` | pairing ALPN | PAIR.endpoint |  | 5 |
+| `PAIR.dbus` | invokes | async | `PAIR.endpoint` | run pairing exchange |  |  | 5 |
+| `PAIR.dbus` | calls | sync | `ID.trust-store` | commit and forget peers | ID.trust-store |  | 5 |
+| `PAIR.dbus` | emits | event | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  | 5 |
+| `PAIR.dbus` | consumes | event | `TX.session` | peer connected and disconnected events |  |  | 5 |
+| `PAIR.dbus` | invokes | async | `TX.dialer` | open pairing connection |  |  | 5 |
+| `RT.lifecycle` | invokes | async | `PAIR.dbus` | start and stop pairing service |  |  | 5 |

@@ -23,6 +23,12 @@ trait Daemon {
     fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn start_pairing(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn pair_with_pin(&self, node_id: &str, pin: &str) -> zbus::Result<bool>;
+    fn pair_with_qr(&self, payload: &str) -> zbus::Result<bool>;
+    fn cancel_pairing(&self) -> zbus::Result<()>;
+    fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
+    fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -72,7 +78,11 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     assert_eq!(
         <&str>::try_from(&status[ipc::STATUS_TRANSPORT_STATE]).expect("transport state"),
-        ipc::TRANSPORT_OFFLINE
+        ipc::TRANSPORT_IDLE
+    );
+    assert_eq!(
+        u32::try_from(&status[ipc::STATUS_ACTIVE_SESSIONS]).expect("active sessions"),
+        0
     );
 
     let identity = proxy.get_identity().await.expect("identity");
@@ -104,6 +114,13 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
             .expect("candidates")
             .is_empty()
     );
+    assert!(
+        proxy
+            .list_trusted_peers()
+            .await
+            .expect("trusted peers")
+            .is_empty()
+    );
     let discovery = proxy
         .get_discovery_status()
         .await
@@ -117,6 +134,21 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         u32::try_from(&discovery[ipc::DISCOVERY_CANDIDATE_COUNT]).expect("candidate count"),
         0
     );
+
+    let pairing = proxy.start_pairing().await.expect("start pairing");
+    assert_eq!(
+        <&str>::try_from(&pairing[ipc::PAIRING_PIN])
+            .expect("pairing pin")
+            .len(),
+        6
+    );
+    assert!(
+        <&str>::try_from(&pairing[ipc::PAIRING_QR])
+            .expect("pairing qr")
+            .starts_with("ticonnect://pair/v1?")
+    );
+    assert!(u64::try_from(&pairing[ipc::PAIRING_EXPIRES_AT]).expect("expiry") > 0);
+    proxy.cancel_pairing().await.expect("cancel pairing");
 
     assert!(config_dir.join("identity.key").is_file());
     assert!(config_dir.join("identity.toml").is_file());

@@ -50,6 +50,7 @@ pub struct DiscoveryConfig {
     pub display_name: String,
     pub node_id: String,
     pub fingerprint: String,
+    pub transport_port: u16,
     pub beacon_port: u16,
     pub beacon_targets: Option<Vec<SocketAddr>>,
 }
@@ -68,9 +69,15 @@ impl DiscoveryConfig {
             display_name: display_name.into(),
             node_id: node_id.into(),
             fingerprint: fingerprint.into(),
+            transport_port: 0,
             beacon_port: BEACON_PORT,
             beacon_targets: None,
         }
+    }
+
+    pub fn with_transport_port(mut self, port: u16) -> Self {
+        self.transport_port = port;
+        self
     }
 
     pub fn with_beacon_override(

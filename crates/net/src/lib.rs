@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 
 pub mod discovery;
+pub mod pairing;
+pub mod tls;
+pub mod transport;
 
 #[cfg(test)]
 mod tests {

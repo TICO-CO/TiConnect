@@ -42,98 +42,98 @@ Stages 1, 1.5, 3, and 4 complete.
 
 ## Pairing protocol
 
-- [ ] Pairing endpoint listens on a fixed or advertised port, separate from the
+- [x] Pairing endpoint listens on a fixed or advertised port, separate from the
   post-pairing session handler.
-- [ ] SPAKE2 uses `spake2` with a 6-digit PIN encoded as the shared secret.
-- [ ] PIN is generated with a CSPRNG, displayed on the initiating side, and
+- [x] SPAKE2 uses `spake2` with a 6-digit PIN encoded as the shared secret.
+- [x] PIN is generated with a CSPRNG, displayed on the initiating side, and
   entered on the responding side.
-- [ ] QR payload contains node id, address, port, fingerprint, and a one-time
+- [x] QR payload contains node id, address, port, fingerprint, and a one-time
   pairing token with short TTL.
-- [ ] PIN flow has a bounded number of attempts and a timeout.
-- [ ] Pairing messages are length-prefixed and validated before processing.
-- [ ] On success, both sides derive and compare a confirmation value.
-- [ ] On success, insert the peer into the trusted-peer table with fingerprint,
+- [x] PIN flow has a bounded number of attempts and a timeout.
+- [x] Pairing messages are length-prefixed and validated before processing.
+- [x] On success, both sides derive and compare a confirmation value.
+- [x] On success, insert the peer into the trusted-peer table with fingerprint,
   display name, and `trusted_at`.
-- [ ] Emit `PairingCompleted` with peer id and fingerprint.
-- [ ] Emit `PairingFailed` with a stable reason code.
-- [ ] Unpaired connections are allowed only to the pairing endpoint; any other
+- [x] Emit `PairingCompleted` with peer id and fingerprint.
+- [x] Emit `PairingFailed` with a stable reason code.
+- [x] Unpaired connections are allowed only to the pairing endpoint; any other
   application protocol is rejected before handler dispatch.
 
 ## TLS and QUIC
 
-- [ ] Generate a self-signed certificate whose key is bound to the node
+- [x] Generate a self-signed certificate whose key is bound to the node
   identity; document the binding mechanism.
-- [ ] ALPN identifier `ticonnect/1`.
-- [ ] TLS 1.3 only; no older protocol versions.
-- [ ] Server requires client certificates; client requires server certificates.
-- [ ] Custom certificate verifier pins the peer certificate fingerprint to the
+- [x] ALPN identifier `ticonnect/1`.
+- [x] TLS 1.3 only; no older protocol versions.
+- [x] Server requires client certificates; client requires server certificates.
+- [x] Custom certificate verifier pins the peer certificate fingerprint to the
   trusted-peer table.
-- [ ] Unknown or mismatched fingerprint aborts the handshake with a clear error.
-- [ ] Disable 0-RTT until replay handling is designed.
-- [ ] Configure keep-alive and idle timeout.
-- [ ] QUIC datagram support enabled for later audio use.
+- [x] Unknown or mismatched fingerprint aborts the handshake with a clear error.
+- [x] Disable 0-RTT until replay handling is designed.
+- [x] Configure keep-alive and idle timeout.
+- [x] QUIC datagram support enabled for later audio use.
 
 ## Transport
 
-- [ ] `Transport` actor owns the QUIC endpoint and active sessions.
-- [ ] Accept loop spawns one task per connection.
-- [ ] Client connects to a candidate address and retries with backoff.
-- [ ] Session state: `connecting`, `connected`, `disconnected`, `failed`.
-- [ ] Emit `PeerConnected` and `PeerDisconnected` D-Bus signals.
-- [ ] Reconnect automatically when a trusted peer is rediscovered.
-- [ ] One active session per peer; a new connection replaces the old one.
-- [ ] Graceful close sends a close frame and releases resources.
-- [ ] Track connection metrics: handshakes, failures, active sessions.
+- [x] `Transport` actor owns the QUIC endpoint and active sessions.
+- [x] Accept loop spawns one task per connection.
+- [x] Client connects to a candidate address and retries with backoff.
+- [x] Session state: `connecting`, `connected`, `disconnected`, `failed`.
+- [x] Emit `PeerConnected` and `PeerDisconnected` D-Bus signals.
+- [x] Reconnect automatically when a trusted peer is rediscovered.
+- [x] One active session per peer; a new connection replaces the old one.
+- [x] Graceful close sends a close frame and releases resources.
+- [x] Track connection metrics: handshakes, failures, active sessions.
 
 ## Trust store
 
-- [ ] Trusted peer lookup by fingerprint and by node id.
-- [ ] Revoke/forget peer removes trust and closes active session.
-- [ ] Pairing is the only way to add trust in v1.
-- [ ] Store certificate fingerprint separately from identity fingerprint only if
+- [x] Trusted peer lookup by fingerprint and by node id.
+- [x] Revoke/forget peer removes trust and closes active session.
+- [x] Pairing is the only way to add trust in v1.
+- [x] Store certificate fingerprint separately from identity fingerprint only if
   they differ; otherwise document the single-fingerprint model.
 
 ## D-Bus additions
 
-- [ ] `StartPairing() -> a{sv}` returns PIN, QR payload, and expiry.
-- [ ] `PairWithPin(s node_id, s pin) -> b`.
-- [ ] `PairWithQr(s payload) -> b`.
-- [ ] `CancelPairing()`.
-- [ ] `ForgetPeer(s peer_id)`.
-- [ ] `ListTrustedPeers() -> aa{sv}`.
-- [ ] Signals `PairingStarted`, `PairingCompleted`, `PairingFailed`,
+- [x] `StartPairing() -> a{sv}` returns PIN, QR payload, and expiry.
+- [x] `PairWithPin(s node_id, s pin) -> b`.
+- [x] `PairWithQr(s payload) -> b`.
+- [x] `CancelPairing()`.
+- [x] `ForgetPeer(s peer_id)`.
+- [x] `ListTrustedPeers() -> aa{sv}`.
+- [x] Signals `PairingStarted`, `PairingCompleted`, `PairingFailed`,
   `PeerConnected`, `PeerDisconnected`.
 
 ## Tests
 
-- [ ] SPAKE2 unit test: both sides derive the same key with the same PIN.
-- [ ] SPAKE2 unit test: wrong PIN fails with a typed error.
-- [ ] QR payload encode/decode round-trip and expiry test.
-- [ ] TLS test: pinned certificate succeeds; unknown certificate fails.
-- [ ] TLS test: client without certificate is rejected.
-- [ ] Transport test: two in-process nodes connect over loopback.
-- [ ] Test: unpaired peer cannot open a non-pairing stream.
-- [ ] Test: reconnection after transport drop.
-- [ ] Test: `ForgetPeer` closes an active session.
-- [ ] Fuzz test: pairing message decoder never panics.
+- [x] SPAKE2 unit test: both sides derive the same key with the same PIN.
+- [x] SPAKE2 unit test: wrong PIN fails with a typed error.
+- [x] QR payload encode/decode round-trip and expiry test.
+- [x] TLS test: pinned certificate succeeds; unknown certificate fails.
+- [x] TLS test: client without certificate is rejected.
+- [x] Transport test: two in-process nodes connect over loopback.
+- [x] Test: unpaired peer cannot open a non-pairing stream.
+- [x] Test: reconnection after transport drop.
+- [x] Test: `ForgetPeer` closes an active session.
+- [x] Fuzz test: pairing message decoder never panics.
 
 ## Security
 
-- [ ] Threat model written for pairing and transport before implementation.
-- [ ] PIN attempts limited; failures do not leak which step failed.
-- [ ] Pairing token is single-use and expires.
-- [ ] Constant-time comparison for confirmation values.
-- [ ] No key material in logs or D-Bus responses.
-- [ ] Certificate pinning fails closed.
-- [ ] No fallback to unauthenticated TLS.
-- [ ] Replay protection for pairing messages via nonce and transcript hash.
+- [x] Threat model written for pairing and transport before implementation.
+- [x] PIN attempts limited; failures do not leak which step failed.
+- [x] Pairing token is single-use and expires.
+- [x] Constant-time comparison for confirmation values.
+- [x] No key material in logs or D-Bus responses.
+- [x] Certificate pinning fails closed.
+- [x] No fallback to unauthenticated TLS.
+- [x] Replay protection for pairing messages via nonce and transcript hash.
 
 ## Docs and acceptance
 
-- [ ] Document pairing flows (PIN and QR), timeouts, and failure modes.
-- [ ] Document trust model and how to forget a peer.
-- [ ] Document ALPN, ports, and certificate model.
-- [ ] Document that discovery is not trust.
+- [x] Document pairing flows (PIN and QR), timeouts, and failure modes.
+- [x] Document trust model and how to forget a peer.
+- [x] Document ALPN, ports, and certificate model.
+- [x] Document that discovery is not trust.
 
 ## Acceptance criteria
 

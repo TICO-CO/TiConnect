@@ -8,14 +8,15 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, and 3 are implemented. Stage 2 automation is implemented, with
-manual systemd/logout verification pending. Stage 4 discovery is implemented,
-with manual two-machine LAN verification pending. This includes workspace,
-settings, logging, typed errors, the architecture graph, the D-Bus daemon, the
-CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage, settings
-reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast fallback, and
-a discovery candidate cache. Pairing, transport, messaging, and UI stages are
-not implemented yet.
+Stages 1, 1.5, 3, 4, and 5 are implemented. Stage 2 automation is implemented,
+with manual systemd/logout verification pending. Stage 4 discovery is
+implemented, with manual two-machine LAN verification pending. This includes
+workspace, settings, logging, typed errors, the architecture graph, the D-Bus
+daemon, the CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage,
+settings reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast
+fallback, a discovery candidate cache, SPAKE2 PIN and QR pairing, pinned
+QUIC/TLS transport, trusted peer revocation, and automatic reconnect for
+trusted peers. Messaging and UI stages are not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -70,14 +71,19 @@ cargo run --bin ticonnect-cli -- settings list
 cargo run --bin ticonnect-cli -- peers list
 cargo run --bin ticonnect-cli -- discover list
 cargo run --bin ticonnect-cli -- discover watch
+cargo run --bin ticonnect-cli -- pair start
+cargo run --bin ticonnect-cli -- pair with-pin <node-id> <pin>
+cargo run --bin ticonnect-cli -- pair with-qr '<payload>'
+cargo run --bin ticonnect-cli -- pair cancel
+cargo run --bin ticonnect-cli -- pair forget <peer-id>
 cargo run --bin ticonnect-cli -- quit
 cargo run --bin ticonnect-ui
 cargo run --bin ticonnect-ovl
 ```
 
 `ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
-`ticonnect-cli` talks to the daemon for status, identity, peers, discovery, ping,
-and quit.
+`ticonnect-cli` talks to the daemon for status, identity, peers, discovery,
+pairing, ping, and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
 directly. The UI and overlay binaries initialize runtime services and exit.
 
@@ -111,6 +117,7 @@ Settings keys:
 | `discovery.mdns` | bool | `true` | Advertise and browse `_ticonnect._udp.local.` |
 | `discovery.broadcast` | bool | `true` | UDP broadcast fallback |
 | `discovery.beacon_interval_secs` | integer | `5` | Valid range `1..=3600` |
+| `transport.port` | integer | `45871` | UDP port for QUIC session and pairing; valid range `1..=65535`; restart required |
 | `overlay.enabled` | bool | `true` | Reserved for Stage 8 |
 | `read_receipts.enabled` | bool | `true` | Reserved for Stage 6 |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
@@ -147,12 +154,30 @@ Settings keys:
 - Changing `data_dir` while the daemon is running does not move an existing database;
   it applies on the next start.
 
+## Pairing and transport
+
+- Pairing uses SPAKE2 over the `ticonnect-pair/1` ALPN. Session transport uses
+  `ticonnect/1` on the same UDP port.
+- `ticonnect-cli pair start` prints a six-digit PIN, a QR payload, and the
+  expiry time. PINs and QR tokens expire after 120 seconds. A pairing session
+  allows three PIN failures.
+- `ticonnect-cli pair with-pin <node-id> <pin>` uses a discovery candidate.
+  `ticonnect-cli pair with-qr '<payload>'` uses the address and port in the QR
+  payload and does not require discovery.
+- The self-signed TLS certificate reuses the Ed25519 identity key. The identity
+  fingerprint and certificate fingerprint are the same BLAKE3 value. Certificates
+  are pinned to the trusted peer table.
+- `ticonnect-cli pair forget <peer-id>` removes trust and closes the active
+  session. Trusted peers are reconnected automatically when rediscovered.
+- Unpaired peers can reach only the pairing ALPN. Session ALPN connections are
+  rejected before handler dispatch unless the certificate fingerprint is trusted.
+
 ## Discovery
 
 - Discovery advertises this node over mDNS service type `_ticonnect._udp.local.`
   and browses for peers on the LAN.
 - TXT keys are `v` (protocol version), `id` (node id), `fp` (fingerprint),
-  `name` (display name), and `port` (transport port; `0` until Stage 5).
+  `name` (display name), and `port` (configured QUIC transport port).
 - UDP broadcast is the IPv4 fallback. Beacons use port `45870` and are sent to
   each interface broadcast address every `discovery.beacon_interval_secs`.
 - Candidates expire after three beacon intervals. Stopping discovery or losing a

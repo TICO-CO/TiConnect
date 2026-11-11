@@ -9,6 +9,7 @@ flowchart LR
   g_n_call_policy["CALL.policy"] -.->|gates| f_n_tx_datagrams["TX.datagrams"]
   g_n_call_policy["CALL.policy"] -.->|gates| f_n_tx_session["TX.session"]
   g_n_id_cert_binding["ID.cert-binding"] -.->|gates| f_n_tx_tls_cert["TX.tls-cert"]
+  g_n_id_trust_store["ID.trust-store"] -.->|gates| f_n_pair_dbus["PAIR.dbus"]
   g_n_id_trust_store["ID.trust-store"] -.->|gates| f_n_tx_verifier["TX.verifier"]
   g_n_pair_confirm["PAIR.confirm"] -.->|gates| f_n_pair_commit["PAIR.commit"]
   g_n_pair_endpoint["PAIR.endpoint"] -.->|gates| f_n_tx_alpn["TX.alpn"]
@@ -49,3 +50,4 @@ flowchart LR
 | `RD.consent` | `RD.transport` | `TX.streams` | `E241` | remote frame stream |
 | `RD.consent` | `RD.transport` | `TX.datagrams` | `E242` | remote input datagram |
 | `POL.store` | `TRAY.policy` | `POL.store` | `E279` | set peer policy |
+| `ID.trust-store` | `PAIR.dbus` | `ID.trust-store` | `E308` | commit and forget peers |

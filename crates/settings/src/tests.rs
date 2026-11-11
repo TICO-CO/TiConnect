@@ -371,6 +371,29 @@ fn discovery_settings_round_trip() {
 }
 
 #[test]
+fn transport_port_round_trips_and_rejects_invalid_values() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        assert_eq!(settings.transport_port(), 45871);
+        settings
+            .set_setting("transport.port", "45900")
+            .expect("set port");
+        settings.save().expect("save");
+
+        let settings = Settings::load_from(&path).expect("reload");
+        assert_eq!(settings.transport_port(), 45900);
+
+        let mut settings = Settings::load_from(&path).expect("reload");
+        assert!(settings.set_setting("transport.port", "0").is_err());
+        assert!(settings.set_setting("transport.port", "70000").is_err());
+        Ok(())
+    });
+}
+
+#[test]
 fn invalid_discovery_interval_is_rejected() {
     Jail::expect_with(|jail| {
         jail.clear_env();

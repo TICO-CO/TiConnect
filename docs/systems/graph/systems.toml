@@ -108,7 +108,7 @@ boundary = "Owns sockets and candidate cache. Does not pair, connect, or authent
 owned_state = ["candidate cache"]
 interfaces = ["mDNS TXT records", "UDP beacon", "candidate list", "candidate signals"]
 failure_semantics = ["malformed packets dropped and counted", "candidate caps enforced", "mDNS failure falls back to broadcast"]
-open_decisions = ["candidate expiry is three beacon intervals", "transport port remains 0 until Stage 5", "IPv6 discovery is deferred; Stage 4 is IPv4-only"]
+open_decisions = ["candidate expiry is three beacon intervals", "the configured transport port is advertised", "IPv6 discovery is deferred; Stage 4 is IPv4-only"]
 
 [[systems]]
 id = "PAIR"
@@ -122,7 +122,7 @@ boundary = "Owns pairing state and endpoint. Unpaired peers can reach only this 
 owned_state = ["pairing session state", "one-time token"]
 interfaces = ["SPAKE2 transcript", "PIN", "QR payload", "pairing frames", "PairingCompleted signal"]
 failure_semantics = ["bounded attempts", "single-use token", "constant-time confirmation", "fail closed"]
-open_decisions = ["pairing endpoint transport", "QR token TTL", "PIN attempt lockout policy"]
+open_decisions = ["pairing uses the ticonnect-pair/1 ALPN on the transport port", "QR tokens expire after 120 seconds", "PIN attempts are bounded per pairing session"]
 
 [[systems]]
 id = "TX"
@@ -136,7 +136,7 @@ boundary = "Owns sessions and sockets. Uses trust for pinning and discovery for 
 owned_state = ["active sessions", "QUIC endpoints"]
 interfaces = ["TLS 1.3", "ALPN ticonnect/1", "streams", "datagrams", "session events"]
 failure_semantics = ["pinning fails closed", "one active session per peer", "bounded reconnect backoff", "no 0-RTT until replay handled"]
-open_decisions = ["certificate binding mechanism", "reconnect state preservation", "datagram replay policy"]
+open_decisions = ["certificates reuse the Ed25519 identity key", "reconnect preserves no session state", "datagram replay policy applies from Stage 10"]
 
 [[systems]]
 id = "WIRE"

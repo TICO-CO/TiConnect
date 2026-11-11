@@ -23,6 +23,7 @@ flowchart LR
     n_db_peers["DB.peers<br/>DB"]
     n_disc_supervisor["DISC.supervisor<br/>DISC"]
     n_pair_commit["PAIR.commit<br/>PAIR"]
+    n_pair_dbus["PAIR.dbus<br/>PAIR"]
     n_pair_qr["PAIR.qr<br/>PAIR"]
     n_tx_tls_cert["TX.tls-cert<br/>TX"]
     n_tx_verifier["TX.verifier<br/>TX"]
@@ -44,8 +45,9 @@ flowchart LR
   n_tx_verifier -->|calls / sync gate:ID.trust-store: pinned trust lookup| n_id_trust_store
   n_tx_tls_cert -->|calls / sync gate:ID.cert-binding: certificate binding| n_id_cert_binding
   n_id_key_load -->|owns / sync: identity metadata ownership| n_id_meta_store
+  n_pair_dbus -->|calls / sync gate:ID.trust-store: commit and forget peers| n_id_trust_store
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_db_peers, n_disc_supervisor, n_pair_commit, n_pair_qr, n_tx_tls_cert, n_tx_verifier external;
+  class n_cfg_file_store, n_db_peers, n_disc_supervisor, n_pair_commit, n_pair_dbus, n_pair_qr, n_tx_tls_cert, n_tx_verifier external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -67,3 +69,4 @@ flowchart LR
 | `TX.verifier` | calls | sync | `ID.trust-store` | pinned trust lookup | ID.trust-store |  | 5 |
 | `TX.tls-cert` | calls | sync | `ID.cert-binding` | certificate binding | ID.cert-binding |  | 5 |
 | `ID.key-load` | owns | sync | `ID.meta-store` | identity metadata ownership |  |  | 3 |
+| `PAIR.dbus` | calls | sync | `ID.trust-store` | commit and forget peers | ID.trust-store |  | 5 |

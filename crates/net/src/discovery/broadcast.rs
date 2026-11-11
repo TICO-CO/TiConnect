@@ -219,7 +219,7 @@ async fn send_beacons(
             PROTOCOL_VERSION,
             config.node_id.clone(),
             config.fingerprint.clone(),
-            0,
+            config.transport_port,
             target.local.to_string(),
             config.display_name.clone(),
         );

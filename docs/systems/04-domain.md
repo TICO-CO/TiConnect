@@ -25,14 +25,14 @@ Pure domain types. No I/O, no settings, no logging, no database, no network.
 |---|---|---|---|---|---|---|
 | `DOM.ack` | Ack record | `module` | `crates/core/src/ack.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ack.rs |
 | `DOM.attachment-ref` | Attachment reference | `module` | `crates/core/src/attachment.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/attachment.rs |
-| `DOM.canonical` | Canonical encoding | `module` | `crates/core/src/canonical.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/canonical.rs |
+| `DOM.canonical` | Canonical encoding | `module` | `crates/core/src/canonical.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/canonical.rs |
 | `DOM.fingerprint` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/fingerprint.rs |
 | `DOM.identity-types` | Identity types | `module` | `crates/core/src/identity.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/identity.rs |
 | `DOM.ids` | Identifiers | `module` | `crates/core/src/id.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/ids.rs |
 | `DOM.message` | Message record | `module` | `crates/core/src/message.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/message.rs |
-| `DOM.signed-envelope` | Signed envelope | `module` | `crates/core/src/sign.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/sign.rs |
+| `DOM.signed-envelope` | Signed envelope | `module` | `crates/core/src/sign.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/sign.rs |
 | `DOM.version` | Protocol version | `module` | `crates/core/src/lib.rs` |  | docs/systems/04-domain.md#components | crates/core/src/lib.rs |
-| `DOM.wire-types` | Wire frame types | `module` | `crates/core/src/wire.rs` |  | docs/systems/04-domain.md#components | planned: crates/core/tests/wire.rs |
+| `DOM.wire-types` | Wire frame types | `module` | `crates/core/src/wire.rs` |  | docs/systems/04-domain.md#components | crates/core/tests/wire.rs |
 
 ## Interfaces
 

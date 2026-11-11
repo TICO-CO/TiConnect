@@ -28,7 +28,7 @@ clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-postcard = "1"
+postcard = { version = "1", features = ["alloc"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
@@ -45,3 +45,9 @@ uuid = { version = "1", features = ["rng", "v7"] }
 mdns-sd = "0.21"
 if-addrs = "0.15"
 socket2 = "0.6"
+spake2 = "0.4"
+subtle = "2"
+quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+x509-parser = { version = "0.18", features = ["verify"] }

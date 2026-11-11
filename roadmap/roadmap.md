@@ -128,19 +128,19 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 ### Security
 
 - [ ] Threat model documented before Stage 5 and updated at Stages 6, 10, 11.
-- [ ] Pairing, pinning, and trust-table behavior covered by tests.
-- [ ] Key files created with mode `0600`; directory `0700`.
-- [ ] No feature reachable before pairing.
+- [x] Pairing, pinning, and trust-table behavior covered by tests.
+- [x] Key files created with mode `0600`; directory `0700`.
+- [x] No feature reachable before pairing.
 - [ ] Remote desktop consent, indicator, and kill switch reviewed.
 - [x] Dependency audit (`cargo audit`) runs in CI from Stage 1.
 
 ### Testing
 
-- [ ] Unit tests for protocol types, signing, and state machines.
-- [ ] Integration tests for daemon D-Bus methods and signals.
+- [x] Unit tests for protocol types, signing, and state machines.
+- [x] Integration tests for daemon D-Bus methods and signals.
 - [ ] Two-node loopback tests for transport, messaging, and calls.
 - [ ] Manual X11 and Wayland checklists per stage.
-- [ ] Fuzz or property tests for wire decoding from Stage 5.
+- [x] Fuzz or property tests for wire decoding from Stage 5.
 
 ### Observability
 
@@ -180,7 +180,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 - [ ] Stage 2 — Daemon & IPC (automation complete; manual systemd/logout verification pending)
 - [x] Stage 3 — Identity & storage
 - [ ] Stage 4 — Discovery
-- [ ] Stage 5 — Pairing & transport
+- [x] Stage 5 — Pairing & transport
 - [ ] Stage 6 — Messaging
 - [ ] Stage 7 — GTK4 UI
 - [ ] Stage 8 — Overlay & notifications

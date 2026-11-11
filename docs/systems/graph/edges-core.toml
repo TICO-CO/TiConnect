@@ -140,4 +140,11 @@ edges = [
   { id = "E128", from = "WIRE.ack", to = "DOM.ack", kind = "calls", mode = "sync", contract = "decode ack record", stage = 6 },
   { id = "E129", from = "WIRE.transfer", to = "DOM.attachment-ref", kind = "calls", mode = "sync", contract = "attachment reference", stage = 9 },
   { id = "E130", from = "WIRE.input", to = "DT.validate", kind = "calls", mode = "sync", contract = "input validation", gate = "RD.consent", stage = 11 },
+  { id = "E307", from = "PAIR.dbus", to = "PAIR.endpoint", kind = "invokes", mode = "async", contract = "run pairing exchange", stage = 5 },
+  { id = "E308", from = "PAIR.dbus", to = "ID.trust-store", kind = "calls", mode = "sync", contract = "commit and forget peers", gate = "ID.trust-store", stage = 5 },
+  { id = "E309", from = "PAIR.dbus", to = "IPC.signal-bus", kind = "emits", mode = "event", contract = "PairingStarted, PairingCompleted, and PairingFailed", stage = 5 },
+  { id = "E310", from = "PAIR.dbus", to = "TX.session", kind = "consumes", mode = "event", contract = "peer connected and disconnected events", stage = 5 },
+  { id = "E311", from = "PAIR.dbus", to = "TX.dialer", kind = "invokes", mode = "async", contract = "open pairing connection", stage = 5 },
+  { id = "E312", from = "RT.lifecycle", to = "PAIR.dbus", kind = "invokes", mode = "async", contract = "start and stop pairing service", stage = 5 },
+  { id = "E313", from = "RT.lifecycle", to = "TX.endpoint", kind = "invokes", mode = "async", contract = "bind and stop transport", stage = 5 },
 ]

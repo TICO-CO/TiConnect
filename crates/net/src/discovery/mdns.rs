@@ -134,7 +134,7 @@ pub(crate) fn spawn(
         config.node_id.clone(),
         config.fingerprint.clone(),
         config.display_name.clone(),
-        0,
+        config.transport_port,
     )
     .encode();
     let ip = local_ip_argument();

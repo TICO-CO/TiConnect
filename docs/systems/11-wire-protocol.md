@@ -23,17 +23,17 @@ Pure encoding and decoding contracts. No sockets, storage, or daemon state.
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `WIRE.ack` | Ack frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.audio` | Audio datagrams | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.call` | Call signals | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.envelope` | Frame envelope | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.handshake` | Handshake frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.input` | Input frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.limits` | Frame limits | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.message` | Message frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.sync` | Sync frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.transfer` | Transfer frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.video` | Video frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
+| `WIRE.ack` | Ack frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.audio` | Audio datagrams | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.call` | Call signals | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.envelope` | Frame envelope | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.handshake` | Handshake frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.input` | Input frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.limits` | Frame limits | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.message` | Message frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.sync` | Sync frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.transfer` | Transfer frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.video` | Video frames | `module` | `crates/core/src/wire.rs` |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
 
 ## Interfaces
 

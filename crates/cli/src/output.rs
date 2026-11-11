@@ -24,11 +24,12 @@ pub fn status_json(version: &str, status: &HashMap<String, OwnedVariant>) -> Val
 
 pub fn status_human(version: &str, status: &HashMap<String, OwnedVariant>) -> String {
     format!(
-        "version: {version}\nuptime_seconds: {}\npeer_count: {}\noutbox_depth: {}\ntransport_state: {}\n",
+        "version: {version}\nuptime_seconds: {}\npeer_count: {}\noutbox_depth: {}\ntransport_state: {}\nactive_sessions: {}\n",
         status_value(status, ipc::STATUS_UPTIME_SECONDS),
         status_value(status, ipc::STATUS_PEER_COUNT),
         status_value(status, ipc::STATUS_OUTBOX_DEPTH),
         status_value(status, ipc::STATUS_TRANSPORT_STATE),
+        status_value(status, ipc::STATUS_ACTIVE_SESSIONS),
     )
 }
 
@@ -81,7 +82,7 @@ mod tests {
         let status = fixture();
         assert_eq!(
             status_human("0.1.0", &status),
-            "version: 0.1.0\nuptime_seconds: 7\npeer_count: 0\noutbox_depth: 0\ntransport_state: offline\n"
+            "version: 0.1.0\nuptime_seconds: 7\npeer_count: 0\noutbox_depth: 0\ntransport_state: offline\nactive_sessions: 0\n"
         );
     }
 
@@ -121,6 +122,10 @@ mod tests {
             (
                 ipc::STATUS_TRANSPORT_STATE.to_owned(),
                 OwnedVariant::from(zbus::Str::from(ipc::TRANSPORT_OFFLINE)),
+            ),
+            (
+                ipc::STATUS_ACTIVE_SESSIONS.to_owned(),
+                OwnedVariant::from(0_u32),
             ),
         ])
     }

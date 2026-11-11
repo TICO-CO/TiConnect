@@ -71,8 +71,9 @@ flowchart LR
   n_ovl -->|config-read / sync| n_cfg
   n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
-  n_pair -->|calls / sync gate:PAIR.confirm| n_id
+  n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
   n_pair -->|emits / event| n_ipc
+  n_pair -->|consumes, invokes / async, event| n_tx
   n_pair -->|calls / sync| n_wire
   n_pol -->|config-read / sync| n_cfg
   n_pol -->|calls / sync| n_db
@@ -85,6 +86,8 @@ flowchart LR
   n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
+  n_rt -->|invokes / async| n_pair
+  n_rt -->|invokes / async| n_tx
   n_tray -->|emits / event| n_ipc
   n_tray -->|calls / sync gate:POL.store| n_pol
   n_tray -->|calls / sync| n_ui
@@ -142,8 +145,9 @@ flowchart LR
 | `OVL` | `CFG` | config-read | sync |  | 1 |
 | `OVL` | `IPC` | calls | sync |  | 1 |
 | `OVL` | `UI` | calls | sync |  | 1 |
-| `PAIR` | `ID` | calls | sync | PAIR.confirm | 2 |
-| `PAIR` | `IPC` | emits | event |  | 1 |
+| `PAIR` | `ID` | calls | sync | ID.trust-store, PAIR.confirm | 3 |
+| `PAIR` | `IPC` | emits | event |  | 2 |
+| `PAIR` | `TX` | consumes, invokes | async, event |  | 2 |
 | `PAIR` | `WIRE` | calls | sync |  | 1 |
 | `POL` | `CFG` | config-read | sync |  | 1 |
 | `POL` | `DB` | calls | sync |  | 1 |
@@ -156,6 +160,8 @@ flowchart LR
 | `RT` | `DISC` | invokes | async |  | 1 |
 | `RT` | `IPC` | calls | sync |  | 1 |
 | `RT` | `LOG` | calls | sync |  | 1 |
+| `RT` | `PAIR` | invokes | async |  | 1 |
+| `RT` | `TX` | invokes | async |  | 1 |
 | `TRAY` | `IPC` | emits | event |  | 1 |
 | `TRAY` | `POL` | calls | sync | POL.store | 1 |
 | `TRAY` | `UI` | calls | sync |  | 1 |

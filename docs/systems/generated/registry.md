@@ -108,14 +108,14 @@
 | `DISC.txt-codec` | `DISC` | TXT codec | `module` | `crates/net/src/discovery/mdns.rs` | 4 |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
 | `DOM.ack` | `DOM` | Ack record | `module` | `crates/core/src/ack.rs` | 6 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/ack.rs |
 | `DOM.attachment-ref` | `DOM` | Attachment reference | `module` | `crates/core/src/attachment.rs` | 9 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/attachment.rs |
-| `DOM.canonical` | `DOM` | Canonical encoding | `module` | `crates/core/src/canonical.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/canonical.rs |
+| `DOM.canonical` | `DOM` | Canonical encoding | `module` | `crates/core/src/canonical.rs` | 5 |  | docs/systems/04-domain.md#components | crates/core/tests/canonical.rs |
 | `DOM.fingerprint` | `DOM` | Fingerprint | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/04-domain.md#components | crates/core/tests/fingerprint.rs |
 | `DOM.identity-types` | `DOM` | Identity types | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/04-domain.md#components | crates/core/tests/identity.rs |
 | `DOM.ids` | `DOM` | Identifiers | `module` | `crates/core/src/id.rs` | 1 |  | docs/systems/04-domain.md#components | crates/core/tests/ids.rs |
 | `DOM.message` | `DOM` | Message record | `module` | `crates/core/src/message.rs` | 6 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/message.rs |
-| `DOM.signed-envelope` | `DOM` | Signed envelope | `module` | `crates/core/src/sign.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/sign.rs |
+| `DOM.signed-envelope` | `DOM` | Signed envelope | `module` | `crates/core/src/sign.rs` | 5 |  | docs/systems/04-domain.md#components | crates/core/tests/sign.rs |
 | `DOM.version` | `DOM` | Protocol version | `module` | `crates/core/src/lib.rs` | 1 |  | docs/systems/04-domain.md#components | crates/core/src/lib.rs |
-| `DOM.wire-types` | `DOM` | Wire frame types | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/04-domain.md#components | planned: crates/core/tests/wire.rs |
+| `DOM.wire-types` | `DOM` | Wire frame types | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/04-domain.md#components | crates/core/tests/wire.rs |
 | `DT.backend` | `DT` | Input backend detect | `module` | `crates/desktop/src/input/mod.rs` | 11 |  | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
 | `DT.capture` | `DT` | Capture negotiation | `module` | `crates/desktop/src/capture.rs` | 11 | capture format | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/capture.rs |
 | `DT.input-router` | `DT` | Input router | `module` | `crates/desktop/src/input/mod.rs` | 11 |  | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
@@ -124,14 +124,14 @@
 | `DT.portal` | `DT` | Portal session | `module` | `crates/desktop/src/portal.rs` | 11 | portal session | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/portal.rs |
 | `DT.validate` | `DT` | Input validation | `module` | `crates/desktop/src/input/mod.rs` | 11 |  | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
 | `DT.xtest` | `DT` | XTEST backend | `module` | `crates/desktop/src/input/xtest.rs` | 11 | X11 connection | docs/systems/17-desktop.md#components | planned: crates/desktop/tests/input.rs |
-| `ID.cert-binding` | `ID` | Certificate binding | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/06-identity-trust.md#components | planned: crates/net/tests/tls.rs |
+| `ID.cert-binding` | `ID` | Certificate binding | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/06-identity-trust.md#components | crates/net/tests/tls.rs |
 | `ID.fingerprint` | `ID` | Fingerprint derivation | `module` | `crates/core/src/fingerprint.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/fingerprint.rs |
 | `ID.key-load` | `ID` | Key load and store | `module` | `crates/daemon/src/identity.rs` | 3 | identity.key | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
 | `ID.keygen` | `ID` | Key generation | `module` | `crates/core/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/identity.rs |
 | `ID.node-id` | `ID` | Node id | `module` | `crates/core/src/id.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/ids.rs |
 | `ID.permissions` | `ID` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
-| `ID.revoke` | `ID` | Revocation | `module` | `crates/daemon/src/trust.rs` | 5 |  | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
-| `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted peer table | docs/systems/06-identity-trust.md#components | planned: crates/daemon/tests/trust.rs |
+| `ID.revoke` | `ID` | Revocation | `module` | `crates/daemon/src/trust.rs` | 5 |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
+| `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted peer table | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
 | `IPC.client` | `IPC` | Client proxy | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
 | `IPC.dispatch` | `IPC` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
 | `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
@@ -163,13 +163,14 @@
 | `OVL.router` | `OVL` | Card router | `module` | `crates/overlay/src/card.rs` | 8 | card queue | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
 | `OVL.wayland` | `OVL` | Wayland layer-shell | `module` | `crates/overlay/src/layer_shell.rs` | 8 | layer surface | docs/systems/21-overlay.md#components | planned: manual Wayland |
 | `OVL.x11` | `OVL` | X11 fallback window | `module` | `crates/overlay/src/x11_fallback.rs` | 8 | fallback window | docs/systems/21-overlay.md#components | planned: manual X11 |
-| `PAIR.commit` | `PAIR` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.confirm` | `PAIR` | Transcript confirmation | `module` | `crates/net/src/pairing/spake2.rs` | 5 |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.endpoint` | `PAIR` | Pairing endpoint | `module` | `crates/net/src/pairing/mod.rs` | 5 | pairing listener | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.frames` | `PAIR` | Pairing frame codec | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.pin` | `PAIR` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | 5 | PIN attempts | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.qr` | `PAIR` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | 5 | one-time token | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.spake2` | `PAIR` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | 5 | pairing transcript | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
+| `PAIR.commit` | `PAIR` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.confirm` | `PAIR` | Transcript confirmation | `module` | `crates/net/src/pairing/spake2.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.dbus` | `PAIR` | Pairing D-Bus adapter | `module` | `crates/daemon/src/pairing_service.rs` | 5 | pairing sessions | docs/systems/09-pairing.md#components | crates/runtime/tests/dbus.rs |
+| `PAIR.endpoint` | `PAIR` | Pairing endpoint | `module` | `crates/net/src/pairing/endpoint.rs` | 5 | pairing listener | docs/systems/09-pairing.md#components | crates/net/tests/pairing_endpoint.rs |
+| `PAIR.frames` | `PAIR` | Pairing frame codec | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.pin` | `PAIR` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | 5 | PIN attempts | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.qr` | `PAIR` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | 5 | one-time token | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.spake2` | `PAIR` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | 5 | pairing transcript | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
 | `POL.dnd` | `POL` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | DND state | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
 | `POL.inbound` | `POL` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
 | `POL.notify` | `POL` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | planned: crates/daemon/tests/policy.rs |
@@ -195,17 +196,17 @@
 | `TRAY.item` | `TRAY` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | 6 | tray item | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
 | `TRAY.menu` | `TRAY` | Tray menu | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
 | `TRAY.policy` | `TRAY` | Policy actions | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | planned: crates/daemon/tests/tray.rs |
-| `TX.alpn` | `TX` | ALPN routing | `module` | `crates/net/src/transport/server.rs` | 5 |  | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.datagrams` | `TX` | Datagram router | `module` | `crates/net/src/transport/session.rs` | 5 | datagram routes | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.dialer` | `TX` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | 5 | backoff state | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.endpoint` | `TX` | QUIC endpoint | `module` | `crates/net/src/transport/server.rs` | 5 | QUIC endpoint | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.metrics` | `TX` | Transport metrics | `module` | `crates/net/src/transport/mod.rs` | 5 | counters | docs/systems/10-transport.md#components | planned: crates/net/tests/metrics.rs |
-| `TX.reconnect` | `TX` | Reconnect policy | `module` | `crates/net/src/transport/client.rs` | 5 | reconnect timers | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.replay` | `TX` | Replay policy | `module` | `crates/net/src/transport/mod.rs` | 5 |  | docs/systems/10-transport.md#components | planned: crates/net/tests/replay.rs |
-| `TX.session` | `TX` | Session actor | `module` | `crates/net/src/transport/session.rs` | 5 | active session | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.streams` | `TX` | Stream registry | `module` | `crates/net/src/transport/session.rs` | 5 | open streams | docs/systems/10-transport.md#components | planned: crates/net/tests/transport.rs |
-| `TX.tls-cert` | `TX` | TLS certificate | `module` | `crates/net/src/tls.rs` | 5 | self-signed certificate | docs/systems/10-transport.md#components | planned: crates/net/tests/tls.rs |
-| `TX.verifier` | `TX` | Certificate verifier | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/10-transport.md#components | planned: crates/net/tests/tls.rs |
+| `TX.alpn` | `TX` | ALPN routing | `module` | `crates/net/src/transport/server.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.datagrams` | `TX` | Datagram router | `module` | `crates/net/src/transport/session.rs` | 5 | datagram routes | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.dialer` | `TX` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | 5 | backoff state | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.endpoint` | `TX` | QUIC endpoint | `module` | `crates/net/src/transport/server.rs` | 5 | QUIC endpoint | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.metrics` | `TX` | Transport metrics | `module` | `crates/net/src/transport/mod.rs` | 5 | counters | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.reconnect` | `TX` | Reconnect policy | `module` | `crates/net/src/transport/client.rs` | 5 | reconnect timers | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.replay` | `TX` | Replay policy | `module` | `crates/net/src/transport/mod.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.session` | `TX` | Session actor | `module` | `crates/net/src/transport/session.rs` | 5 | active session | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.streams` | `TX` | Stream registry | `module` | `crates/net/src/transport/session.rs` | 5 | open streams | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
+| `TX.tls-cert` | `TX` | TLS certificate | `module` | `crates/net/src/tls.rs` | 5 | self-signed certificate | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
+| `TX.verifier` | `TX` | Certificate verifier | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
 | `UI.a11y` | `UI` | Accessibility | `module` | `crates/ui/src/app.rs` | 7 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/a11y.rs |
 | `UI.activate` | `UI` | Activation service | `module` | `crates/ui/src/app.rs` | 7 | activation view | docs/systems/20-ui.md#components | planned: crates/ui/tests/activation.rs |
 | `UI.attachments` | `UI` | Attachment widgets | `module` | `crates/ui/src/views/chat.rs` | 9 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/attachments.rs |
@@ -226,17 +227,17 @@
 | `VID.keyframe` | `VID` | Keyframe handling | `module` | `crates/media/src/h264/mod.rs` | 11 |  | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.metrics` | `VID` | Video metrics | `module` | `crates/media/src/h264/mod.rs` | 11 | counters | docs/systems/18-video.md#components | planned: crates/media/tests/metrics.rs |
 | `VID.packetize` | `VID` | Frame packetizer | `module` | `crates/media/src/h264/mod.rs` | 11 |  | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
-| `WIRE.ack` | `WIRE` | Ack frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.audio` | `WIRE` | Audio datagrams | `module` | `crates/core/src/wire.rs` | 10 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.call` | `WIRE` | Call signals | `module` | `crates/core/src/wire.rs` | 10 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.envelope` | `WIRE` | Frame envelope | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.handshake` | `WIRE` | Handshake frames | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.input` | `WIRE` | Input frames | `module` | `crates/core/src/wire.rs` | 11 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.limits` | `WIRE` | Frame limits | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.message` | `WIRE` | Message frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.sync` | `WIRE` | Sync frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.transfer` | `WIRE` | Transfer frames | `module` | `crates/core/src/wire.rs` | 9 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
-| `WIRE.video` | `WIRE` | Video frames | `module` | `crates/core/src/wire.rs` | 11 |  | docs/systems/11-wire-protocol.md#components | planned: crates/core/tests/wire.rs |
+| `WIRE.ack` | `WIRE` | Ack frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.audio` | `WIRE` | Audio datagrams | `module` | `crates/core/src/wire.rs` | 10 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.call` | `WIRE` | Call signals | `module` | `crates/core/src/wire.rs` | 10 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.envelope` | `WIRE` | Frame envelope | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.handshake` | `WIRE` | Handshake frames | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.input` | `WIRE` | Input frames | `module` | `crates/core/src/wire.rs` | 11 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.limits` | `WIRE` | Frame limits | `module` | `crates/core/src/wire.rs` | 5 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.message` | `WIRE` | Message frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.sync` | `WIRE` | Sync frames | `module` | `crates/core/src/wire.rs` | 6 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.transfer` | `WIRE` | Transfer frames | `module` | `crates/core/src/wire.rs` | 9 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
+| `WIRE.video` | `WIRE` | Video frames | `module` | `crates/core/src/wire.rs` | 11 |  | docs/systems/11-wire-protocol.md#components | crates/core/tests/wire.rs |
 
 ## Stores
 

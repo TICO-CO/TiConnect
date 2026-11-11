@@ -3,9 +3,12 @@
 pub mod config_watch;
 pub mod discovery_service;
 pub mod identity;
+pub mod pairing_service;
+pub mod reconnect_service;
 pub mod runtime;
 pub mod service;
 pub mod storage;
+pub mod trust;
 
 #[cfg(test)]
 mod tests {

@@ -25,6 +25,12 @@ fails to acquire the name and exits non-zero.
 | `ListPeers` | `() -> aa{sv}` | Returns known peers; empty before pairing. |
 | `ListCandidates` | `() -> aa{sv}` | Returns current discovery candidates. |
 | `GetDiscoveryStatus` | `() -> a{sv}` | Returns discovery backend state and counters. |
+| `StartPairing` | `() -> a{sv}` | Starts a pairing session and returns the PIN, QR payload, and expiry. |
+| `PairWithPin` | `(ss) -> b` | Pairs with a discovered node using a PIN. |
+| `PairWithQr` | `(s) -> b` | Pairs using a QR payload. |
+| `CancelPairing` | `() -> ()` | Cancels the active pairing session. |
+| `ForgetPeer` | `(s) -> b` | Removes trust and closes an active session. |
+| `ListTrustedPeers` | `() -> aa{sv}` | Returns trusted peers. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
 Settings writes do not use D-Bus. Any process may update `config.toml` through
@@ -45,6 +51,11 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 | `SettingsChanged(s)` | Once per setting changed by a config reload. |
 | `CandidateFound(a{sv})` | When discovery adds or refreshes a candidate identity. |
 | `CandidateLost(s)` | When a candidate expires, is removed, or discovery stops. |
+| `PairingStarted(a{sv})` | When a pairing session starts. |
+| `PairingCompleted(ss)` | With the peer id and fingerprint after trust is committed. |
+| `PairingFailed(s)` | With a stable reason when pairing fails. |
+| `PeerConnected(a{sv})` | When a trusted QUIC session becomes active. |
+| `PeerDisconnected(a{sv})` | When a trusted QUIC session closes. |
 
 ## Status keys
 
@@ -55,7 +66,8 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 | `uptime_seconds` | `u64` | Seconds since the daemon started. |
 | `peer_count` | `u32` | Rows in the peers table. |
 | `outbox_depth` | `u32` | Queued messages; `0` before messaging lands. |
-| `transport_state` | `s` | Transport state; `offline` before transport lands. |
+| `transport_state` | `s` | `idle` with no sessions, `online` with at least one session. |
+| `active_sessions` | `u32` | Number of active trusted QUIC sessions. |
 
 ## Identity keys
 
@@ -72,9 +84,21 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 `GetSetting` and `ListSettings` use the keys `log_level`, `log_file`,
 `log_format`, `data_dir`, `identity.display_name`, `discovery.enabled`,
 `discovery.mdns`, `discovery.broadcast`, `discovery.beacon_interval_secs`,
-`overlay.enabled`, `read_receipts.enabled`, `outbox.ttl_days`, `ringtone.path`,
-and `dnd.enabled`. Paths are strings; unset optional paths are empty strings.
-Discovery candidate addresses are comma-separated strings.
+`transport.port`, `overlay.enabled`, `read_receipts.enabled`, `outbox.ttl_days`,
+`ringtone.path`, and `dnd.enabled`. Paths are strings; unset optional paths are
+empty strings. Discovery candidate addresses are comma-separated strings.
+
+## Pairing keys
+
+`StartPairing` returns:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `pin` | `s` | Six-digit pairing PIN. |
+| `qr` | `s` | QR payload with node id, address, port, fingerprint, token, and expiry. |
+| `expires_at` | `u64` | Unix seconds when the PIN and token expire. |
+| `node_id` | `s` | This node's UUIDv7. |
+| `port` | `u32` | Advertised QUIC port. |
 
 ## Peer keys
 
@@ -92,7 +116,7 @@ Discovery candidate addresses are comma-separated strings.
 | `fingerprint` | `s` | Lowercase hex BLAKE3 fingerprint. |
 | `display_name` | `s` | Advertised display name, possibly empty. |
 | `addresses` | `s` | Comma-separated validated IP addresses. |
-| `port` | `u32` | Advertised transport port; `0` before Stage 5. |
+| `port` | `u32` | Advertised QUIC transport port. |
 | `protocol_version` | `u32` | Discovery protocol version. |
 | `source` | `s` | `mdns` or `broadcast`. |
 | `last_seen` | `u64` | Unix milliseconds of the last sighting. |
@@ -129,6 +153,11 @@ ticonnect-cli id show
 ticonnect-cli peers list
 ticonnect-cli discover list
 ticonnect-cli discover watch
+ticonnect-cli pair start
+ticonnect-cli pair with-pin <node-id> <pin>
+ticonnect-cli pair with-qr '<payload>'
+ticonnect-cli pair cancel
+ticonnect-cli pair forget <peer-id>
 ticonnect-cli quit
 ```
 

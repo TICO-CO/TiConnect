@@ -1,6 +1,8 @@
 use std::fmt;
+use std::str::FromStr;
 
 use ed25519_dalek::VerifyingKey;
+use thiserror::Error;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Fingerprint([u8; 32]);
@@ -11,6 +13,10 @@ impl Fingerprint {
         Self(*hash.as_bytes())
     }
 
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(bytes)
+    }
+
     pub fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
@@ -18,6 +24,27 @@ impl Fingerprint {
     pub fn to_hex(&self) -> String {
         hex::encode(self.0)
     }
+}
+
+impl FromStr for Fingerprint {
+    type Err = FingerprintError;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let bytes = hex::decode(value).map_err(|_| FingerprintError::InvalidHex)?;
+        let bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| FingerprintError::InvalidLength)?;
+        Ok(Self(bytes))
+    }
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum FingerprintError {
+    #[error("fingerprint is not valid hexadecimal")]
+    InvalidHex,
+
+    #[error("fingerprint must be 32 bytes")]
+    InvalidLength,
 }
 
 impl fmt::Display for Fingerprint {

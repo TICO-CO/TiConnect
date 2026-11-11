@@ -9,6 +9,8 @@ use zbus::object_server::SignalEmitter;
 
 use crate::config_watch;
 use crate::discovery_service;
+use crate::pairing_service;
+use crate::reconnect_service;
 use crate::service::{DaemonService, DaemonState};
 
 #[derive(Clone)]
@@ -70,11 +72,20 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
         tracing::warn!(%error, "failed to start discovery");
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
+    let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let reconnect_task = reconnect_service::spawn(
+        state.transport().clone(),
+        state.discovery().clone(),
+        state.trust().clone(),
+    );
 
     wait_for_shutdown(&connection, state.shutdown()).await?;
     watcher.abort();
     state.discovery().stop_and_wait().await;
     discovery_task.abort();
+    pairing_task.abort();
+    reconnect_task.abort();
+    state.transport().shutdown().await;
 
     if let Err(error) = emit_stopping(&connection).await {
         tracing::warn!(%error, "failed to emit DaemonStopping");

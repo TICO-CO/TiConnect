@@ -1,4 +1,4 @@
-use ed25519_dalek::{SigningKey, VerifyingKey};
+use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
 use rand_core::OsRng;
 
 #[derive(Clone)]
@@ -25,6 +25,10 @@ impl IdentityKeyPair {
 
     pub fn verifying_key(&self) -> VerifyingKey {
         self.signing.verifying_key()
+    }
+
+    pub fn sign(&self, message: &[u8]) -> Signature {
+        self.signing.sign(message)
     }
 }
 

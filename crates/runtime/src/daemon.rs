@@ -11,18 +11,14 @@ use crate::{Error, Result};
 pub async fn run(settings: Settings) -> Result<()> {
     settings.ensure_config_dir()?;
     let data_dir = settings.data_dir()?;
-    let identity = Identity::load_or_create(settings.config_dir())
-        .map_err(Error::Identity)?
-        .public();
+    let identity = Identity::load_or_create(settings.config_dir()).map_err(Error::Identity)?;
     let database = DatabaseHandle::spawn(data_dir.join("ticonnect.db"))
         .await
         .map_err(Error::Storage)?;
-    let state = Arc::new(DaemonState::new(
-        Arc::new(Shutdown::new()),
-        identity,
-        settings,
-        database,
-    ));
+    let state = DaemonState::initialize(Arc::new(Shutdown::new()), identity, settings, database)
+        .await
+        .map_err(|error| Error::Runtime(error.to_string()))?;
+    let state = Arc::new(state);
 
     ticonnect_daemon::runtime::run(state).await?;
     Ok(())

@@ -91,6 +91,7 @@
 - `ID.trust-store` — Trust store (ID)
 - `PAIR.commit` — Trust commit (PAIR)
 - `PAIR.confirm` — Transcript confirmation (PAIR)
+- `PAIR.dbus` — Pairing D-Bus adapter (PAIR)
 - `PAIR.endpoint` — Pairing endpoint (PAIR)
 - `PAIR.frames` — Pairing frame codec (PAIR)
 - `PAIR.pin` — PIN policy (PAIR)

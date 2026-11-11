@@ -11,8 +11,11 @@ use zbus::object_server::SignalEmitter;
 use zbus::{DBusError, OwnedVariant, Str};
 
 use crate::identity::PublicIdentity;
+use crate::pairing_service::{PairingService, StartPairingResponse};
 use crate::runtime::Shutdown;
 use crate::storage::{DatabaseHandle, Peer, StorageError};
+use crate::trust::TrustStore;
+use ticonnect_net::transport::Transport;
 
 #[derive(Debug, DBusError)]
 #[zbus(prefix = "org.ticonnect.Daemon.Error")]
@@ -30,16 +33,65 @@ pub struct DaemonState {
     settings: RwLock<Settings>,
     database: DatabaseHandle,
     discovery: Arc<LanDiscovery>,
+    trust: Arc<TrustStore>,
+    transport: Arc<Transport>,
+    pairing: Arc<PairingService>,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DaemonInitError {
+    #[error(transparent)]
+    Trust(#[from] crate::trust::TrustError),
+
+    #[error(transparent)]
+    Transport(#[from] ticonnect_net::transport::TransportError),
 }
 
 impl DaemonState {
+    pub async fn initialize(
+        shutdown: Arc<Shutdown>,
+        identity: crate::identity::Identity,
+        settings: Settings,
+        database: DatabaseHandle,
+    ) -> Result<Self, DaemonInitError> {
+        let public = identity.public();
+        let trust = Arc::new(TrustStore::load(database.clone()).await?);
+        let port = settings.transport_port();
+        let discovery = Arc::new(LanDiscovery::new(discovery_config(
+            &settings, &public, port,
+        )));
+        let transport = Arc::new(
+            Transport::bind(ticonnect_net::transport::TransportConfig {
+                identity: identity.key_pair().clone(),
+                node_id: public.node_id(),
+                fingerprint: public.fingerprint(),
+                bind_addr: std::net::SocketAddr::from(([0, 0, 0, 0], port)),
+                trust: trust.clone(),
+            })
+            .await?,
+        );
+        let pairing = Arc::new(PairingService::new(
+            public.clone(),
+            trust.clone(),
+            transport.clone(),
+            discovery.clone(),
+        ));
+        Ok(Self::new(
+            shutdown, public, settings, database, discovery, trust, transport, pairing,
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         shutdown: Arc<Shutdown>,
         identity: PublicIdentity,
         settings: Settings,
         database: DatabaseHandle,
+        discovery: Arc<LanDiscovery>,
+        trust: Arc<TrustStore>,
+        transport: Arc<Transport>,
+        pairing: Arc<PairingService>,
     ) -> Self {
-        let discovery = Arc::new(LanDiscovery::new(discovery_config(&settings, &identity)));
         Self {
             started_at: Instant::now(),
             shutdown,
@@ -47,6 +99,9 @@ impl DaemonState {
             settings: RwLock::new(settings),
             database,
             discovery,
+            trust,
+            transport,
+            pairing,
         }
     }
 
@@ -66,6 +121,18 @@ impl DaemonState {
         &self.discovery
     }
 
+    pub fn trust(&self) -> &Arc<TrustStore> {
+        &self.trust
+    }
+
+    pub fn transport(&self) -> &Arc<Transport> {
+        &self.transport
+    }
+
+    pub fn pairing(&self) -> &Arc<PairingService> {
+        &self.pairing
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings
             .read()
@@ -81,7 +148,8 @@ impl DaemonState {
     }
 
     pub async fn reconfigure_discovery(&self) {
-        let config = discovery_config(&self.settings(), &self.identity);
+        let settings = self.settings();
+        let config = discovery_config(&settings, &self.identity, settings.transport_port());
         if let Err(error) = self.discovery.reconfigure(config).await {
             tracing::warn!(%error, "failed to reconfigure discovery");
         }
@@ -111,6 +179,13 @@ impl DaemonService {
             .await
             .map_err(database_error)?;
 
+        let sessions = self.state.transport().session_count();
+        let transport_state = if sessions > 0 {
+            ipc::TRANSPORT_ONLINE
+        } else {
+            ipc::TRANSPORT_IDLE
+        };
+
         let mut status = HashMap::new();
         status.insert(
             ipc::STATUS_UPTIME_SECONDS.to_owned(),
@@ -126,7 +201,11 @@ impl DaemonService {
         );
         status.insert(
             ipc::STATUS_TRANSPORT_STATE.to_owned(),
-            OwnedVariant::from(Str::from(ipc::TRANSPORT_OFFLINE)),
+            OwnedVariant::from(Str::from(transport_state)),
+        );
+        status.insert(
+            ipc::STATUS_ACTIVE_SESSIONS.to_owned(),
+            OwnedVariant::from(u32::try_from(sessions).unwrap_or_default()),
         );
         Ok(status)
     }
@@ -246,6 +325,58 @@ impl DaemonService {
         ])
     }
 
+    async fn start_pairing(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let started = self
+            .state
+            .pairing()
+            .start_pairing()
+            .await
+            .map_err(pairing_error)?;
+        Ok(start_pairing_variant(&started))
+    }
+
+    async fn pair_with_pin(&self, node_id: &str, pin: &str) -> Result<bool, ServiceError> {
+        self.state
+            .pairing()
+            .pair_with_pin(node_id, pin)
+            .await
+            .map_err(pairing_error)?;
+        Ok(true)
+    }
+
+    async fn pair_with_qr(&self, payload: &str) -> Result<bool, ServiceError> {
+        self.state
+            .pairing()
+            .pair_with_qr(payload)
+            .await
+            .map_err(pairing_error)?;
+        Ok(true)
+    }
+
+    async fn cancel_pairing(&self) -> Result<(), ServiceError> {
+        self.state.pairing().cancel_pairing().await;
+        Ok(())
+    }
+
+    async fn forget_peer(&self, peer_id: &str) -> Result<bool, ServiceError> {
+        self.state
+            .pairing()
+            .forget_peer(peer_id)
+            .await
+            .map_err(pairing_error)?;
+        Ok(true)
+    }
+
+    async fn list_trusted_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let peers = self
+            .state
+            .pairing()
+            .list_trusted_peers()
+            .await
+            .map_err(pairing_error)?;
+        Ok(peers.into_iter().map(peer_variant).collect())
+    }
+
     fn shutdown(&self) -> Result<(), ServiceError> {
         if self.state.shutdown().is_requested() {
             return Err(ServiceError::Failed(
@@ -279,6 +410,34 @@ impl DaemonService {
 
     #[zbus(signal)]
     pub async fn candidate_lost(emitter: SignalEmitter<'_>, fingerprint: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn pairing_started(
+        emitter: SignalEmitter<'_>,
+        pairing: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn pairing_completed(
+        emitter: SignalEmitter<'_>,
+        peer_id: &str,
+        fingerprint: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn pairing_failed(emitter: SignalEmitter<'_>, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn peer_connected(
+        emitter: SignalEmitter<'_>,
+        peer: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn peer_disconnected(
+        emitter: SignalEmitter<'_>,
+        peer: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
 }
 
 fn setting_variant(value: SettingValue) -> OwnedVariant {
@@ -360,7 +519,11 @@ pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVa
     ])
 }
 
-fn discovery_config(settings: &Settings, identity: &PublicIdentity) -> DiscoveryConfig {
+pub fn discovery_config(
+    settings: &Settings,
+    identity: &PublicIdentity,
+    transport_port: u16,
+) -> DiscoveryConfig {
     let mut config = DiscoveryConfig::new(
         settings.identity_display_name(),
         identity.node_id().to_string(),
@@ -369,9 +532,40 @@ fn discovery_config(settings: &Settings, identity: &PublicIdentity) -> Discovery
     config.enabled = settings.discovery_enabled();
     config.mdns = settings.discovery_mdns();
     config.broadcast = settings.discovery_broadcast();
+    config.transport_port = transport_port;
     config.beacon_interval =
         Duration::from_secs(u64::from(settings.discovery_beacon_interval_secs()));
     config
+}
+
+fn start_pairing_variant(started: &StartPairingResponse) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::PAIRING_PIN.to_owned(),
+            string_variant(started.pin.clone()),
+        ),
+        (
+            ipc::PAIRING_QR.to_owned(),
+            string_variant(started.qr.clone()),
+        ),
+        (
+            ipc::PAIRING_EXPIRES_AT.to_owned(),
+            OwnedVariant::from(started.expires_at),
+        ),
+        (
+            ipc::PAIRING_NODE_ID.to_owned(),
+            string_variant(started.node_id.clone()),
+        ),
+        (
+            ipc::PAIRING_PORT.to_owned(),
+            OwnedVariant::from(u32::from(started.port)),
+        ),
+    ])
+}
+
+fn pairing_error(error: crate::pairing_service::PairingServiceError) -> ServiceError {
+    tracing::warn!(%error, "pairing request failed");
+    ServiceError::Failed(error.to_string())
 }
 
 fn database_error(error: StorageError) -> ServiceError {
@@ -383,9 +577,12 @@ fn database_error(error: StorageError) -> ServiceError {
 mod tests {
     use std::path::PathBuf;
 
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
     use super::*;
     use crate::identity::Identity;
     use crate::storage::DatabaseHandle;
+    use ticonnect_net::transport::TransportConfig;
 
     #[tokio::test]
     async fn ping_and_version_are_stable() {
@@ -411,7 +608,11 @@ mod tests {
         );
         assert_eq!(
             <&str>::try_from(&status[ipc::STATUS_TRANSPORT_STATE]).expect("transport state"),
-            ipc::TRANSPORT_OFFLINE
+            ipc::TRANSPORT_IDLE
+        );
+        assert_eq!(
+            u32::try_from(&status[ipc::STATUS_ACTIVE_SESSIONS]).expect("active sessions"),
+            0
         );
     }
 
@@ -452,15 +653,39 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).expect("create test dir");
         let settings = Settings::load_from(dir.join("config.toml")).expect("settings");
-        let identity = Identity::load_or_create(&dir).expect("identity").public();
+        let identity = Identity::load_or_create(&dir).expect("identity");
+        let public = identity.public();
         let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
             .await
             .expect("database");
+        let trust = Arc::new(TrustStore::load(database.clone()).await.expect("trust"));
+        let discovery = Arc::new(LanDiscovery::new(discovery_config(&settings, &public, 0)));
+        let transport = Arc::new(
+            Transport::bind(TransportConfig {
+                identity: identity.key_pair().clone(),
+                node_id: public.node_id(),
+                fingerprint: public.fingerprint(),
+                bind_addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                trust: trust.clone(),
+            })
+            .await
+            .expect("transport"),
+        );
+        let pairing = Arc::new(PairingService::new(
+            public.clone(),
+            trust.clone(),
+            transport.clone(),
+            discovery.clone(),
+        ));
         let state = Arc::new(DaemonState::new(
             Arc::new(Shutdown::new()),
-            identity,
+            public,
             settings,
             database,
+            discovery,
+            trust,
+            transport,
+            pairing,
         ));
         (DaemonService::new(state), dir)
     }

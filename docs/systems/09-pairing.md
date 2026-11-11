@@ -24,13 +24,14 @@ Owns pairing state and endpoint. Unpaired peers can reach only this endpoint. Co
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `PAIR.commit` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.confirm` | Transcript confirmation | `module` | `crates/net/src/pairing/spake2.rs` |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.endpoint` | Pairing endpoint | `module` | `crates/net/src/pairing/mod.rs` | pairing listener | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.frames` | Pairing frame codec | `module` | `crates/net/src/pairing/mod.rs` |  | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.pin` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | PIN attempts | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.qr` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | one-time token | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
-| `PAIR.spake2` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | pairing transcript | docs/systems/09-pairing.md#components | planned: crates/net/tests/pairing.rs |
+| `PAIR.commit` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.confirm` | Transcript confirmation | `module` | `crates/net/src/pairing/spake2.rs` |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.dbus` | Pairing D-Bus adapter | `module` | `crates/daemon/src/pairing_service.rs` | pairing sessions | docs/systems/09-pairing.md#components | crates/runtime/tests/dbus.rs |
+| `PAIR.endpoint` | Pairing endpoint | `module` | `crates/net/src/pairing/endpoint.rs` | pairing listener | docs/systems/09-pairing.md#components | crates/net/tests/pairing_endpoint.rs |
+| `PAIR.frames` | Pairing frame codec | `module` | `crates/net/src/pairing/mod.rs` |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.pin` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | PIN attempts | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.qr` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | one-time token | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
+| `PAIR.spake2` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | pairing transcript | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
 
 ## Interfaces
 
@@ -55,6 +56,12 @@ Owns pairing state and endpoint. Unpaired peers can reach only this endpoint. Co
 | `PAIR.endpoint` | `calls` | `sync` | `WIRE.envelope` | pairing frame envelope |  |  |
 | `PAIR.qr` | `calls` | `sync` | `ID.fingerprint` | QR fingerprint |  |  |
 | `TX.alpn` | `calls` | `sync` | `PAIR.endpoint` | pairing ALPN | PAIR.endpoint |  |
+| `PAIR.dbus` | `invokes` | `async` | `PAIR.endpoint` | run pairing exchange |  |  |
+| `PAIR.dbus` | `calls` | `sync` | `ID.trust-store` | commit and forget peers | ID.trust-store |  |
+| `PAIR.dbus` | `emits` | `event` | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  |
+| `PAIR.dbus` | `consumes` | `event` | `TX.session` | peer connected and disconnected events |  |  |
+| `PAIR.dbus` | `invokes` | `async` | `TX.dialer` | open pairing connection |  |  |
+| `RT.lifecycle` | `invokes` | `async` | `PAIR.dbus` | start and stop pairing service |  |  |
 
 ## Invariants
 
@@ -74,6 +81,6 @@ Owns pairing state and endpoint. Unpaired peers can reach only this endpoint. Co
 
 ## Open decisions
 
-- pairing endpoint transport
-- QR token TTL
-- PIN attempt lockout policy
+- pairing uses the ticonnect-pair/1 ALPN on the transport port
+- QR tokens expire after 120 seconds
+- PIN attempts are bounded per pairing session

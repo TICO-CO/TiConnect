@@ -76,5 +76,5 @@ Owns sockets and candidate cache. Does not pair, connect, or authenticate. Emits
 ## Open decisions
 
 - candidate expiry is three beacon intervals
-- transport port remains 0 until Stage 5
+- the configured transport port is advertised
 - IPv6 discovery is deferred; Stage 4 is IPv4-only
