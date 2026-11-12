@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=TiConnect Overlay
+Comment=Corner notifications for TiConnect messages
+Exec=@BINDIR@/ticonnect-ovl
+Hidden=false
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

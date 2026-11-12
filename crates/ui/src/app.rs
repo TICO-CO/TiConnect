@@ -8,7 +8,8 @@ use tokio::sync::mpsc;
 use crate::autostart;
 use crate::client::{self, DaemonEvent, Identity, LinkHandle, PairingStart, Status};
 use crate::model::{
-    Candidate, ConversationModel, Message, Peer, PeerListModel, PeerPolicy, SettingsForm,
+    Candidate, CandidatePresentation, ConversationModel, Message, Peer, PeerListModel, PeerPolicy,
+    PeerPresentation, SettingsForm,
 };
 use crate::views::chat::ChatView;
 use crate::views::pairing::PairingView;

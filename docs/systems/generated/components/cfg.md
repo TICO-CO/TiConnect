@@ -46,9 +46,10 @@ flowchart LR
   n_aud_ringtone -.->|config-read / sync: ringtone path| n_cfg_file_store
   n_ui_settings -->|calls / sync: direct settings write| n_cfg_file_store
   n_ui_settings -.->|consumes / event: SettingsChanged| n_cfg_watch
-  n_ovl_client -.->|config-read / sync: overlay enabled| n_cfg_file_store
+  n_ovl_client -.->|config-read / sync: overlay enabled and timeout| n_cfg_file_store
   n_cli_settings -->|calls / sync: settings read and write| n_cfg_file_store
   n_cfg_watch -.->|invokes / async: reconfigure discovery| n_disc_dbus
+  n_ovl_client -.->|consumes / event: SettingsChanged| n_cfg_watch
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
   class n_aud_ringtone, n_cli_settings, n_disc_dbus, n_disc_supervisor, n_id_key_load, n_ipc_signal_bus, n_ovl_client, n_pol_dnd, n_rt_autostart, n_rt_wiring, n_ui_settings external;
 ```
@@ -72,6 +73,7 @@ flowchart LR
 | `AUD.ringtone` | config-read | sync | `CFG.file-store` | ringtone path |  |  | 10 |
 | `UI.settings` | calls | sync | `CFG.file-store` | direct settings write |  |  | 7 |
 | `UI.settings` | consumes | event | `CFG.watch` | SettingsChanged |  |  | 7 |
-| `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled |  |  | 8 |
+| `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled and timeout |  |  | 8 |
 | `CLI.settings` | calls | sync | `CFG.file-store` | settings read and write |  |  | 3 |
 | `CFG.watch` | invokes | async | `DISC.dbus` | reconfigure discovery |  |  | 4 |
+| `OVL.client` | consumes | event | `CFG.watch` | SettingsChanged |  |  | 8 |

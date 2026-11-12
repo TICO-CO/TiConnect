@@ -5,7 +5,7 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 use ticonnect_settings::Appearance;
 
-use crate::model::{Peer, PeerPolicy, SettingsForm};
+use crate::model::{Peer, PeerPolicy, PeerPolicyLabel, PeerPresentation, SettingsForm};
 
 pub struct SettingsView {
     pub root: gtk::Box,

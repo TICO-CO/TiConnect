@@ -290,7 +290,7 @@ boundary = "Client process. Subscribes to daemon signals and settings. Does not 
 owned_state = ["card queue", "visible card state"]
 interfaces = ["gtk4-layer-shell", "X11 fallback window", "notify-rust", "Activate view"]
 failure_semantics = ["never steal focus", "deduplicate by message id", "fallback to system notifications", "respect policy and DND"]
-open_decisions = ["call and transfer card extension points", "multi-monitor placement", "reduced-motion detection"]
+open_decisions = ["call and transfer card extension points land in Stages 10 and 9", "Wayland uses the compositor monitor and X11 uses the first monitor"]
 
 [[systems]]
 id = "TRAY"

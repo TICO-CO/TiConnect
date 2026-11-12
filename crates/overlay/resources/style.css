@@ -1,0 +1,37 @@
+window.ticonnect-overlay {
+  background-color: transparent;
+}
+
+.ticonnect-card {
+  min-width: 300px;
+  max-width: 360px;
+  padding: 0;
+  border-radius: 12px;
+  background-color: rgba(32, 32, 32, 0.94);
+  color: #ffffff;
+  box-shadow: 0 4px 18px alpha(black, 0.22);
+  transition: background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.ticonnect-card:hover {
+  background-color: rgba(58, 58, 58, 0.96);
+  box-shadow: 0 6px 22px alpha(black, 0.28);
+}
+
+.ticonnect-card-sender {
+  font-weight: 600;
+}
+
+.ticonnect-card-time {
+  font-size: 0.8em;
+  opacity: 0.6;
+}
+
+.ticonnect-card-preview {
+  font-size: 0.95em;
+  opacity: 0.85;
+}
+
+window.ticonnect-x11-overlay {
+  background-color: transparent;
+}

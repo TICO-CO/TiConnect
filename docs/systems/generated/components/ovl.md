@@ -17,6 +17,7 @@ flowchart LR
   end
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
+    n_cfg_watch["CFG.watch<br/>CFG"]
     n_ipc_client["IPC.client<br/>IPC"]
     n_ui_activate["UI.activate<br/>UI"]
   end
@@ -29,9 +30,10 @@ flowchart LR
   n_ovl_router -.->|emits / event: system notification| n_ovl_notify
   n_ovl_router -.->|emits / event: Wayland card| n_ovl_wayland
   n_ovl_router -.->|emits / event: X11 card| n_ovl_x11
-  n_ovl_client -.->|config-read / sync: overlay enabled| n_cfg_file_store
+  n_ovl_client -.->|config-read / sync: overlay enabled and timeout| n_cfg_file_store
+  n_ovl_client -.->|consumes / event: SettingsChanged| n_cfg_watch
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_ipc_client, n_ui_activate external;
+  class n_cfg_file_store, n_cfg_watch, n_ipc_client, n_ui_activate external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -45,4 +47,5 @@ flowchart LR
 | `OVL.router` | emits | event | `OVL.notify` | system notification |  |  | 8 |
 | `OVL.router` | emits | event | `OVL.wayland` | Wayland card |  |  | 8 |
 | `OVL.router` | emits | event | `OVL.x11` | X11 card |  |  | 8 |
-| `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled |  |  | 8 |
+| `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled and timeout |  |  | 8 |
+| `OVL.client` | consumes | event | `CFG.watch` | SettingsChanged |  |  | 8 |

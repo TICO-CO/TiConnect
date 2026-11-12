@@ -60,9 +60,10 @@ Leaf crate. No domain, network, storage, or logging dependency. Exposes effectiv
 | `AUD.ringtone` | `config-read` | `sync` | `CFG.file-store` | ringtone path |  |  |
 | `UI.settings` | `calls` | `sync` | `CFG.file-store` | direct settings write |  |  |
 | `UI.settings` | `consumes` | `event` | `CFG.watch` | SettingsChanged |  |  |
-| `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled |  |  |
+| `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled and timeout |  |  |
 | `CLI.settings` | `calls` | `sync` | `CFG.file-store` | settings read and write |  |  |
 | `CFG.watch` | `invokes` | `async` | `DISC.dbus` | reconfigure discovery |  |  |
+| `OVL.client` | `consumes` | `event` | `CFG.watch` | SettingsChanged |  |  |
 
 ## Invariants
 

@@ -12,6 +12,7 @@ fn message(id: &str, sent_at: u64, sender: &str) -> Message {
         received_at: sent_at,
         body: format!("body {id}"),
         state: MessageState::Sent,
+        notify: true,
     }
 }
 

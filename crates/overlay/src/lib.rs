@@ -1,9 +1,7 @@
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn links_core() {
-        assert_eq!(ticonnect_core::version(), env!("CARGO_PKG_VERSION"));
-    }
-}
+pub mod card;
+pub mod client;
+pub mod layer_shell;
+pub mod notifications;
+pub mod x11_fallback;

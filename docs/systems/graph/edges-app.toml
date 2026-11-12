@@ -147,7 +147,8 @@ edges = [
   { id = "E272", from = "OVL.router", to = "OVL.notify", kind = "emits", mode = "event", contract = "system notification", stage = 8 },
   { id = "E273", from = "OVL.router", to = "OVL.wayland", kind = "emits", mode = "event", contract = "Wayland card", stage = 8 },
   { id = "E274", from = "OVL.router", to = "OVL.x11", kind = "emits", mode = "event", contract = "X11 card", stage = 8 },
-  { id = "E275", from = "OVL.client", to = "CFG.file-store", kind = "config-read", mode = "sync", contract = "overlay enabled", stage = 8 },
+  { id = "E275", from = "OVL.client", to = "CFG.file-store", kind = "config-read", mode = "sync", contract = "overlay enabled and timeout", stage = 8 },
+  { id = "E314", from = "OVL.client", to = "CFG.watch", kind = "consumes", mode = "event", contract = "SettingsChanged", stage = 8 },
 
   { id = "E276", from = "TRAY.item", to = "TRAY.menu", kind = "calls", mode = "sync", contract = "tray menu", stage = 6 },
   { id = "E277", from = "TRAY.menu", to = "TRAY.policy", kind = "calls", mode = "sync", contract = "policy menu", stage = 6 },

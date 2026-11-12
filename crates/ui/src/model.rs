@@ -2,54 +2,19 @@ use std::collections::{BTreeMap, HashSet};
 
 use ticonnect_settings::Appearance;
 
+pub use ticonnect_core::ipc::events::{
+    Candidate, DaemonEvent, Identity, Message, MessageState, PairingStart, Peer, PeerPolicy, Status,
+};
+
 use crate::error::{Error, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PeerPolicy {
-    Accept,
-    Mute,
-    Ignore,
+pub trait PeerPresentation {
+    fn display_label(&self) -> String;
+    fn initials(&self) -> String;
 }
 
-impl PeerPolicy {
-    pub fn parse(value: &str) -> Self {
-        match value {
-            "mute" => Self::Mute,
-            "ignore" => Self::Ignore,
-            _ => Self::Accept,
-        }
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Accept => "accept",
-            Self::Mute => "mute",
-            Self::Ignore => "ignore",
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Accept => "Accept",
-            Self::Mute => "Mute",
-            Self::Ignore => "Ignore",
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Peer {
-    pub id: String,
-    pub fingerprint: String,
-    pub display_name: String,
-    pub policy: PeerPolicy,
-    pub trusted_at: u64,
-    pub last_seen: u64,
-    pub connected: bool,
-}
-
-impl Peer {
-    pub fn display_label(&self) -> String {
+impl PeerPresentation for Peer {
+    fn display_label(&self) -> String {
         if self.display_name.trim().is_empty() {
             short_id(&self.id)
         } else {
@@ -57,7 +22,7 @@ impl Peer {
         }
     }
 
-    pub fn initials(&self) -> String {
+    fn initials(&self) -> String {
         let label = self.display_label();
         let mut parts = label.split_whitespace();
         let first = parts.next().and_then(|part| part.chars().next());
@@ -70,17 +35,12 @@ impl Peer {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Candidate {
-    pub node_id: String,
-    pub fingerprint: String,
-    pub display_name: String,
-    pub addresses: String,
-    pub source: String,
+pub trait CandidatePresentation {
+    fn label(&self) -> String;
 }
 
-impl Candidate {
-    pub fn label(&self) -> String {
+impl CandidatePresentation for Candidate {
+    fn label(&self) -> String {
         if self.display_name.trim().is_empty() {
             short_id(&self.node_id)
         } else {
@@ -89,31 +49,12 @@ impl Candidate {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MessageState {
-    Queued,
-    Sent,
-    Delivered,
-    Read,
-    Failed,
-    Expired,
-    Unknown,
+pub trait MessageStateLabel {
+    fn label(self) -> &'static str;
 }
 
-impl MessageState {
-    pub fn parse(value: &str) -> Self {
-        match value {
-            "queued" => Self::Queued,
-            "sent" => Self::Sent,
-            "delivered" => Self::Delivered,
-            "read" => Self::Read,
-            "failed" => Self::Failed,
-            "expired" => Self::Expired,
-            _ => Self::Unknown,
-        }
-    }
-
-    pub fn label(self) -> &'static str {
+impl MessageStateLabel for MessageState {
+    fn label(self) -> &'static str {
         match self {
             Self::Queued => "Queued",
             Self::Sent => "Sent",
@@ -126,23 +67,17 @@ impl MessageState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Message {
-    pub id: String,
-    pub conversation_id: String,
-    pub peer_id: String,
-    pub sender_id: String,
-    pub local_sender: bool,
-    pub seq: u64,
-    pub sent_at: u64,
-    pub received_at: u64,
-    pub body: String,
-    pub state: MessageState,
+pub trait PeerPolicyLabel {
+    fn label(self) -> &'static str;
 }
 
-impl Message {
-    pub fn ordering_key(&self) -> (u64, u64, u64) {
-        (self.sent_at, self.received_at, self.seq)
+impl PeerPolicyLabel for PeerPolicy {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Accept => "Accept",
+            Self::Mute => "Mute",
+            Self::Ignore => "Ignore",
+        }
     }
 }
 
@@ -501,6 +436,7 @@ mod tests {
             received_at: sent_at,
             body: id.to_owned(),
             state: MessageState::Sent,
+            notify: true,
         }
     }
 

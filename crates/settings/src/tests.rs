@@ -435,6 +435,9 @@ fn key_api_sets_and_reads_typed_values() {
         settings
             .set_setting("outbox.ttl_days", "30")
             .expect("set ttl");
+        settings
+            .set_setting("overlay.timeout_secs", "12")
+            .expect("set overlay timeout");
         settings.save().expect("save");
 
         let settings = Settings::load_from(&path).expect("reload");
@@ -445,6 +448,12 @@ fn key_api_sets_and_reads_typed_values() {
         assert_eq!(
             settings.get_setting("outbox.ttl_days").expect("get ttl"),
             crate::SettingValue::Integer(30)
+        );
+        assert_eq!(
+            settings
+                .get_setting("overlay.timeout_secs")
+                .expect("get overlay timeout"),
+            crate::SettingValue::Integer(12)
         );
         assert_eq!(
             settings
@@ -522,6 +531,14 @@ fn key_api_rejects_unknown_and_invalid_values() {
         ));
         assert!(matches!(
             settings.set_setting("discovery.beacon_interval_secs", "0"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("overlay.timeout_secs", "0"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("overlay.timeout_secs", "61"),
             Err(crate::Error::InvalidSetting { .. })
         ));
         assert!(matches!(

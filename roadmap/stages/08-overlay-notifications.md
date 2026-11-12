@@ -52,54 +52,54 @@ the UI, clicks fall back to notifications or are ignored.
 
 ## Wayland overlay
 
-- [ ] Use `gtk4-layer-shell` with `Layer::Overlay`.
-- [ ] Anchor bottom-right.
-- [ ] Transparent window with rounded card and shadow.
-- [ ] `KeyboardMode::None` so the overlay never steals focus.
-- [ ] Only the card surface takes pointer input.
-- [ ] Detect layer-shell availability at runtime; fall back cleanly.
-- [ ] Respect scale factor and multi-monitor placement.
-- [ ] Card slide-in animation with reduced-motion support.
+- [x] Use `gtk4-layer-shell` with `Layer::Overlay`.
+- [x] Anchor bottom-right.
+- [x] Transparent window with rounded card and shadow.
+- [x] `KeyboardMode::None` so the overlay never steals focus.
+- [x] Only the card surface takes pointer input.
+- [x] Detect layer-shell availability at runtime; fall back cleanly.
+- [x] Respect scale factor and multi-monitor placement.
+- [x] Card slide-in animation with reduced-motion support.
 
 ## X11 fallback
 
-- [ ] Undecorated GTK4 window with `keep_above` and `skip_taskbar_hint`.
-- [ ] Position bottom-right of the primary monitor.
-- [ ] No focus stealing.
-- [ ] Same card widget and behavior as Wayland.
-- [ ] Hide when no cards are visible.
+- [x] Undecorated GTK4 window with `keep_above` and `skip_taskbar_hint`.
+- [x] Position bottom-right of the primary monitor.
+- [x] No focus stealing.
+- [x] Same card widget and behavior as Wayland.
+- [x] Hide when no cards are visible.
 
 ## Card behavior
 
-- [ ] Message card: sender name, preview text, timestamp.
+- [x] Message card: sender name, preview text, timestamp.
 - [ ] Incoming call card extension point: caller name, accept and decline
   actions, persists until answered or declined. Enabled in Stage 10.
 - [ ] Transfer done card extension point: file name and size. Enabled in Stage 9.
-- [ ] Message cards auto-dismiss after a configurable timeout (default 5 s).
-- [ ] Hover pauses dismissal.
-- [ ] Clicking a card calls `org.ticonnect.UI.Activate(view)`.
-- [ ] If the UI bus name is absent, clicking opens the app if configured or does
+- [x] Message cards auto-dismiss after a configurable timeout (default 5 s).
+- [x] Hover pauses dismissal.
+- [x] Clicking a card calls `org.ticonnect.UI.Activate(view)`.
+- [x] If the UI bus name is absent, clicking opens the app if configured or does
   nothing and logs.
-- [ ] Queue cards instead of overlapping; cap visible cards.
-- [ ] Deduplicate repeated events for the same message id.
-- [ ] Respect policy: mute and ignore suppress cards.
-- [ ] Respect DND: suppress all non-call cards; calls follow config.
+- [x] Queue cards instead of overlapping; cap visible cards.
+- [x] Deduplicate repeated events for the same message id.
+- [x] Respect policy: mute and ignore suppress cards.
+- [x] Respect DND: suppress all non-call cards; calls follow config.
 
 ## Notifications fallback
 
-- [ ] Use `notify-rust` when the overlay is disabled or fails to initialize.
-- [ ] Notification actions map to activate or decline where supported.
-- [ ] Do not send both overlay and system notification for the same event.
-- [ ] Handle notification server absence without crashing.
+- [x] Use `notify-rust` when the overlay is disabled or fails to initialize.
+- [x] Notification actions map to activate or decline where supported.
+- [x] Do not send both overlay and system notification for the same event.
+- [x] Handle notification server absence without crashing.
 
 ## D-Bus and config
 
-- [ ] Overlay subscribes directly to `org.ticonnect.Daemon` signals.
-- [ ] Overlay does not depend on the UI process.
-- [ ] Config key `overlay.enabled` read from TOML settings at start and after
+- [x] Overlay subscribes directly to `org.ticonnect.Daemon` signals.
+- [x] Overlay does not depend on the UI process.
+- [x] Config key `overlay.enabled` read from TOML settings at start and after
   config reload changes.
-- [ ] Autostart entry starts the overlay after login.
-- [ ] Single-instance guard for the overlay.
+- [x] Autostart entry starts the overlay after login.
+- [x] Single-instance guard for the overlay.
 
 ## Tests
 
@@ -111,22 +111,22 @@ the UI, clicks fall back to notifications or are ignored.
 - [ ] Manual: disable overlay; system notifications appear instead.
 - [ ] Manual: DND suppresses cards.
 - [ ] Manual: multi-monitor and HiDPI placement.
-- [ ] Automated: card queue and dedup logic unit tests.
+- [x] Automated: card queue and dedup logic unit tests.
 
 ## Security
 
-- [ ] Overlay has no network, storage, or key access.
-- [ ] Only subscribes to the documented daemon signals.
-- [ ] Message previews respect policy and DND.
-- [ ] No focus stealing; keyboard input never routed to the overlay.
-- [ ] No message bodies written to logs.
+- [x] Overlay has no network, storage, or key access.
+- [x] Only subscribes to the documented daemon signals.
+- [x] Message previews respect policy and DND.
+- [x] No focus stealing; keyboard input never routed to the overlay.
+- [x] No message bodies written to logs.
 
 ## Docs and acceptance
 
-- [ ] Document overlay enable/disable and fallback behavior.
-- [ ] Document focus and input guarantees.
-- [ ] Document X11 vs Wayland differences.
-- [ ] Document the idle memory cost and why it is accepted.
+- [x] Document overlay enable/disable and fallback behavior.
+- [x] Document focus and input guarantees.
+- [x] Document X11 vs Wayland differences.
+- [x] Document the idle memory cost and why it is accepted.
 
 ## Acceptance criteria
 

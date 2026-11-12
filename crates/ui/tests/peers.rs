@@ -1,4 +1,4 @@
-use ticonnect_ui::model::{Peer, PeerListModel, PeerPolicy};
+use ticonnect_ui::model::{Peer, PeerListModel, PeerPolicy, PeerPresentation};
 
 fn peer(id: &str, name: &str) -> Peer {
     Peer {

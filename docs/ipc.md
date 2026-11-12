@@ -110,8 +110,9 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 `GetSetting` and `ListSettings` use the keys `log_level`, `log_file`,
 `log_format`, `data_dir`, `identity.display_name`, `discovery.enabled`,
 `discovery.mdns`, `discovery.broadcast`, `discovery.beacon_interval_secs`,
-`transport.port`, `overlay.enabled`, `read_receipts.enabled`, `outbox.ttl_days`,
-`ringtone.path`, `dnd.enabled`, and `appearance.color_scheme`. Paths are strings;
+`transport.port`, `overlay.enabled`, `overlay.timeout_secs`,
+`read_receipts.enabled`, `outbox.ttl_days`, `ringtone.path`, `dnd.enabled`, and
+`appearance.color_scheme`. Paths are strings;
 unset optional paths are empty strings. `appearance.color_scheme` is `system`,
 `light`, or `dark`. Discovery candidate addresses are comma-separated strings.
 

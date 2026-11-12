@@ -156,11 +156,11 @@
 | `MSG.sync-executor` | `MSG` | Gap sync executor | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | sync batches | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
 | `MSG.sync-planner` | `MSG` | Gap sync planner | `module` | `crates/daemon/src/messaging/sync.rs` | 6 | missing ranges | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
 | `MSG.verifier` | `MSG` | Record verifier | `module` | `crates/daemon/src/messaging/store.rs` | 6 |  | docs/systems/12-messaging.md#components | crates/daemon/tests/messaging.rs |
-| `OVL.activate` | `OVL` | UI activation client | `module` | `crates/overlay/src/client.rs` | 8 |  | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/activate.rs |
-| `OVL.card` | `OVL` | Card widget | `module` | `crates/overlay/src/card.rs` | 8 | visible cards | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
-| `OVL.client` | `OVL` | Signal client | `module` | `crates/overlay/src/client.rs` | 8 | connection state | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/client.rs |
-| `OVL.notify` | `OVL` | Notification fallback | `module` | `crates/overlay/src/notifications.rs` | 8 |  | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/notify.rs |
-| `OVL.router` | `OVL` | Card router | `module` | `crates/overlay/src/card.rs` | 8 | card queue | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
+| `OVL.activate` | `OVL` | UI activation client | `module` | `crates/overlay/src/client.rs` | 8 |  | docs/systems/21-overlay.md#components | crates/overlay/tests/smoke.rs |
+| `OVL.card` | `OVL` | Card widget | `module` | `crates/overlay/src/card.rs` | 8 | visible cards | docs/systems/21-overlay.md#components | crates/overlay/tests/card.rs |
+| `OVL.client` | `OVL` | Signal client | `module` | `crates/overlay/src/client.rs` | 8 | connection state | docs/systems/21-overlay.md#components | crates/overlay/tests/smoke.rs |
+| `OVL.notify` | `OVL` | Notification fallback | `module` | `crates/overlay/src/notifications.rs` | 8 |  | docs/systems/21-overlay.md#components | planned: manual notification fallback |
+| `OVL.router` | `OVL` | Card router | `module` | `crates/overlay/src/card.rs` | 8 | card queue | docs/systems/21-overlay.md#components | crates/overlay/tests/card.rs |
 | `OVL.wayland` | `OVL` | Wayland layer-shell | `module` | `crates/overlay/src/layer_shell.rs` | 8 | layer surface | docs/systems/21-overlay.md#components | planned: manual Wayland |
 | `OVL.x11` | `OVL` | X11 fallback window | `module` | `crates/overlay/src/x11_fallback.rs` | 8 | fallback window | docs/systems/21-overlay.md#components | planned: manual X11 |
 | `PAIR.commit` | `PAIR` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |

@@ -70,7 +70,7 @@ flowchart LR
   n_msg -->|emits / event| n_ipc
   n_msg -->|calls / sync gate:POL.inbound, POL.receipts| n_pol
   n_msg -->|invokes / async| n_tx
-  n_ovl -->|config-read / sync| n_cfg
+  n_ovl -->|config-read, consumes / event, sync| n_cfg
   n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
   n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
@@ -206,7 +206,7 @@ flowchart LR
 | `UI.settings` | `CFG.watch` | consumes | event | SettingsChanged |  |  | 7 |
 | `OVL.client` | `IPC.client` | calls | sync | daemon signal proxy |  |  | 8 |
 | `OVL.activate` | `UI.activate` | calls | sync | Activate view |  |  | 8 |
-| `OVL.client` | `CFG.file-store` | config-read | sync | overlay enabled |  |  | 8 |
+| `OVL.client` | `CFG.file-store` | config-read | sync | overlay enabled and timeout |  |  | 8 |
 | `TRAY.policy` | `POL.store` | calls | sync | set peer policy | POL.store |  | 6 |
 | `TRAY.activate` | `UI.activate` | calls | sync | Activate view |  |  | 7 |
 | `TRAY.item` | `IPC.signal-bus` | emits | event | tray status |  |  | 6 |
@@ -220,3 +220,4 @@ flowchart LR
 | `PAIR.dbus` | `TX.dialer` | invokes | async | open pairing connection |  |  | 5 |
 | `RT.lifecycle` | `PAIR.dbus` | invokes | async | start and stop pairing service |  |  | 5 |
 | `RT.lifecycle` | `TX.endpoint` | invokes | async | bind and stop transport |  |  | 5 |
+| `OVL.client` | `CFG.watch` | consumes | event | SettingsChanged |  |  | 8 |

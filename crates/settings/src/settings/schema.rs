@@ -48,11 +48,15 @@ impl Default for TransportSettings {
 #[serde(default)]
 pub struct OverlaySettings {
     pub enabled: bool,
+    pub timeout_secs: u32,
 }
 
 impl Default for OverlaySettings {
     fn default() -> Self {
-        Self { enabled: true }
+        Self {
+            enabled: true,
+            timeout_secs: DEFAULT_OVERLAY_TIMEOUT_SECS,
+        }
     }
 }
 
@@ -161,6 +165,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "discovery.beacon_interval_secs",
     "transport.port",
     "overlay.enabled",
+    "overlay.timeout_secs",
     "read_receipts.enabled",
     "outbox.ttl_days",
     "ringtone.path",
@@ -174,6 +179,10 @@ pub const DEFAULT_TRANSPORT_PORT: u16 = 45871;
 
 pub const OUTBOX_TTL_MIN_DAYS: u32 = 1;
 pub const OUTBOX_TTL_MAX_DAYS: u32 = 365;
+
+pub const DEFAULT_OVERLAY_TIMEOUT_SECS: u32 = 5;
+pub const OVERLAY_TIMEOUT_MIN_SECS: u32 = 1;
+pub const OVERLAY_TIMEOUT_MAX_SECS: u32 = 60;
 
 settings_schema! {
     log_level: String = "info".to_owned() => {
@@ -375,6 +384,15 @@ impl Settings {
         self.active.overlay.enabled = enabled;
     }
 
+    pub fn overlay_timeout_secs(&self) -> u32 {
+        self.active.overlay.timeout_secs
+    }
+
+    pub fn set_overlay_timeout_secs(&mut self, secs: u32) {
+        self.changes.overlay = true;
+        self.active.overlay.timeout_secs = secs;
+    }
+
     pub fn read_receipts_enabled(&self) -> bool {
         self.active.read_receipts.enabled
     }
@@ -435,6 +453,7 @@ impl Settings {
             }
             "transport.port" => Ok(SettingValue::Integer(u32::from(self.transport_port()))),
             "overlay.enabled" => Ok(SettingValue::Bool(self.overlay_enabled())),
+            "overlay.timeout_secs" => Ok(SettingValue::Integer(self.overlay_timeout_secs())),
             "read_receipts.enabled" => Ok(SettingValue::Bool(self.read_receipts_enabled())),
             "outbox.ttl_days" => Ok(SettingValue::Integer(self.outbox_ttl_days())),
             "ringtone.path" => Ok(SettingValue::Path(
@@ -497,6 +516,23 @@ impl Settings {
                 self.set_transport_port(port);
             }
             "overlay.enabled" => self.set_overlay_enabled(parse_bool(key, value)?),
+            "overlay.timeout_secs" => {
+                let secs = value.parse::<u32>().map_err(|_| Error::InvalidSetting {
+                    key: key.to_owned(),
+                    value: value.to_owned(),
+                    reason: "expected an integer".to_owned(),
+                })?;
+                if !(OVERLAY_TIMEOUT_MIN_SECS..=OVERLAY_TIMEOUT_MAX_SECS).contains(&secs) {
+                    return Err(Error::InvalidSetting {
+                        key: key.to_owned(),
+                        value: value.to_owned(),
+                        reason: format!(
+                            "expected a value between {OVERLAY_TIMEOUT_MIN_SECS} and {OVERLAY_TIMEOUT_MAX_SECS}"
+                        ),
+                    });
+                }
+                self.set_overlay_timeout_secs(secs);
+            }
             "read_receipts.enabled" => {
                 self.set_read_receipts_enabled(parse_bool(key, value)?);
             }
@@ -558,6 +594,17 @@ impl Settings {
                 value: self.discovery_beacon_interval_secs().to_string(),
                 reason: format!(
                     "expected a value between {BEACON_INTERVAL_MIN_SECS} and {BEACON_INTERVAL_MAX_SECS}"
+                ),
+            });
+        }
+        if !(OVERLAY_TIMEOUT_MIN_SECS..=OVERLAY_TIMEOUT_MAX_SECS)
+            .contains(&self.overlay_timeout_secs())
+        {
+            return Err(Error::InvalidSetting {
+                key: "overlay.timeout_secs".to_owned(),
+                value: self.overlay_timeout_secs().to_string(),
+                reason: format!(
+                    "expected a value between {OVERLAY_TIMEOUT_MIN_SECS} and {OVERLAY_TIMEOUT_MAX_SECS}"
                 ),
             });
         }

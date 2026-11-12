@@ -4,7 +4,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk4 as gtk;
 
-use crate::model::{Peer, PeerListModel};
+use crate::model::{Peer, PeerListModel, PeerPolicyLabel, PeerPresentation};
 
 pub struct PeersView {
     pub root: gtk::Box,

@@ -1,70 +1,17 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
+use ticonnect_core::ipc::events::{self, Candidate, Message, MessageState, Peer, PeerPolicy};
+pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, PairingStart, Status};
 use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
 
 use crate::error::{Error, Result};
-use crate::model::{Candidate, Message, MessageState, Peer, PeerPolicy, SettingsForm, short_id};
+use crate::model::{PeerPresentation, SettingsForm, short_id};
 
 type Reply<T> = oneshot::Sender<Result<T>>;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Identity {
-    pub node_id: String,
-    pub fingerprint: String,
-    pub display_name: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Status {
-    pub transport_state: String,
-    pub active_sessions: u32,
-    pub outbox_depth: u32,
-    pub peer_count: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairingStart {
-    pub pin: String,
-    pub qr: String,
-    pub expires_at: u64,
-    pub node_id: String,
-    pub port: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DaemonEvent {
-    Connected,
-    Disconnected(String),
-    Peers(Vec<Peer>),
-    Candidates(Vec<Candidate>),
-    CandidateLost(String),
-    MessageReceived(Message),
-    MessageStateChanged {
-        message_id: String,
-        state: MessageState,
-    },
-    PeerConnected(Peer),
-    PeerDisconnected(Peer),
-    PairingStarted(PairingStart),
-    PairingCompleted {
-        peer_id: String,
-        fingerprint: String,
-    },
-    PairingFailed(String),
-    PolicyChanged {
-        peer_id: String,
-        policy: PeerPolicy,
-    },
-    SettingsChanged(String),
-    SyncCompleted {
-        peer_id: String,
-        count: u32,
-    },
-}
 
 enum Command {
     GetIdentity(Reply<Identity>),
@@ -322,7 +269,7 @@ async fn listen(
             signal = messages.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(message) = parse_message(&args.message, None) {
+                if let Ok(message) = events::parse_message(&args.message, None) {
                     let _ = events.send(DaemonEvent::MessageReceived(message));
                 }
             }
@@ -337,21 +284,21 @@ async fn listen(
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = parse_peer(&args.peer) {
+                if let Ok(peer) = events::parse_peer(&args.peer) {
                     let _ = events.send(DaemonEvent::PeerConnected(peer));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = parse_peer(&args.peer) {
+                if let Ok(peer) = events::parse_peer(&args.peer) {
                     let _ = events.send(DaemonEvent::PeerDisconnected(peer));
                 }
             }
             signal = pairing_started.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(start) = parse_pairing(&args.pairing) {
+                if let Ok(start) = events::parse_pairing(&args.pairing) {
                     let _ = events.send(DaemonEvent::PairingStarted(start));
                 }
             }
@@ -392,7 +339,7 @@ async fn listen(
             signal = candidate_found.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(candidate) = parse_candidate(&args.candidate) {
+                if let Ok(candidate) = events::parse_candidate(&args.candidate) {
                     let _ = events.send(DaemonEvent::Candidates(vec![candidate]));
                 }
             }
@@ -422,21 +369,21 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
     match command {
         Command::GetIdentity(reply) => {
             let result = match proxy.get_identity().await {
-                Ok(values) => parse_identity(&values),
+                Ok(values) => events::parse_identity(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
         Command::GetStatus(reply) => {
             let result = match proxy.get_status().await {
-                Ok(values) => parse_status(&values),
+                Ok(values) => events::parse_status(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
         Command::ListPeers(reply) => {
             let result = match proxy.list_peers().await {
-                Ok(values) => parse_peers(&values),
+                Ok(values) => events::parse_peers(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
@@ -445,7 +392,7 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = match proxy.list_candidates().await {
                 Ok(values) => values
                     .iter()
-                    .map(parse_candidate)
+                    .map(|values| events::parse_candidate(values).map_err(payload_error))
                     .collect::<Result<Vec<_>>>(),
                 Err(error) => Err(bus_error(error)),
             };
@@ -460,7 +407,7 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         }
         Command::StartPairing(reply) => {
             let result = match proxy.start_pairing().await {
-                Ok(values) => parse_pairing(&values),
+                Ok(values) => events::parse_pairing(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
@@ -498,7 +445,7 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = match proxy.list_messages(&conversation_id, limit, offset).await {
                 Ok(values) => values
                     .iter()
-                    .map(|message| parse_message(message, None))
+                    .map(|message| events::parse_message(message, None).map_err(payload_error))
                     .collect::<Result<Vec<_>>>(),
                 Err(error) => Err(bus_error(error)),
             };
@@ -556,128 +503,16 @@ fn bus_error(error: zbus::Error) -> Error {
     Error::DaemonUnavailable(error.to_string())
 }
 
-fn parse_identity(values: &HashMap<String, OwnedVariant>) -> Result<Identity> {
-    Ok(Identity {
-        node_id: required_string(values, ipc::IDENTITY_NODE_ID)?,
-        fingerprint: required_string(values, ipc::IDENTITY_FINGERPRINT)?,
-        display_name: optional_string(values, ipc::IDENTITY_DISPLAY_NAME),
-    })
-}
-
-fn parse_status(values: &HashMap<String, OwnedVariant>) -> Result<Status> {
-    Ok(Status {
-        transport_state: optional_string(values, ipc::STATUS_TRANSPORT_STATE),
-        active_sessions: optional_u64(values, ipc::STATUS_ACTIVE_SESSIONS) as u32,
-        outbox_depth: optional_u64(values, ipc::STATUS_OUTBOX_DEPTH) as u32,
-        peer_count: optional_u64(values, ipc::STATUS_PEER_COUNT) as u32,
-    })
-}
-
-fn parse_peers(values: &[HashMap<String, OwnedVariant>]) -> Result<Vec<Peer>> {
-    values.iter().map(parse_peer).collect()
-}
-
-fn parse_peer(values: &HashMap<String, OwnedVariant>) -> Result<Peer> {
-    Ok(Peer {
-        id: required_string(values, ipc::PEER_ID)?,
-        fingerprint: required_string(values, ipc::PEER_FINGERPRINT)?,
-        display_name: optional_string(values, ipc::PEER_DISPLAY_NAME),
-        policy: PeerPolicy::parse(&optional_string(values, ipc::PEER_POLICY)),
-        trusted_at: optional_u64(values, ipc::PEER_TRUSTED_AT),
-        last_seen: optional_u64(values, ipc::PEER_LAST_SEEN),
-        connected: optional_bool(values, ipc::PEER_CONNECTED),
-    })
-}
-
-fn parse_candidate(values: &HashMap<String, OwnedVariant>) -> Result<Candidate> {
-    Ok(Candidate {
-        node_id: required_string(values, ipc::CANDIDATE_NODE_ID)?,
-        fingerprint: required_string(values, ipc::CANDIDATE_FINGERPRINT)?,
-        display_name: optional_string(values, ipc::CANDIDATE_DISPLAY_NAME),
-        addresses: optional_string(values, ipc::CANDIDATE_ADDRESSES),
-        source: optional_string(values, ipc::CANDIDATE_SOURCE),
-    })
-}
-
-fn parse_message(
-    values: &HashMap<String, OwnedVariant>,
-    local_node_id: Option<&str>,
-) -> Result<Message> {
-    let sender_id = required_string(values, ipc::MESSAGE_SENDER_ID)?;
-    let local_sender = local_node_id.is_some_and(|local| local == sender_id);
-    Ok(Message {
-        id: required_string(values, ipc::MESSAGE_ID)?,
-        conversation_id: required_string(values, ipc::MESSAGE_CONVERSATION_ID)?,
-        peer_id: optional_string(values, ipc::MESSAGE_PEER_ID),
-        sender_id,
-        local_sender,
-        seq: optional_u64(values, ipc::MESSAGE_SEQ),
-        sent_at: optional_u64(values, ipc::MESSAGE_SENT_AT),
-        received_at: optional_u64(values, ipc::MESSAGE_RECEIVED_AT),
-        body: optional_string(values, ipc::MESSAGE_BODY),
-        state: MessageState::parse(&optional_string(values, ipc::MESSAGE_STATE)),
-    })
-}
-
-fn parse_pairing(values: &HashMap<String, OwnedVariant>) -> Result<PairingStart> {
-    Ok(PairingStart {
-        pin: required_string(values, ipc::PAIRING_PIN)?,
-        qr: required_string(values, ipc::PAIRING_QR)?,
-        expires_at: optional_u64(values, ipc::PAIRING_EXPIRES_AT),
-        node_id: optional_string(values, ipc::PAIRING_NODE_ID),
-        port: optional_u64(values, ipc::PAIRING_PORT) as u32,
-    })
+fn payload_error(error: events::ParseError) -> Error {
+    Error::InvalidResponse(error.to_string())
 }
 
 fn parse_settings(values: &HashMap<String, OwnedVariant>) -> SettingsForm {
-    let mut settings = BTreeMap::new();
-    for (key, value) in values {
-        settings.insert(key.clone(), display_value(value));
-    }
-    SettingsForm::new(settings)
+    SettingsForm::new(events::settings_map(values))
 }
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {
     crate::model::pairing_view(value)
-}
-
-fn required_string(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<String> {
-    values
-        .get(key)
-        .map(display_value)
-        .ok_or_else(|| Error::InvalidResponse(format!("missing field: {key}")))
-}
-
-fn optional_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
-    values.get(key).map(display_value).unwrap_or_default()
-}
-
-fn optional_u64(values: &HashMap<String, OwnedVariant>, key: &str) -> u64 {
-    values
-        .get(key)
-        .and_then(|value| u64::try_from(value).ok())
-        .unwrap_or_default()
-}
-
-fn optional_bool(values: &HashMap<String, OwnedVariant>, key: &str) -> bool {
-    values
-        .get(key)
-        .and_then(|value| bool::try_from(value).ok())
-        .unwrap_or_default()
-}
-
-fn display_value(value: &OwnedVariant) -> String {
-    if let Ok(value) = u64::try_from(value) {
-        value.to_string()
-    } else if let Ok(value) = u32::try_from(value) {
-        value.to_string()
-    } else if let Ok(value) = bool::try_from(value) {
-        value.to_string()
-    } else if let Ok(value) = <&str>::try_from(value) {
-        value.to_owned()
-    } else {
-        String::new()
-    }
 }
 
 pub fn peer_error_label(peer: &Peer) -> String {
@@ -697,7 +532,7 @@ mod tests {
     #[test]
     fn invalid_required_field_is_reported() {
         let values = HashMap::new();
-        assert!(required_string(&values, ipc::PEER_ID).is_err());
+        assert!(events::required_string(&values, ipc::PEER_ID).is_err());
     }
 
     #[test]
@@ -711,7 +546,7 @@ mod tests {
         let mut values = HashMap::new();
         values.insert("x".to_owned(), OwnedVariant::from(true));
         values.insert("y".to_owned(), OwnedVariant::from(7_u32));
-        assert_eq!(display_value(&values["x"]), "true");
-        assert_eq!(display_value(&values["y"]), "7");
+        assert_eq!(events::display_value(&values["x"]), "true");
+        assert_eq!(events::display_value(&values["y"]), "7");
     }
 }

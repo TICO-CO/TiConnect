@@ -3,7 +3,7 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk4 as gtk;
 
-use crate::model::{ComposerAction, Message, composer_action};
+use crate::model::{ComposerAction, Message, MessageStateLabel, composer_action};
 
 pub struct ChatView {
     pub root: gtk::Box,

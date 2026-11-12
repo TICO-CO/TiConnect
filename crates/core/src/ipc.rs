@@ -1,6 +1,8 @@
 pub const DAEMON_BUS_NAME: &str = "org.ticonnect.Daemon";
 pub const DAEMON_PATH: &str = "/org/ticonnect/Daemon";
 pub const DAEMON_INTERFACE: &str = "org.ticonnect.Daemon";
+pub const UI_BUS_NAME: &str = "org.ticonnect.UI";
+pub const UI_PATH: &str = "/org/ticonnect/UI";
 pub const UI_INTERFACE: &str = "org.ticonnect.UI";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -112,3 +114,4 @@ pub mod errors {
 }
 
 pub mod client;
+pub mod events;

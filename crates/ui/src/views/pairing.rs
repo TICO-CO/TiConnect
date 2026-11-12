@@ -8,7 +8,7 @@ use qrcodegen::{QrCode, QrCodeEcc};
 
 use crate::client::PairingStart;
 use crate::error::{Error, Result};
-use crate::model::{Candidate, format_countdown, format_pin};
+use crate::model::{Candidate, CandidatePresentation, format_countdown, format_pin};
 
 #[allow(deprecated)]
 pub struct PairingView {

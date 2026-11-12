@@ -8,19 +8,22 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, 3, 4, 5, 6, and 7 are implemented. Stage 2 automation is
+Stages 1, 1.5, 3, 4, 5, 6, 7, and 8 automation are implemented. Stage 2 is
 implemented, with manual systemd/logout verification pending. Stage 4 discovery
 is implemented, with manual two-machine LAN verification pending. Stage 7 GTK4
 UI is implemented, with manual X11/Wayland and accessibility checks pending.
+Stage 8 overlay is implemented, with manual X11/Wayland, notification fallback,
+and focus checks pending.
 This includes workspace, settings, logging, typed errors, the architecture graph, the D-Bus
 daemon, the CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage,
 settings reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast
 fallback, a discovery candidate cache, SPAKE2 PIN and QR pairing, pinned
 QUIC/TLS transport, trusted peer revocation, automatic reconnect for trusted
 peers, signed text messages, history, outbox retry, gap sync, delivered and read
-receipts, per-peer policy, DND, an optional system tray, and a GTK4 main window
-with peers, conversations, settings, and PIN/QR pairing. The overlay,
-attachments, calls, and remote desktop stages are not implemented yet.
+receipts, per-peer policy, DND, an optional system tray, a GTK4 main window with
+peers, conversations, settings, and PIN/QR pairing, and a corner overlay with
+system-notification fallback. Attachments, calls, and remote desktop stages are
+not implemented yet.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -62,10 +65,21 @@ make lan-test
 `make lan-test` runs the two-container LAN e2e suite; Docker Compose is
 required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
 (`control`, `discovery`, `pairing`, `transport`, `messaging`, `offline-sync`,
-`security`) to run a subset. The GTK4 UI needs development headers:
+`security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
-sudo apt install libgtk-4-dev libadwaita-1-dev
+sudo apt install libgtk-4-dev libadwaita-1-dev libwayland-dev wayland-protocols
+```
+
+Ubuntu 24.04 does not package `libgtk4-layer-shell-dev`; Ubuntu 25.04+, Debian
+13, and current Arch/Fedora provide it. On Ubuntu 24.04 build
+`gtk4-layer-shell` 1.0.4 from source before compiling the overlay:
+
+```sh
+git clone --depth 1 --branch v1.0.4 https://github.com/wmww/gtk4-layer-shell.git
+meson setup gtk4-layer-shell/build gtk4-layer-shell
+sudo meson install -C gtk4-layer-shell/build
+sudo ldconfig
 ```
 
 Architecture docs are generated. After editing `docs/systems/graph/` or
@@ -105,7 +119,8 @@ cargo run --bin ticonnect-ovl
 pairing, messaging, policy, ping, and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
 directly. `ticonnect-ui` opens the GTK4 window and talks to the daemon only over
-D-Bus. The overlay binary initializes runtime services and exits until Stage 8.
+D-Bus. `ticonnect-ovl` shows corner cards for incoming messages without depending
+on the UI process.
 
 ## UI
 
@@ -138,6 +153,31 @@ daemon reloads the file and emits `SettingsChanged`. Autostart is controlled by
 the XDG entry at `$XDG_CONFIG_HOME/autostart/ticonnect.desktop`. The UI never
 calls a `SetSetting` D-Bus method.
 
+## Overlay
+
+`ticonnect-ovl` is a separate always-running GTK4 process. It subscribes directly
+to `org.ticonnect.Daemon`, resolves sender names through `ListPeers`, and does not
+depend on the UI being open.
+
+- Wayland: uses `gtk4-layer-shell` with `Layer::Overlay`, anchored bottom-right,
+  and `KeyboardMode::None`. Cards never take keyboard focus; only the card
+  surface accepts pointer input.
+- Wayland without layer-shell support: falls back to system notifications.
+- X11: uses an undecorated, always-on-top, skip-taskbar window positioned at the
+  bottom-right of the first monitor. Window flags use EWMH through `x11rb`.
+- Message cards show sender, preview, and local time. Up to three cards are
+  visible; additional cards queue. Cards auto-dismiss after
+  `overlay.timeout_secs`, pause while hovered, and deduplicate by message id.
+- Clicking a card calls `org.ticonnect.UI.Activate("chat")`. If the UI is not
+  running, the overlay starts `ticonnect-ui` from `PATH` and retries once.
+- Mute, ignore, and DND are enforced by the daemon: suppressed messages arrive
+  with `notify=false` and produce no card or notification.
+- When `overlay.enabled` is false or no surface can initialize, the same events
+  use `notify-rust` system notifications instead. The overlay never sends both.
+- The process is single-instance through the GTK application id
+  `org.ticonnect.Overlay`. Idle memory is accepted at roughly 40 MB.
+- Autostart entry: `$XDG_CONFIG_HOME/autostart/ticonnect-overlay.desktop`.
+
 ## Configuration
 
 - User config file: `$XDG_CONFIG_HOME/ticonnect/config.toml`.
@@ -169,7 +209,8 @@ Settings keys:
 | `discovery.broadcast` | bool | `true` | UDP broadcast fallback |
 | `discovery.beacon_interval_secs` | integer | `5` | Valid range `1..=3600` |
 | `transport.port` | integer | `45871` | UDP port for QUIC session and pairing; valid range `1..=65535`; restart required |
-| `overlay.enabled` | bool | `true` | Reserved for Stage 8 |
+| `overlay.enabled` | bool | `true` | Show corner cards; false uses system notifications |
+| `overlay.timeout_secs` | integer | `5` | Card auto-dismiss timeout; valid range `1..=60` |
 | `read_receipts.enabled` | bool | `true` | Send delivered and read receipts |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
 | `ringtone.path` | optional path | unset | Empty value clears it |

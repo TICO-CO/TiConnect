@@ -24,11 +24,11 @@ Client process. Subscribes to daemon signals and settings. Does not depend on UI
 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
-| `OVL.activate` | UI activation client | `module` | `crates/overlay/src/client.rs` |  | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/activate.rs |
-| `OVL.card` | Card widget | `module` | `crates/overlay/src/card.rs` | visible cards | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
-| `OVL.client` | Signal client | `module` | `crates/overlay/src/client.rs` | connection state | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/client.rs |
-| `OVL.notify` | Notification fallback | `module` | `crates/overlay/src/notifications.rs` |  | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/notify.rs |
-| `OVL.router` | Card router | `module` | `crates/overlay/src/card.rs` | card queue | docs/systems/21-overlay.md#components | planned: crates/overlay/tests/card.rs |
+| `OVL.activate` | UI activation client | `module` | `crates/overlay/src/client.rs` |  | docs/systems/21-overlay.md#components | crates/overlay/tests/smoke.rs |
+| `OVL.card` | Card widget | `module` | `crates/overlay/src/card.rs` | visible cards | docs/systems/21-overlay.md#components | crates/overlay/tests/card.rs |
+| `OVL.client` | Signal client | `module` | `crates/overlay/src/client.rs` | connection state | docs/systems/21-overlay.md#components | crates/overlay/tests/smoke.rs |
+| `OVL.notify` | Notification fallback | `module` | `crates/overlay/src/notifications.rs` |  | docs/systems/21-overlay.md#components | planned: manual notification fallback |
+| `OVL.router` | Card router | `module` | `crates/overlay/src/card.rs` | card queue | docs/systems/21-overlay.md#components | crates/overlay/tests/card.rs |
 | `OVL.wayland` | Wayland layer-shell | `module` | `crates/overlay/src/layer_shell.rs` | layer surface | docs/systems/21-overlay.md#components | planned: manual Wayland |
 | `OVL.x11` | X11 fallback window | `module` | `crates/overlay/src/x11_fallback.rs` | fallback window | docs/systems/21-overlay.md#components | planned: manual X11 |
 
@@ -52,7 +52,8 @@ Client process. Subscribes to daemon signals and settings. Does not depend on UI
 | `OVL.router` | `emits` | `event` | `OVL.notify` | system notification |  |  |
 | `OVL.router` | `emits` | `event` | `OVL.wayland` | Wayland card |  |  |
 | `OVL.router` | `emits` | `event` | `OVL.x11` | X11 card |  |  |
-| `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled |  |  |
+| `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled and timeout |  |  |
+| `OVL.client` | `consumes` | `event` | `CFG.watch` | SettingsChanged |  |  |
 
 ## Invariants
 
@@ -67,6 +68,5 @@ Client process. Subscribes to daemon signals and settings. Does not depend on UI
 
 ## Open decisions
 
-- call and transfer card extension points
-- multi-monitor placement
-- reduced-motion detection
+- call and transfer card extension points land in Stages 10 and 9
+- Wayland uses the compositor monitor and X11 uses the first monitor

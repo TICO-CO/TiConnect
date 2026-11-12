@@ -1,4 +1,4 @@
-use ticonnect_ui::model::PeerPolicy;
+use ticonnect_ui::model::{PeerPolicy, PeerPolicyLabel};
 
 #[test]
 fn accessible_labels_name_every_policy() {
