@@ -29,7 +29,7 @@ fails to acquire the name and exits non-zero.
 | `PairWithPin` | `(ss) -> b` | Pairs with a discovered node using a PIN. |
 | `PairWithQr` | `(s) -> b` | Pairs using a QR payload. |
 | `CancelPairing` | `() -> ()` | Cancels the active pairing session. |
-| `ForgetPeer` | `(s) -> b` | Removes trust and closes an active session. |
+| `ForgetPeer` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
 | `ListTrustedPeers` | `() -> aa{sv}` | Returns trusted peers. |
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |

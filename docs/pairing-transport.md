@@ -82,8 +82,10 @@ transcript hash.
 ## Trust store
 
 The daemon loads trusted fingerprints into memory at startup and writes peer
-rows to SQLite on pairing. `ForgetPeer` deletes the row, removes the in-memory
-trust entry, and closes any active session for that peer.
+rows to SQLite on pairing. `ForgetPeer` deletes the peer row, local conversation
+history, and queued outbox rows, removes the in-memory trust entry, and closes
+any active session for that peer. Sequence high-water marks are retained so a
+re-paired peer cannot reuse old sequence numbers.
 
 Reconnects happen only for trusted fingerprints. A trusted peer is redialed when
 it is discovered or when its session drops, subject to bounded backoff.

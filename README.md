@@ -59,8 +59,10 @@ cargo xtask systems --check
 make lan-test
 ```
 
-`make lan-test` runs the two-container LAN smoke test; Docker Compose is
-required. The GTK4 UI needs development headers:
+`make lan-test` runs the two-container LAN e2e suite; Docker Compose is
+required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
+(`control`, `discovery`, `pairing`, `transport`, `messaging`, `offline-sync`,
+`security`) to run a subset. The GTK4 UI needs development headers:
 
 ```sh
 sudo apt install libgtk-4-dev libadwaita-1-dev
@@ -223,7 +225,8 @@ Settings keys:
   a target message ID, and body `delivered` or `read`.
 - Undelivered records queue in the outbox. Retry uses exponential backoff after
   a failed stream write and expires after `outbox.ttl_days`. Expired rows are
-  removed and the message state becomes `expired`.
+  removed and the message state becomes `expired`. Expired and failed records
+  stay in local history but are not served during gap sync.
 - On every authenticated session each side exchanges `last_sent_seq` and
   `last_recv_seq`, requests missing sequence ranges in batches of 128, verifies
   and inserts the records, advances its receive high-water mark, and flushes its
@@ -258,8 +261,10 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 - The self-signed TLS certificate reuses the Ed25519 identity key. The identity
   fingerprint and certificate fingerprint are the same BLAKE3 value. Certificates
   are pinned to the trusted peer table.
-- `ticonnect-cli pair forget <peer-id>` removes trust and closes the active
-  session. Trusted peers are reconnected automatically when rediscovered.
+- `ticonnect-cli pair forget <peer-id>` removes trust, deletes local history
+  and queued outbox rows, and closes the active session. Sequence high-water
+  marks are retained so re-pairing continues sequence numbers instead of
+  reusing them. Trusted peers are reconnected automatically when rediscovered.
 - Unpaired peers can reach only the pairing ALPN. Session ALPN connections are
   rejected before handler dispatch unless the certificate fingerprint is trusted.
 

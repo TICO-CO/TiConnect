@@ -1,7 +1,9 @@
 use std::fs;
 use std::path::PathBuf;
 
-use ticonnect_daemon::storage::{DatabaseHandle, NewPeer, PeerPolicy, StorageError};
+use ticonnect_core::id::NodeId;
+use ticonnect_core::message::{MessageRecord, conversation_id};
+use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewPeer, PeerPolicy, StorageError};
 
 #[tokio::test]
 async fn peer_crud_and_policy_updates() {
@@ -87,6 +89,69 @@ async fn duplicate_fingerprint_is_a_typed_conflict() {
 fn invalid_policy_is_rejected() {
     let error = "block".parse::<PeerPolicy>().expect_err("invalid policy");
     assert!(matches!(error, StorageError::InvalidPolicy(_)));
+}
+
+#[tokio::test]
+async fn deleting_a_peer_preserves_sequence_state_and_clears_outbox() {
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let peer_node = NodeId::generate();
+    let peer_id = peer_node.to_string();
+    let conversation = conversation_id(local, peer_node);
+
+    database
+        .insert_peer(peer(&peer_id, "fingerprint-1"))
+        .await
+        .expect("peer");
+    database
+        .ensure_conversation(&conversation, &peer_id, 1)
+        .await
+        .expect("conversation");
+    let seq = database.allocate_seq(&peer_id).await.expect("seq");
+    assert_eq!(seq, 1);
+
+    let record = MessageRecord::text(&conversation, local.to_string(), seq, 1, "pending");
+    database
+        .insert_message(
+            record.clone(),
+            1,
+            vec![0_u8; 64],
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("message");
+    database
+        .enqueue_outbox(&record.message_id.to_string(), 0, i64::MAX)
+        .await
+        .expect("outbox");
+    assert_eq!(database.outbox_depth().await.expect("depth"), 1);
+
+    assert!(database.delete_peer(&peer_id).await.expect("delete"));
+    assert!(database.list_peers().await.expect("peers").is_empty());
+    assert_eq!(database.outbox_depth().await.expect("depth"), 0);
+    assert_eq!(
+        database.peer_state(&peer_id).await.expect("peer state"),
+        ticonnect_daemon::storage::PeerState {
+            last_sent_seq: 1,
+            last_recv_seq: 0,
+        }
+    );
+
+    database
+        .insert_peer(peer(&peer_id, "fingerprint-1"))
+        .await
+        .expect("re-pair");
+    database
+        .ensure_conversation(&conversation, &peer_id, 2)
+        .await
+        .expect("conversation");
+    assert_eq!(database.allocate_seq(&peer_id).await.expect("next seq"), 2);
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
 }
 
 fn peer(id: &str, fingerprint: &str) -> NewPeer {

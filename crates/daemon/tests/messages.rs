@@ -224,6 +224,23 @@ async fn records_between_filters_by_sender() {
         .await
         .expect("insert outgoing");
 
+    for (seq, state, body) in [
+        (2, MessageState::Expired, "expired"),
+        (3, MessageState::Failed, "failed"),
+    ] {
+        let terminal = MessageRecord::text(
+            conversation.clone(),
+            local.to_string(),
+            seq,
+            1_700_000_000_000 + i64::try_from(seq).expect("seq fits"),
+            body,
+        );
+        database
+            .insert_message(terminal, 1_700_000_000_100, vec![0_u8; 64], Some(state))
+            .await
+            .expect("insert terminal message");
+    }
+
     let incoming = MessageRecord::text(
         conversation.clone(),
         peer.to_string(),
@@ -243,7 +260,7 @@ async fn records_between_filters_by_sender() {
         .expect("insert incoming");
 
     let local_records = database
-        .records_between(&conversation, &local.to_string(), 1, 1, 10)
+        .records_between(&conversation, &local.to_string(), 1, 3, 10)
         .await
         .expect("local records");
     assert_eq!(local_records.len(), 1);

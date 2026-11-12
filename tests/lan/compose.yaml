@@ -6,27 +6,27 @@ x-node: &node
   networks:
     - lan
   stop_grace_period: 5s
-  environment:
+  environment: &node-env
     TICONNECT_CONFIG_DIR: /data/config
     TICONNECT_DATA_DIR: /data/data
     TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
-    TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
-    TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
-    TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
+    TICONNECT_LOG_FILE: /data/ticonnect.log
+    LAN_TEST_DISCOVERY_ENABLED: "${LAN_TEST_DISCOVERY_ENABLED:-}"
+    LAN_TEST_DISCOVERY_MDNS: "${LAN_TEST_DISCOVERY_MDNS:-}"
+    LAN_TEST_DISCOVERY_BROADCAST: "${LAN_TEST_DISCOVERY_BROADCAST:-}"
+    LAN_TEST_BEACON_INTERVAL_SECS: "${LAN_TEST_BEACON_INTERVAL_SECS:-1}"
+    LAN_TEST_TRANSPORT_PORT: "${LAN_TEST_TRANSPORT_PORT:-}"
+    LAN_TEST_READ_RECEIPTS_ENABLED: "${LAN_TEST_READ_RECEIPTS_ENABLED:-}"
+    LAN_TEST_DND_ENABLED: "${LAN_TEST_DND_ENABLED:-}"
+    LAN_TEST_OUTBOX_TTL_DAYS: "${LAN_TEST_OUTBOX_TTL_DAYS:-}"
 
 services:
   node-a:
     <<: *node
     hostname: node-a
     environment:
-      TICONNECT_CONFIG_DIR: /data/config
-      TICONNECT_DATA_DIR: /data/data
-      TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
-      TICONNECT_LOG_FILE: /data/ticonnect.log
-      TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
-      TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
-      TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
-      TICONNECT_IDENTITY__DISPLAY_NAME: node-a
+      <<: *node-env
+      LAN_TEST_DISPLAY_NAME: "${LAN_TEST_DISPLAY_NAME_A:-node-a}"
     volumes:
       - node-a-data:/data
 
@@ -34,14 +34,8 @@ services:
     <<: *node
     hostname: node-b
     environment:
-      TICONNECT_CONFIG_DIR: /data/config
-      TICONNECT_DATA_DIR: /data/data
-      TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
-      TICONNECT_LOG_FILE: /data/ticonnect.log
-      TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
-      TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
-      TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
-      TICONNECT_IDENTITY__DISPLAY_NAME: node-b
+      <<: *node-env
+      LAN_TEST_DISPLAY_NAME: "${LAN_TEST_DISPLAY_NAME_B:-node-b}"
     volumes:
       - node-b-data:/data
 

@@ -190,6 +190,7 @@ pub fn records_between(
                 body, attachment_hash, signature, state
          FROM messages
          WHERE conversation_id = ?1 AND sender_id = ?2 AND seq >= ?3 AND seq <= ?4
+           AND (state IS NULL OR state NOT IN ('expired', 'failed'))
          ORDER BY seq
          LIMIT ?5",
     )?;

@@ -166,7 +166,18 @@ pub fn update_last_seen(
 }
 
 pub fn delete(connection: &Connection, id: &str) -> Result<bool, StorageError> {
-    let deleted = connection.execute("DELETE FROM peers WHERE id = ?1", params![id])?;
+    let transaction = connection.unchecked_transaction()?;
+    transaction.execute(
+        "DELETE FROM outbox WHERE message_id IN (
+            SELECT m.id
+            FROM messages m
+            JOIN conversations c ON c.id = m.conversation_id
+            WHERE c.peer_id = ?1
+        )",
+        params![id],
+    )?;
+    let deleted = transaction.execute("DELETE FROM peers WHERE id = ?1", params![id])?;
+    transaction.commit()?;
     Ok(deleted > 0)
 }
 

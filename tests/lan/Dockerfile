@@ -14,7 +14,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends dbus iproute2 \
+    && apt-get install -y --no-install-recommends \
+        bash \
+        dbus \
+        iproute2 \
+        jq \
+        libglib2.0-bin \
+        sqlite3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /out/ticonnectd /out/ticonnect-cli /usr/local/bin/
