@@ -180,6 +180,7 @@ pub fn history(
 pub fn records_between(
     connection: &Connection,
     conversation_id: &str,
+    sender_id: &str,
     from_seq: u64,
     to_seq: u64,
     limit: u32,
@@ -188,13 +189,14 @@ pub fn records_between(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
                 body, attachment_hash, signature, state
          FROM messages
-         WHERE conversation_id = ?1 AND seq >= ?2 AND seq <= ?3
+         WHERE conversation_id = ?1 AND sender_id = ?2 AND seq >= ?3 AND seq <= ?4
          ORDER BY seq
-         LIMIT ?4",
+         LIMIT ?5",
     )?;
     let rows = statement.query_map(
         params![
             conversation_id,
+            sender_id,
             i64::try_from(from_seq)
                 .map_err(|_| StorageError::InvalidData("sequence overflow".to_owned()))?,
             i64::try_from(to_seq)

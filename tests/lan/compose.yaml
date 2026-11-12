@@ -1,0 +1,54 @@
+x-node: &node
+  image: "${LAN_TEST_IMAGE:-ticonnect-lan-test:local}"
+  build:
+    context: ../..
+    dockerfile: tests/lan/Dockerfile
+  networks:
+    - lan
+  stop_grace_period: 5s
+  environment:
+    TICONNECT_CONFIG_DIR: /data/config
+    TICONNECT_DATA_DIR: /data/data
+    TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
+    TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
+    TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
+    TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
+
+services:
+  node-a:
+    <<: *node
+    hostname: node-a
+    environment:
+      TICONNECT_CONFIG_DIR: /data/config
+      TICONNECT_DATA_DIR: /data/data
+      TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
+      TICONNECT_LOG_FILE: /data/ticonnect.log
+      TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
+      TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
+      TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
+      TICONNECT_IDENTITY__DISPLAY_NAME: node-a
+    volumes:
+      - node-a-data:/data
+
+  node-b:
+    <<: *node
+    hostname: node-b
+    environment:
+      TICONNECT_CONFIG_DIR: /data/config
+      TICONNECT_DATA_DIR: /data/data
+      TICONNECT_LOG_LEVEL: "${LAN_TEST_LOG_LEVEL:-debug}"
+      TICONNECT_LOG_FILE: /data/ticonnect.log
+      TICONNECT_DISCOVERY__BEACON_INTERVAL_SECS: "1"
+      TICONNECT_DISCOVERY__MDNS: "${LAN_TEST_MDNS:-true}"
+      TICONNECT_DISCOVERY__BROADCAST: "${LAN_TEST_BROADCAST:-true}"
+      TICONNECT_IDENTITY__DISPLAY_NAME: node-b
+    volumes:
+      - node-b-data:/data
+
+networks:
+  lan:
+    driver: bridge
+
+volumes:
+  node-a-data:
+  node-b-data:

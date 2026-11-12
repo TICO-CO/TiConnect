@@ -68,6 +68,7 @@ enum Command {
     CountHistory(String, Reply<u32>),
     RecordsBetween {
         conversation_id: String,
+        sender_id: String,
         from_seq: u64,
         to_seq: u64,
         limit: u32,
@@ -293,6 +294,7 @@ impl DatabaseHandle {
     pub async fn records_between(
         &self,
         conversation_id: &str,
+        sender_id: &str,
         from_seq: u64,
         to_seq: u64,
         limit: u32,
@@ -300,6 +302,7 @@ impl DatabaseHandle {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::RecordsBetween {
             conversation_id: conversation_id.to_owned(),
+            sender_id: sender_id.to_owned(),
             from_seq,
             to_seq,
             limit,
@@ -512,6 +515,7 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::RecordsBetween {
             conversation_id,
+            sender_id,
             from_seq,
             to_seq,
             limit,
@@ -520,6 +524,7 @@ fn dispatch(connection: &Connection, command: Command) {
             let _ = reply.send(messages::records_between(
                 connection,
                 &conversation_id,
+                &sender_id,
                 from_seq,
                 to_seq,
                 limit,

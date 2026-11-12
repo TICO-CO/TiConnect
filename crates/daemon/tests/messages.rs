@@ -179,6 +179,88 @@ async fn inbound_insert_advances_peer_state_and_outbox_expires() {
 }
 
 #[tokio::test]
+async fn records_between_filters_by_sender() {
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let peer = NodeId::generate();
+    let local_identity = IdentityKeyPair::from_secret_bytes([83_u8; 32]);
+    let peer_identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
+    database
+        .insert_peer(NewPeer {
+            id: peer.to_string(),
+            fingerprint: "peer-fingerprint".to_owned(),
+            public_key: Some(peer_identity.verifying_key().to_bytes()),
+            display_name: None,
+            policy: PeerPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("peer");
+    let conversation = conversation_id(local, peer);
+    database
+        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .await
+        .expect("conversation");
+
+    let outgoing = MessageRecord::text(
+        conversation.clone(),
+        local.to_string(),
+        1,
+        1_700_000_000_000,
+        "outgoing",
+    );
+    let outgoing_envelope = outgoing.signed(&local_identity).expect("sign outgoing");
+    database
+        .insert_message(
+            outgoing,
+            1_700_000_000_100,
+            outgoing_envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("insert outgoing");
+
+    let incoming = MessageRecord::text(
+        conversation.clone(),
+        peer.to_string(),
+        1,
+        1_700_000_000_000,
+        "incoming",
+    );
+    let incoming_envelope = incoming.signed(&peer_identity).expect("sign incoming");
+    database
+        .insert_inbound(
+            incoming,
+            1_700_000_000_100,
+            incoming_envelope.signature().to_vec(),
+            &peer.to_string(),
+        )
+        .await
+        .expect("insert incoming");
+
+    let local_records = database
+        .records_between(&conversation, &local.to_string(), 1, 1, 10)
+        .await
+        .expect("local records");
+    assert_eq!(local_records.len(), 1);
+    assert_eq!(local_records[0].record.body.as_deref(), Some("outgoing"));
+
+    let peer_records = database
+        .records_between(&conversation, &peer.to_string(), 1, 1, 10)
+        .await
+        .expect("peer records");
+    assert_eq!(peer_records.len(), 1);
+    assert_eq!(peer_records[0].record.body.as_deref(), Some("incoming"));
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn unknown_state_is_a_typed_error() {
     assert!(matches!(
         "bogus".parse::<MessageState>(),

@@ -56,9 +56,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo audit
 cargo xtask systems --check
+make lan-test
 ```
 
-The GTK4 UI needs development headers:
+`make lan-test` runs the two-container LAN smoke test; Docker Compose is
+required. The GTK4 UI needs development headers:
 
 ```sh
 sudo apt install libgtk-4-dev libadwaita-1-dev

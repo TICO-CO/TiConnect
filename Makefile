@@ -3,7 +3,7 @@ BINDIR ?= $(PREFIX)/bin
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
 
-.PHONY: install-user uninstall-user
+.PHONY: install-user uninstall-user lan-test
 
 install-user: target/release/ticonnectd
 	install -Dm755 target/release/ticonnectd $(BINDIR)/ticonnectd
@@ -19,3 +19,6 @@ uninstall-user:
 	rm -f $(BINDIR)/ticonnectd
 	rm -f $(SYSTEMD_USER_DIR)/ticonnectd.service
 	rm -f $(AUTOSTART_DIR)/ticonnect.desktop
+
+lan-test:
+	tests/lan/run.sh

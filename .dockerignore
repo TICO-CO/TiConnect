@@ -1,0 +1,9 @@
+.git
+.github
+target
+docs
+roadmap
+assets
+fuzz
+packaging
+*.local.toml

@@ -138,6 +138,7 @@ async fn serve_phase(
     send: &mut quinn::SendStream,
     recv: &mut quinn::RecvStream,
 ) -> Result<(), MessagingError> {
+    let local_sender_id = service.local_node_id().to_string();
     loop {
         match read_sync(recv).await? {
             SyncFrame::Request { from_seq, to_seq } => {
@@ -148,7 +149,13 @@ async fn serve_phase(
                 }
                 let records = service
                     .database()
-                    .records_between(conversation_id, from_seq, to_seq, SYNC_BATCH)
+                    .records_between(
+                        conversation_id,
+                        &local_sender_id,
+                        from_seq,
+                        to_seq,
+                        SYNC_BATCH,
+                    )
                     .await?;
                 let mut count = 0_u32;
                 for stored in records {
