@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk4 as gtk;
+use ticonnect_settings::Appearance;
 
 use crate::model::{Peer, PeerPolicy, SettingsForm};
 
@@ -10,6 +11,8 @@ pub struct SettingsView {
     pub root: gtk::Box,
     updating: Rc<Cell<bool>>,
     display_name: gtk::Entry,
+    #[allow(deprecated)]
+    appearance: gtk::ComboBoxText,
     discovery_enabled: gtk::Switch,
     discovery_mdns: gtk::Switch,
     discovery_broadcast: gtk::Switch,
@@ -24,6 +27,7 @@ pub struct SettingsView {
 }
 
 impl SettingsView {
+    #[allow(deprecated)]
     pub fn new(
         on_setting: impl Fn(String, String) + 'static,
         on_dnd: impl Fn(bool) + 'static,
@@ -75,6 +79,31 @@ impl SettingsView {
         display_name.add_controller(focus);
         identity.append(&display_name);
         content.append(&identity);
+
+        let appearance = section("Appearance");
+        let appearance_choice = gtk::ComboBoxText::new();
+        for choice in Appearance::ALL {
+            appearance_choice.append(Some(choice.as_str()), appearance_label(choice));
+        }
+        appearance_choice.set_active_id(Some(Appearance::System.as_str()));
+        appearance_choice.update_property(&[gtk::accessible::Property::Label("Color scheme")]);
+        {
+            let on_setting = on_setting.clone();
+            let updating = updating.clone();
+            appearance_choice.connect_changed(move |combo| {
+                if !updating.get()
+                    && let Some(value) = combo.active_id()
+                {
+                    on_setting("appearance.color_scheme".to_owned(), value.to_string());
+                }
+            });
+        }
+        appearance.append(&row(
+            "Color scheme",
+            "Follow the system or force light or dark",
+            &appearance_choice,
+        ));
+        content.append(&appearance);
 
         let discovery = section("Discovery");
         let discovery_enabled = setting_switch(
@@ -231,6 +260,7 @@ impl SettingsView {
             root,
             updating,
             display_name,
+            appearance: appearance_choice,
             discovery_enabled,
             discovery_mdns,
             discovery_broadcast,
@@ -250,6 +280,8 @@ impl SettingsView {
         self.updating.set(true);
         self.display_name
             .set_text(form.get("identity.display_name").unwrap_or_default());
+        self.appearance
+            .set_active_id(Some(form.appearance().as_str()));
         self.discovery_enabled
             .set_active(form.bool_value("discovery.enabled", true));
         self.discovery_mdns
@@ -320,11 +352,19 @@ fn label(title: &str, subtitle: &str) -> gtk::Box {
     text
 }
 
-fn row(title: &str, subtitle: &str, switch: &gtk::Switch) -> gtk::Box {
+fn row(title: &str, subtitle: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.append(&label(title, subtitle));
-    row.append(switch);
+    row.append(control);
     row
+}
+
+fn appearance_label(appearance: Appearance) -> &'static str {
+    match appearance {
+        Appearance::System => "System",
+        Appearance::Light => "Light",
+        Appearance::Dark => "Dark",
+    }
 }
 
 fn setting_switch(

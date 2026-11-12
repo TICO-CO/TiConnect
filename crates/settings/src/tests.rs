@@ -2,7 +2,7 @@ use std::fs;
 
 use figment::Jail;
 
-use crate::Settings;
+use crate::{Appearance, Settings};
 
 #[test]
 fn environment_overrides_file_at_runtime_only() {
@@ -464,6 +464,44 @@ fn key_api_sets_and_reads_typed_values() {
 }
 
 #[test]
+fn appearance_defaults_to_system_until_explicitly_set() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+
+        assert_eq!(settings.appearance(), Appearance::System);
+        assert_eq!(settings.stored_appearance_color_scheme(), None);
+
+        settings
+            .set_setting("appearance.color_scheme", "dark")
+            .expect("set appearance");
+        settings.save().expect("save");
+
+        assert_eq!(
+            settings.stored_appearance_color_scheme(),
+            Some(Appearance::Dark)
+        );
+
+        let settings = Settings::load_from(&path).expect("reload");
+        assert_eq!(settings.appearance(), Appearance::Dark);
+        assert_eq!(
+            settings
+                .get_setting("appearance.color_scheme")
+                .expect("get appearance"),
+            crate::SettingValue::String("dark".to_owned())
+        );
+        assert!(
+            settings
+                .list_settings()
+                .expect("list")
+                .contains_key("appearance.color_scheme")
+        );
+        Ok(())
+    });
+}
+
+#[test]
 fn key_api_rejects_unknown_and_invalid_values() {
     Jail::expect_with(|jail| {
         jail.clear_env();
@@ -484,6 +522,10 @@ fn key_api_rejects_unknown_and_invalid_values() {
         ));
         assert!(matches!(
             settings.set_setting("discovery.beacon_interval_secs", "0"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("appearance.color_scheme", "sepia"),
             Err(crate::Error::InvalidSetting { .. })
         ));
         Ok(())

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use ticonnect_settings::Appearance;
 use ticonnect_ui::model::SettingsForm;
 
 #[test]
@@ -11,6 +12,17 @@ fn settings_form_parses_typed_values_with_defaults() {
     assert!(!form.bool_value("discovery.enabled", true));
     assert!(form.bool_value("discovery.mdns", true));
     assert_eq!(form.u32_value("outbox.ttl_days", 7), 12);
+    assert_eq!(form.appearance(), Appearance::System);
+}
+
+#[test]
+fn settings_form_parses_appearance() {
+    let form = SettingsForm::new(BTreeMap::from([(
+        "appearance.color_scheme".to_owned(),
+        "dark".to_owned(),
+    )]));
+    assert_eq!(form.appearance(), Appearance::Dark);
+    assert_eq!(SettingsForm::default().appearance(), Appearance::System);
 }
 
 #[test]

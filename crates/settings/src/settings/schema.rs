@@ -93,6 +93,42 @@ pub struct DndSettings {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Appearance {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+impl Appearance {
+    pub const ALL: [Self; 3] = [Self::System, Self::Light, Self::Dark];
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "system" => Some(Self::System),
+            "light" => Some(Self::Light),
+            "dark" => Some(Self::Dark),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct AppearanceSettings {
+    pub color_scheme: Appearance,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SettingValue {
     String(String),
@@ -129,6 +165,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "outbox.ttl_days",
     "ringtone.path",
     "dnd.enabled",
+    "appearance.color_scheme",
 ];
 
 pub const BEACON_INTERVAL_MIN_SECS: u32 = 1;
@@ -256,6 +293,22 @@ settings_schema! {
             active.dnd = value;
         };
     };
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    appearance: Option<AppearanceSettings> = None => {
+        get(&self) -> Appearance as active {
+            active
+                .appearance
+                .as_ref()
+                .map_or(Appearance::System, |appearance| appearance.color_scheme)
+        };
+        set(&mut self, value: Appearance) -> set_appearance_color_scheme as active {
+            active
+                .appearance
+                .get_or_insert_with(AppearanceSettings::default)
+                .color_scheme = value;
+        };
+    };
 }
 
 impl Settings {
@@ -358,6 +411,13 @@ impl Settings {
         self.active.dnd.enabled = enabled;
     }
 
+    pub fn stored_appearance_color_scheme(&self) -> Option<Appearance> {
+        self.active
+            .appearance
+            .as_ref()
+            .map(|appearance| appearance.color_scheme)
+    }
+
     pub fn get_setting(&self, key: &str) -> Result<SettingValue> {
         match key {
             "log_level" => Ok(SettingValue::String(self.log_level().to_owned())),
@@ -381,6 +441,9 @@ impl Settings {
                 self.ringtone_path().map(Path::to_path_buf),
             )),
             "dnd.enabled" => Ok(SettingValue::Bool(self.dnd_enabled())),
+            "appearance.color_scheme" => {
+                Ok(SettingValue::String(self.appearance().as_str().to_owned()))
+            }
             other => Err(Error::UnknownSetting(other.to_owned())),
         }
     }
@@ -456,6 +519,14 @@ impl Settings {
             }
             "ringtone.path" => self.set_ringtone_path(parse_optional_path(value)),
             "dnd.enabled" => self.set_dnd_enabled(parse_bool(key, value)?),
+            "appearance.color_scheme" => {
+                let appearance = Appearance::parse(value).ok_or_else(|| Error::InvalidSetting {
+                    key: key.to_owned(),
+                    value: value.to_owned(),
+                    reason: "expected system, light, or dark".to_owned(),
+                })?;
+                self.set_appearance_color_scheme(appearance);
+            }
             other => return Err(Error::UnknownSetting(other.to_owned())),
         }
         Ok(())

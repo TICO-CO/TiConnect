@@ -109,7 +109,9 @@ D-Bus. The overlay binary initializes runtime services and exits until Stage 8.
 
 `ticonnect-ui` is a separate process. It never reads keys, the database, or the
 network directly. Closing the window stops only the UI; the daemon keeps
-receiving messages.
+receiving messages. Appearance follows the system by default; the Settings view
+can force light or dark through libadwaita's `AdwStyleManager`. `GTK_THEME` is
+not supported by libadwaita and overrides its styling.
 
 The UI owns `org.ticonnect.UI` on the session bus and exposes
 `Activate(s view)`. Views are `peers`, `chat`, `settings`, and `pairing`; an
@@ -170,6 +172,7 @@ Settings keys:
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
 | `ringtone.path` | optional path | unset | Empty value clears it |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
+| `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
 
 ## Identity
 

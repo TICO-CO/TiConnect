@@ -2,6 +2,7 @@ use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use relm4::prelude::*;
+use ticonnect_settings::Appearance;
 use tokio::sync::mpsc;
 
 use crate::autostart;
@@ -468,6 +469,11 @@ impl SimpleComponent for App {
                 self.pairing_view.tick();
             }
             Msg::SetSetting(key, value) => {
+                if key == "appearance.color_scheme"
+                    && let Some(appearance) = Appearance::parse(&value)
+                {
+                    apply_appearance(appearance);
+                }
                 let sender = sender.clone();
                 relm4::spawn_blocking(move || {
                     let result = save_setting(&key, &value).map_err(|error| error.to_string());
@@ -557,6 +563,7 @@ impl SimpleComponent for App {
             Msg::SettingsLoaded(result) => match result {
                 Ok(settings) => {
                     self.settings = settings;
+                    apply_appearance(self.settings.appearance());
                     self.render_settings();
                 }
                 Err(error) => self.toast(error),
@@ -1005,6 +1012,15 @@ fn save_setting(key: &str, value: &str) -> Result<(), crate::error::Error> {
     Ok(())
 }
 
+fn apply_appearance(appearance: Appearance) {
+    let scheme = match appearance {
+        Appearance::System => adw::ColorScheme::Default,
+        Appearance::Light => adw::ColorScheme::ForceLight,
+        Appearance::Dark => adw::ColorScheme::ForceDark,
+    };
+    adw::StyleManager::default().set_color_scheme(scheme);
+}
+
 #[derive(Debug, Clone)]
 enum ActivationEvent {
     Show(String),
@@ -1065,8 +1081,35 @@ async fn serve_activation(sender: mpsc::UnboundedSender<ActivationEvent>) -> zbu
 }
 
 pub fn run() -> anyhow::Result<()> {
+    let mut settings = ticonnect_settings::Settings::load().ok();
+    let configured = settings
+        .as_ref()
+        .and_then(ticonnect_settings::Settings::stored_appearance_color_scheme);
+
+    gtk::init().map_err(|error| anyhow::anyhow!(error.to_string()))?;
+
+    let legacy_dark = gtk::Settings::default()
+        .is_some_and(|settings| settings.is_gtk_application_prefer_dark_theme());
+    if legacy_dark && let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_application_prefer_dark_theme(false);
+    }
+
     let app = relm4::RelmApp::new("org.ticonnect.UI");
     app.allow_multiple_instances(true);
+
+    let appearance = match configured {
+        Some(appearance) => appearance,
+        None if legacy_dark => {
+            if let Some(settings) = settings.as_mut() {
+                settings.set_appearance_color_scheme(Appearance::Dark);
+                let _ = settings.save();
+            }
+            Appearance::Dark
+        }
+        None => Appearance::System,
+    };
+    apply_appearance(appearance);
+
     app.run::<App>(());
     Ok(())
 }

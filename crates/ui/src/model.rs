@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashSet};
 
+use ticonnect_settings::Appearance;
+
 use crate::error::{Error, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -408,6 +410,12 @@ impl SettingsForm {
         self.get(key)
             .and_then(|value| value.parse::<u32>().ok())
             .unwrap_or(default)
+    }
+
+    pub fn appearance(&self) -> Appearance {
+        self.get("appearance.color_scheme")
+            .and_then(Appearance::parse)
+            .unwrap_or_default()
     }
 
     pub fn validate_outbox_ttl(value: u32) -> Result<u32> {

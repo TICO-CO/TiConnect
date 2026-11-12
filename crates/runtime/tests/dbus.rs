@@ -114,6 +114,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
 
     let settings = proxy.list_settings().await.expect("settings");
     assert!(settings.contains_key("dnd.enabled"));
+    assert!(settings.contains_key("appearance.color_scheme"));
     assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
     assert!(proxy.get_setting("missing.key").await.is_err());
     assert!(proxy.list_peers().await.expect("peers").is_empty());

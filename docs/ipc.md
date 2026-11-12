@@ -111,8 +111,9 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 `log_format`, `data_dir`, `identity.display_name`, `discovery.enabled`,
 `discovery.mdns`, `discovery.broadcast`, `discovery.beacon_interval_secs`,
 `transport.port`, `overlay.enabled`, `read_receipts.enabled`, `outbox.ttl_days`,
-`ringtone.path`, and `dnd.enabled`. Paths are strings; unset optional paths are
-empty strings. Discovery candidate addresses are comma-separated strings.
+`ringtone.path`, `dnd.enabled`, and `appearance.color_scheme`. Paths are strings;
+unset optional paths are empty strings. `appearance.color_scheme` is `system`,
+`light`, or `dark`. Discovery candidate addresses are comma-separated strings.
 
 ## Pairing keys
 
