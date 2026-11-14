@@ -61,7 +61,7 @@ jobs:
       - name: Validate AppImage
         run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
 
-      - name: Build Arch package
+      - name: Build and validate Arch package
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -71,20 +71,12 @@ jobs:
             -v "$PWD/dist:/out" \
             archlinux:latest -c '
               set -euo pipefail
-              pacman -Syu --noconfirm --needed fakeroot binutils debugedit
+              export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+              pacman -Syu --noconfirm --needed fakeroot binutils debugedit gtk4 libadwaita gtk4-layer-shell alsa-lib glib2
               useradd -m builder
               su builder -c "cd /tmp && mkdir -p /home/builder/out && /src/scripts/package-arch.sh /src/dist/ticonnect-${TAG}-linux-x86_64.tar.gz \"${TAG}\" /home/builder/out"
               cp /home/builder/out/*.pkg.tar.zst /out/
-            '
-
-      - name: Validate Arch package
-        run: |
-          docker run --rm --entrypoint /bin/bash \
-            -v "$PWD/dist:/dist:ro" \
-            archlinux:latest -c '
-              set -euo pipefail
-              pacman -Syu --noconfirm --needed gtk4 libadwaita gtk4-layer-shell alsa-lib glib2
-              pacman -U --noconfirm /dist/ticonnect-*.pkg.tar.zst
+              pacman -U --noconfirm --needed /out/ticonnect-*.pkg.tar.zst
               ticconnect --help >/dev/null
               test -f /usr/share/applications/org.ticonnect.TiConnect.desktop
               test -f /etc/xdg/autostart/ticonnect.desktop
