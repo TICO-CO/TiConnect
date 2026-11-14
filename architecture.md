@@ -214,6 +214,8 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 
 - Per-peer `accept` / `mute` / `ignore`, plus a global DND mode.
   `mute` stores messages silently; `ignore` drops them with no notification.
+- The daemon plays a bundled notification chime for notifiable messages so it
+  rings with the UI closed. Mute, ignore, and DND silence it with notifications.
 - Policy changes are exposed over D-Bus and through the tray menu.
 
 ### Schema sketch

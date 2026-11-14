@@ -304,6 +304,8 @@ Settings keys:
   delivered receipts; `ignore` drops inbound records before verification,
   storage, receipt creation, or notification. DND suppresses notifications but
   not storage.
+- The daemon plays the bundled `gotmail.mp3` chime for inbound notifiable
+  messages, so it rings with the UI closed. Mute, ignore, and DND silence it.
 - The tray is optional. When StatusNotifierItem support is unavailable the
   daemon continues headless.
 

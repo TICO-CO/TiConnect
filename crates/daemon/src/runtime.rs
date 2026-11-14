@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use ticonnect_core::ipc;
+use ticonnect_media::notification::{NotificationSound, RodioNotificationSound};
 use ticonnect_net::discovery::Discovery;
 use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
@@ -11,7 +12,7 @@ use crate::attachments;
 use crate::calls;
 use crate::config_watch;
 use crate::discovery_service;
-use crate::messaging;
+use crate::messaging::{self, MessagingEvent};
 use crate::pairing_service;
 use crate::reconnect_service;
 use crate::remote;
@@ -150,6 +151,22 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
         }
     });
     let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
+    let message_sound = RodioNotificationSound::new();
+    let mut message_events = state.messaging().subscribe();
+    let message_sound_task = tokio::spawn(async move {
+        loop {
+            match message_events.recv().await {
+                Ok(MessagingEvent::MessageReceived { notify: true, .. }) => {
+                    if let Err(error) = message_sound.play() {
+                        tracing::warn!(%error, "failed to play message sound");
+                    }
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
     let tray_task = tray::spawn(
         connection.clone(),
         state.messaging().as_ref().clone(),
@@ -167,6 +184,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     discovery_task.abort();
     pairing_task.abort();
     messaging_task.abort();
+    message_sound_task.abort();
     attachments_task.abort();
     transfer_event_task.abort();
     calls_task.abort();

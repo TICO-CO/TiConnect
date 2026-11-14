@@ -3,6 +3,7 @@
 pub mod audio;
 pub mod h264;
 pub mod jitter;
+pub mod notification;
 pub mod opus_codec;
 pub mod ringtone;
 
