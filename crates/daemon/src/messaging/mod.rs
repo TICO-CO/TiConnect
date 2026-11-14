@@ -446,6 +446,27 @@ impl MessagingService {
         }
 
         let service = self.clone();
+        let datagram_session = session.clone();
+        tokio::spawn(async move {
+            loop {
+                match datagram_session.read_datagram().await {
+                    Ok(payload) => {
+                        if let Some(sender) = service.audio_sender() {
+                            let _ = sender.send(InboundAudio {
+                                peer: datagram_session.peer().clone(),
+                                payload: payload.to_vec(),
+                            });
+                        }
+                    }
+                    Err(error) => {
+                        tracing::debug!(%error, "session datagram reader stopped");
+                        break;
+                    }
+                }
+            }
+        });
+
+        let service = self.clone();
         tokio::spawn(async move {
             if let Err(error) = sync::run_initiator(service.clone(), session).await {
                 tracing::debug!(%error, "gap sync failed");
@@ -471,22 +492,6 @@ impl MessagingService {
         let peer = session.peer().clone();
         loop {
             tokio::select! {
-                result = session.read_datagram() => {
-                    match result {
-                        Ok(payload) => {
-                            if let Some(sender) = self.audio_sender() {
-                                let _ = sender.send(InboundAudio {
-                                    peer: peer.clone(),
-                                    payload: payload.to_vec(),
-                                });
-                            }
-                        }
-                        Err(error) => {
-                            tracing::debug!(%error, "session datagram read failed");
-                            break;
-                        }
-                    }
-                }
                 result = session.accept_uni() => {
                     match result {
                         Ok(mut recv) => {

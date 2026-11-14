@@ -13,7 +13,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake xvfb
 
       - name: Build gtk4-layer-shell
         run: |
@@ -42,6 +42,15 @@ jobs:
 
       - name: Test
         run: dbus-run-session -- cargo test --workspace --all-targets
+
+      - name: Local X11 integration
+        run: |
+          Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
+          export DISPLAY=:99
+          tests/local/run.sh x11 messaging
+          tests/local/run.sh x11 attachments
+          tests/local/run.sh x11 ui
+          tests/local/run.sh x11 remote
 
       - name: Audit
         uses: taiki-e/install-action@cargo-audit

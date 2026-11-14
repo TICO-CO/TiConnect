@@ -598,6 +598,28 @@ impl DaemonService {
             .map_err(call_error)
     }
 
+    async fn get_call_metrics(&self) -> HashMap<String, OwnedVariant> {
+        let metrics = self.state.calls().metrics();
+        HashMap::from([
+            (
+                ipc::CALL_FRAMES_SENT.to_owned(),
+                OwnedVariant::from(metrics.frames_sent),
+            ),
+            (
+                ipc::CALL_FRAMES_RECEIVED.to_owned(),
+                OwnedVariant::from(metrics.frames_received),
+            ),
+            (
+                ipc::CALL_PACKETS_LOST.to_owned(),
+                OwnedVariant::from(metrics.packets_lost),
+            ),
+            (
+                ipc::CALL_BYTES_SENT.to_owned(),
+                OwnedVariant::from(metrics.bytes_sent),
+            ),
+        ])
+    }
+
     async fn get_call_state(&self) -> HashMap<String, OwnedVariant> {
         self.state
             .calls()

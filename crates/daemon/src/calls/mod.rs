@@ -1,6 +1,7 @@
 pub mod session;
 pub mod state;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
@@ -29,6 +30,47 @@ pub enum CallEvent {
         peer_id: String,
         reason: String,
     },
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CallMetrics {
+    pub frames_sent: u64,
+    pub frames_received: u64,
+    pub packets_lost: u64,
+    pub bytes_sent: u64,
+}
+
+#[derive(Debug, Default)]
+pub struct CallMetricsHandle {
+    frames_sent: AtomicU64,
+    frames_received: AtomicU64,
+    packets_lost: AtomicU64,
+    bytes_sent: AtomicU64,
+}
+
+impl CallMetricsHandle {
+    pub fn snapshot(&self) -> CallMetrics {
+        CallMetrics {
+            frames_sent: self.frames_sent.load(Ordering::Relaxed),
+            frames_received: self.frames_received.load(Ordering::Relaxed),
+            packets_lost: self.packets_lost.load(Ordering::Relaxed),
+            bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
+        }
+    }
+
+    pub fn note_sent(&self, bytes: usize) {
+        self.frames_sent.fetch_add(1, Ordering::Relaxed);
+        self.bytes_sent
+            .fetch_add(u64::try_from(bytes).unwrap_or_default(), Ordering::Relaxed);
+    }
+
+    pub fn note_received(&self) {
+        self.frames_received.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn note_lost(&self) {
+        self.packets_lost.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 #[derive(Debug)]
@@ -61,6 +103,7 @@ struct Inner {
     audio: Mutex<Option<AudioReceiver>>,
     jitter: Mutex<JitterBuffer>,
     media_enabled: std::sync::atomic::AtomicBool,
+    metrics: Arc<CallMetricsHandle>,
 }
 
 impl CallService {
@@ -87,6 +130,7 @@ impl CallService {
                 audio: Mutex::new(None),
                 jitter: Mutex::new(JitterBuffer::default()),
                 media_enabled: std::sync::atomic::AtomicBool::new(true),
+                metrics: Arc::new(CallMetricsHandle::default()),
             }),
         }
     }
@@ -115,6 +159,10 @@ impl CallService {
         self.inner
             .media_enabled
             .store(enabled, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn metrics(&self) -> CallMetrics {
+        self.inner.metrics.snapshot()
     }
 
     pub fn state(&self) -> Option<CallInfo> {
@@ -240,7 +288,7 @@ impl CallService {
                         .registry
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner);
-                    registry.incoming(&peer_id, now_unix_ms())
+                    registry.incoming_with_id(call_id, &peer_id, now_unix_ms())
                 };
                 let call = match transition {
                     Ok(CallTransition::Ringing(call)) => call,
@@ -337,6 +385,7 @@ impl CallService {
             AudioPacket::decode(payload).map_err(|error| CallError::Protocol(error.to_string()))?;
         let call_id = packet.id();
         self.ensure_active(call_id, &peer.node_id.to_string())?;
+        self.inner.metrics.note_received();
         {
             let mut jitter = self
                 .inner
@@ -344,6 +393,7 @@ impl CallService {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             jitter.push(packet);
+            let lost_before = jitter.lost();
             while let Some(frame) = jitter.pop() {
                 let samples = match frame {
                     JitterFrame::Packet(packet) => {
@@ -378,6 +428,10 @@ impl CallService {
                 {
                     media.push_audio(&samples);
                 }
+            }
+            let lost_after = jitter.lost();
+            for _ in lost_before..lost_after {
+                self.inner.metrics.note_lost();
             }
         }
         Ok(())
@@ -483,6 +537,7 @@ impl CallService {
             session,
             settings.call_input_device(),
             settings.call_output_device(),
+            self.inner.metrics.clone(),
         ) {
             Ok(media) => {
                 *self

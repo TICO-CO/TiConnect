@@ -90,6 +90,12 @@ fn reconnect(
     if !trust.is_trusted(&fingerprint.to_hex()) {
         return;
     }
+    if target
+        .node_id
+        .is_some_and(|peer| transport.local_node_id() > peer)
+    {
+        return;
+    }
     if transport
         .sessions()
         .iter()

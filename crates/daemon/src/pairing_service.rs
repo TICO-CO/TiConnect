@@ -248,8 +248,10 @@ impl PairingService {
         .await;
         connection.close(0u32.into(), b"paired");
         let outcome = outcome?;
-        let peer = self.commit_peer(outcome.peer, display_name).await?;
-        if let Err(error) = self.transport.connect(target).await {
+        let peer = self.commit_peer(outcome.peer.clone(), display_name).await?;
+        if self.identity.node_id() < outcome.peer.node_id
+            && let Err(error) = self.transport.connect(target).await
+        {
             tracing::warn!(%error, "failed to open session after pairing");
         }
         Ok(peer)
@@ -316,9 +318,11 @@ impl PairingService {
                 let peer = outcome.peer;
                 let target = DialTarget::new(connection.remote_address(), peer.fingerprint)
                     .with_node_id(peer.node_id);
-                match self.commit_peer(peer, None).await {
+                match self.commit_peer(peer.clone(), None).await {
                     Ok(_) => {
-                        if let Err(error) = self.transport.connect(target).await {
+                        if self.identity.node_id() < peer.node_id
+                            && let Err(error) = self.transport.connect(target).await
+                        {
                             tracing::warn!(%error, "failed to open session after pairing");
                         }
                     }

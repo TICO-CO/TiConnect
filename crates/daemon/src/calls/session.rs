@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use super::CallMetricsHandle;
+
 use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId};
 use ticonnect_media::audio::{
@@ -23,6 +25,7 @@ impl MediaSession {
         session: Session,
         input_device: Option<&str>,
         output_device: Option<&str>,
+        metrics: Arc<CallMetricsHandle>,
     ) -> Result<Self, MediaError> {
         let playback = start_playback(output_device)?;
         let output_rate = playback.sample_rate();
@@ -59,6 +62,8 @@ impl MediaSession {
                         Ok(bytes) => {
                             if let Err(error) = session.send_datagram(&bytes) {
                                 tracing::debug!(%error, "audio datagram send failed");
+                            } else {
+                                metrics.note_sent(bytes.len());
                             }
                         }
                         Err(error) => tracing::debug!(%error, "audio packet encode failed"),

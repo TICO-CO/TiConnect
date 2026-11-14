@@ -46,6 +46,7 @@ pub trait Daemon {
     fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
     fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_call_metrics(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;

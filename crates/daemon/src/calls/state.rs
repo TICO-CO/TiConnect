@@ -80,8 +80,27 @@ impl CallRegistry {
         self.begin(peer_id, CallDirection::Incoming, now)
     }
 
+    pub fn incoming_with_id(
+        &mut self,
+        id: CallId,
+        peer_id: &str,
+        now: i64,
+    ) -> Result<CallTransition, CallStateError> {
+        self.begin_with_id(id, peer_id, CallDirection::Incoming, now)
+    }
+
     fn begin(
         &mut self,
+        peer_id: &str,
+        direction: CallDirection,
+        now: i64,
+    ) -> Result<CallTransition, CallStateError> {
+        self.begin_with_id(CallId::generate(), peer_id, direction, now)
+    }
+
+    fn begin_with_id(
+        &mut self,
+        id: CallId,
         peer_id: &str,
         direction: CallDirection,
         now: i64,
@@ -90,7 +109,7 @@ impl CallRegistry {
             return Err(CallStateError::Busy);
         }
         let call = ActiveCall {
-            id: CallId::generate(),
+            id,
             peer_id: peer_id.to_owned(),
             direction,
             state: CallState::Ringing,

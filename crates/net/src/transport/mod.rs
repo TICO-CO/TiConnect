@@ -172,6 +172,10 @@ impl Transport {
         self.fingerprint
     }
 
+    pub fn local_node_id(&self) -> NodeId {
+        self.node_id
+    }
+
     pub fn certificate(&self) -> &IdentityCertificate {
         &self.certificate
     }

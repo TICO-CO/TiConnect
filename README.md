@@ -57,8 +57,9 @@ cargo xtask systems --check
 make lan-test
 ```
 
-`make lan-test` runs the two-container LAN e2e suite; Docker Compose is
-required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
+`tests/local/run.sh` runs local X11, Weston Wayland, and KWin Wayland
+integration tests. See `docs/local-testing.md`. `make lan-test` runs the
+two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
 (`control`, `discovery`, `pairing`, `transport`, `messaging`, `offline-sync`,
 `security`) to run a subset. The GTK4 UI and overlay need development headers:
 

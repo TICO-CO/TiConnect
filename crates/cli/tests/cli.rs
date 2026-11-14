@@ -39,7 +39,17 @@ fn messaging_commands_are_exposed() {
     let help = run(&dir, &["--help"]);
     assert_success(&help);
     let stdout = String::from_utf8_lossy(&help.stdout);
-    for command in ["send", "messages", "mark-read", "policy"] {
+    for command in [
+        "send",
+        "messages",
+        "mark-read",
+        "policy",
+        "send-file",
+        "download",
+        "transfer",
+        "call",
+        "remote",
+    ] {
         assert!(stdout.contains(command), "missing {command} in help");
     }
 

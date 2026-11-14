@@ -64,6 +64,8 @@ pub fn variant_text(value: &OwnedVariant) -> String {
 fn display(value: &OwnedVariant) -> String {
     if let Ok(value) = u64::try_from(value) {
         value.to_string()
+    } else if let Ok(value) = i64::try_from(value) {
+        value.to_string()
     } else if let Ok(value) = u32::try_from(value) {
         value.to_string()
     } else if let Ok(value) = <&str>::try_from(value) {

@@ -39,6 +39,21 @@ trait Daemon {
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
+    fn send_attachment(&self, peer_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
+    fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
+    fn get_attachment_path(&self, hash: &str) -> zbus::Result<String>;
+    fn start_call(&self, peer_id: &str) -> zbus::Result<String>;
+    fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
+    fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -46,6 +61,36 @@ trait Daemon {
 
     #[zbus(signal)]
     fn settings_changed(&self, key: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_progress(&self, hash: &str, bytes: u64, total: u64) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_done(&self, hash: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_failed(&self, hash: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn incoming_call(&self, call: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn call_state_changed(&self, call_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn call_ended(&self, call_id: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_requested(&self, session: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_started(&self, session_id: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_ended(&self, session_id: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_indicator_changed(&self, session_id: &str, visible: bool) -> zbus::Result<()>;
 }
 
 #[tokio::test]
@@ -115,6 +160,10 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     let settings = proxy.list_settings().await.expect("settings");
     assert!(settings.contains_key("dnd.enabled"));
     assert!(settings.contains_key("appearance.color_scheme"));
+    assert!(settings.contains_key("attachments.max_size_mib"));
+    assert!(settings.contains_key("calls.timeout_secs"));
+    assert!(settings.contains_key("remote.pin_attempts"));
+    assert!(settings.contains_key("video.bitrate_kbps"));
     assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
     assert!(proxy.get_setting("missing.key").await.is_err());
     assert!(proxy.list_peers().await.expect("peers").is_empty());
@@ -159,6 +208,45 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     proxy.set_dnd(true).await.expect("set dnd");
     assert!(bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("dnd"));
+    assert!(proxy.get_call_state().await.expect("call state").is_empty());
+    assert!(
+        proxy
+            .get_remote_session()
+            .await
+            .expect("remote state")
+            .is_empty()
+    );
+    assert!(
+        proxy
+            .start_call("00000000-0000-7000-8000-000000000000")
+            .await
+            .is_err()
+    );
+    assert!(
+        proxy
+            .request_remote_session("00000000-0000-7000-8000-000000000000")
+            .await
+            .is_err()
+    );
+    assert!(proxy.get_transfer_state(&"0".repeat(64)).await.is_err());
+    assert!(proxy.cancel_transfer(&"0".repeat(64)).await.is_err());
+    assert!(
+        proxy
+            .send_attachment(
+                "00000000-0000-7000-8000-000000000000",
+                "/missing/path.bin",
+                ""
+            )
+            .await
+            .is_err()
+    );
+    assert!(
+        proxy
+            .save_attachment(&"0".repeat(64), "/tmp/does-not-exist")
+            .await
+            .is_err()
+    );
+    assert!(proxy.get_attachment_path(&"0".repeat(64)).await.is_err());
     let discovery = proxy
         .get_discovery_status()
         .await

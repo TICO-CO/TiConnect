@@ -156,6 +156,8 @@ enum CallCommand {
     Hangup { call_id: String },
     /// Show the current call state.
     Status,
+    /// Show audio frame counters.
+    Metrics,
 }
 
 #[derive(Debug, Subcommand)]
@@ -401,6 +403,17 @@ async fn run(command: Command) -> Result<()> {
                     proxy.hangup_call(&call_id).await.context("hangup call")?;
                     println!("hung up");
                 }
+                CallCommand::Metrics => {
+                    let metrics = proxy.get_call_metrics().await.context("get call metrics")?;
+                    for key in [
+                        ipc::CALL_FRAMES_SENT,
+                        ipc::CALL_FRAMES_RECEIVED,
+                        ipc::CALL_PACKETS_LOST,
+                        ipc::CALL_BYTES_SENT,
+                    ] {
+                        println!("{key}: {}", message_value(&metrics, key));
+                    }
+                }
                 CallCommand::Status => {
                     let state = proxy.get_call_state().await.context("get call state")?;
                     if state.is_empty() {
@@ -473,7 +486,9 @@ async fn run(command: Command) -> Result<()> {
                             ipc::REMOTE_FINGERPRINT,
                             ipc::REMOTE_ROLE,
                             ipc::REMOTE_STATE,
+                            ipc::REMOTE_PIN,
                             ipc::REMOTE_INDICATOR,
+                            ipc::REMOTE_EXPIRES_AT,
                         ] {
                             println!("{key}: {}", message_value(&session, key));
                         }

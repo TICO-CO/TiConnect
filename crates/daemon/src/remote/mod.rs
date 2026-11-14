@@ -71,22 +71,78 @@ impl RemoteHost for NoopRemoteHost {
 
 pub struct DesktopRemoteHost {
     router: Mutex<Option<InputRouter>>,
+    portal_stop: Mutex<Option<std::sync::mpsc::Sender<()>>>,
 }
 
 impl Default for DesktopRemoteHost {
     fn default() -> Self {
         Self {
             router: Mutex::new(None),
+            portal_stop: Mutex::new(None),
         }
     }
 }
 
 impl RemoteHost for DesktopRemoteHost {
-    fn start(&self, _width: u32, _height: u32) -> Result<(), RemoteError> {
+    fn start(&self, width: u32, height: u32) -> Result<(), RemoteError> {
+        let (sender, receiver) = std::sync::mpsc::channel();
+        *self
+            .portal_stop
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(sender);
+        std::thread::Builder::new()
+            .name("ticonnect-portal".to_owned())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(runtime) => runtime,
+                    Err(error) => {
+                        tracing::warn!(%error, "failed to create portal runtime");
+                        return;
+                    }
+                };
+                runtime.block_on(async move {
+                    match ticonnect_desktop::portal::PortalSession::open().await {
+                        Ok(mut portal) => {
+                            let config = ticonnect_desktop::capture::CaptureConfig {
+                                width: width.min(1920),
+                                height: height.min(1080),
+                                fps: 30,
+                            };
+                            let capture = ticonnect_desktop::capture::PortalCapture::start(
+                                &mut portal,
+                                config,
+                            );
+                            if let Err(error) = &capture {
+                                tracing::warn!(%error, "portal capture did not start");
+                            }
+                            tracing::debug!("remote desktop portal session started");
+                            let _ = tokio::task::spawn_blocking(move || receiver.recv()).await;
+                            drop(capture);
+                            if let Err(error) = portal.close().await {
+                                tracing::debug!(%error, "portal session close failed");
+                            }
+                            tracing::debug!("remote desktop portal session closed");
+                        }
+                        Err(error) => tracing::warn!(%error, "remote desktop portal denied"),
+                    }
+                });
+            })
+            .map_err(|error| RemoteError::Host(error.to_string()))?;
         Ok(())
     }
 
     fn stop(&self) {
+        if let Some(sender) = self
+            .portal_stop
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            let _ = sender.send(());
+        }
         if let Ok(mut router) = self.router.lock()
             && let Some(router) = router.as_mut()
         {
@@ -124,6 +180,7 @@ struct Inner {
     events: tokio::sync::broadcast::Sender<RemoteEventMessage>,
     session: Mutex<Option<RemoteSession>>,
     host: Arc<dyn RemoteHost>,
+    clock: Arc<dyn Fn() -> i64 + Send + Sync>,
 }
 
 impl RemoteService {
@@ -132,6 +189,16 @@ impl RemoteService {
         transport: Arc<Transport>,
         settings: Settings,
         host: Arc<dyn RemoteHost>,
+    ) -> Self {
+        Self::with_clock(trust, transport, settings, host, Arc::new(now_unix_ms))
+    }
+
+    pub fn with_clock(
+        trust: Arc<TrustStore>,
+        transport: Arc<Transport>,
+        settings: Settings,
+        host: Arc<dyn RemoteHost>,
+        clock: Arc<dyn Fn() -> i64 + Send + Sync>,
     ) -> Self {
         let (events, _) = tokio::sync::broadcast::channel(64);
         Self {
@@ -142,6 +209,7 @@ impl RemoteService {
                 events,
                 session: Mutex::new(None),
                 host,
+                clock,
             }),
         }
     }
@@ -192,7 +260,7 @@ impl RemoteService {
             return Err(RemoteError::PeerOffline);
         }
         let settings = self.settings();
-        let now = now_unix_ms();
+        let now = (self.inner.clock)();
         let mut session = RemoteSession {
             id: RemoteSessionId::generate(),
             peer_id: peer_id.to_owned(),
@@ -226,6 +294,42 @@ impl RemoteService {
         pin: &str,
     ) -> Result<RemoteSnapshot, RemoteError> {
         let id: RemoteSessionId = session_id.parse()?;
+        let expired = {
+            let mut guard = self
+                .inner
+                .session
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let session = guard
+                .as_mut()
+                .filter(|session| session.id == id)
+                .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
+            if (self.inner.clock)() > session.expires_at {
+                Some((snapshot(session), session.role, session.peer_id.clone()))
+            } else {
+                None
+            }
+        };
+        if let Some((snapshot, role, peer_id)) = expired {
+            if role == RemoteRole::Host
+                && let Ok(peer) = peer_id.parse()
+            {
+                let _ = self
+                    .send_signal(
+                        peer,
+                        &RemoteSignalFrame::Deny {
+                            session_id: id_bytes(id),
+                        },
+                    )
+                    .await;
+            }
+            self.cleanup();
+            self.emit(RemoteEventMessage::Ended {
+                session_id: snapshot.session_id,
+                reason: "expired".to_owned(),
+            });
+            return Err(RemoteError::Expired);
+        }
         let (role, snapshot, signal) = {
             let mut guard = self
                 .inner
@@ -399,7 +503,7 @@ impl RemoteService {
                     pin: Some(generate_pin()),
                     attempts: 0,
                     max_attempts: settings.remote_pin_attempts(),
-                    expires_at: now_unix_ms()
+                    expires_at: (self.inner.clock)()
                         .saturating_add(i64::from(settings.remote_pin_ttl_secs()) * 1000),
                     indicator_visible: false,
                 };
@@ -432,7 +536,11 @@ impl RemoteService {
                 Ok(())
             }
             RemoteSignalFrame::Pin { pin, .. } => {
-                let (verified, snapshot, denied) = {
+                enum PinOutcome {
+                    Expired(RemoteSnapshot),
+                    Verified(RemoteState, RemoteSnapshot, bool),
+                }
+                let outcome = {
                     let mut guard = self
                         .inner
                         .session
@@ -442,9 +550,32 @@ impl RemoteService {
                         .as_mut()
                         .filter(|session| session.id == id && session.peer_id == peer_id)
                         .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                    let verified = verify_pin(session, &pin)?;
-                    let snapshot = snapshot(session);
-                    (verified.state, snapshot, verified.pin_failed)
+                    if (self.inner.clock)() > session.expires_at {
+                        session.transition(RemoteEvent::Deny)?;
+                        PinOutcome::Expired(snapshot(session))
+                    } else {
+                        let verified = verify_pin(session, &pin)?;
+                        PinOutcome::Verified(verified.state, snapshot(session), verified.pin_failed)
+                    }
+                };
+                let (verified, snapshot, denied) = match outcome {
+                    PinOutcome::Expired(snapshot) => {
+                        let _ = self
+                            .send_signal(
+                                peer.node_id,
+                                &RemoteSignalFrame::Deny {
+                                    session_id: id_bytes(id),
+                                },
+                            )
+                            .await;
+                        self.cleanup();
+                        self.emit(RemoteEventMessage::Ended {
+                            session_id: snapshot.session_id,
+                            reason: "expired".to_owned(),
+                        });
+                        return Err(RemoteError::Expired);
+                    }
+                    PinOutcome::Verified(state, snapshot, denied) => (state, snapshot, denied),
                 };
                 if verified == RemoteState::Active {
                     self.inner.host.start(1920, 1080)?;
@@ -730,6 +861,9 @@ pub enum RemoteError {
 
     #[error("remote access was rejected by policy")]
     Rejected,
+
+    #[error("remote session has expired")]
+    Expired,
 
     #[error("remote session is not active")]
     Inactive,
