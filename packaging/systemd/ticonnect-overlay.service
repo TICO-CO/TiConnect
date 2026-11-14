@@ -1,0 +1,16 @@
+[Unit]
+Description=TiConnect corner overlay
+Documentation=https://github.com/TICO-CO/TiConnect
+After=graphical-session.target ticonnectd.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/ticonnect-ovl
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=graphical-session.target

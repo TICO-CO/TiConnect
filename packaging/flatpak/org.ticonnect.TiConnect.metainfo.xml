@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.ticonnect.TiConnect</id>
+  <name>TiConnect</name>
+  <summary>LAN-only messaging, calls, and remote desktop</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>TiConnect is a background-first daemon for secure LAN messaging, file and audio attachments, voice calls, and consensual remote desktop sessions.</p>
+    <p>All traffic is encrypted with pinned TLS certificates. Nothing is reachable before pairing.</p>
+  </description>
+  <launchable type="desktop-id">org.ticonnect.TiConnect.desktop</launchable>
+  <releases>
+    <release version="0.1.0" date="2026-11-14"/>
+  </releases>
+</component>

@@ -13,6 +13,13 @@ pub const MAX_HANDSHAKE_FRAME: usize = 256;
 pub const MAX_SYNC_FRAME: usize = MAX_CONTROL_FRAME + 1024;
 pub const MAX_MESSAGE_FRAME: usize = MAX_CONTROL_FRAME + 1024;
 pub const MAX_ACK_FRAME: usize = 4 * 1024;
+pub const MAX_TRANSFER_FRAME: usize = 128 * 1024 + 1024;
+pub const MAX_CALL_FRAME: usize = 16 * 1024;
+pub const MAX_AUDIO_FRAME: usize = 4 * 1024;
+pub const MAX_VIDEO_FRAME: usize = 128 * 1024 + 1024;
+pub const MAX_INPUT_FRAME: usize = 1024;
+pub const MAX_REMOTE_FRAME: usize = 16 * 1024;
+pub const MAX_WIRE_FRAME: usize = MAX_VIDEO_FRAME;
 
 const MAGIC: &[u8; 4] = b"TICW";
 const HEADER_LEN: usize = MAGIC.len() + 1 + 1 + 4;
@@ -56,6 +63,12 @@ pub enum FrameKind {
     Sync = 3,
     Message = 4,
     Ack = 5,
+    Transfer = 6,
+    Call = 7,
+    Audio = 8,
+    Video = 9,
+    Input = 10,
+    Remote = 11,
 }
 
 impl FrameKind {
@@ -70,6 +83,12 @@ impl FrameKind {
             Self::Sync => MAX_SYNC_FRAME,
             Self::Message => MAX_MESSAGE_FRAME,
             Self::Ack => MAX_ACK_FRAME,
+            Self::Transfer => MAX_TRANSFER_FRAME,
+            Self::Call => MAX_CALL_FRAME,
+            Self::Audio => MAX_AUDIO_FRAME,
+            Self::Video => MAX_VIDEO_FRAME,
+            Self::Input => MAX_INPUT_FRAME,
+            Self::Remote => MAX_REMOTE_FRAME,
         }
     }
 }
@@ -84,6 +103,12 @@ impl TryFrom<u8> for FrameKind {
             3 => Ok(Self::Sync),
             4 => Ok(Self::Message),
             5 => Ok(Self::Ack),
+            6 => Ok(Self::Transfer),
+            7 => Ok(Self::Call),
+            8 => Ok(Self::Audio),
+            9 => Ok(Self::Video),
+            10 => Ok(Self::Input),
+            11 => Ok(Self::Remote),
             other => Err(WireError::UnsupportedKind(other)),
         }
     }
@@ -280,6 +305,12 @@ mod tests {
             FrameKind::Sync,
             FrameKind::Message,
             FrameKind::Ack,
+            FrameKind::Transfer,
+            FrameKind::Call,
+            FrameKind::Audio,
+            FrameKind::Video,
+            FrameKind::Input,
+            FrameKind::Remote,
         ] {
             let frame = Frame::new(kind, b"payload".to_vec()).expect("frame");
             let decoded = Frame::decode(&frame.encode()).expect("decode");
@@ -335,10 +366,10 @@ mod tests {
         ));
 
         let mut bad_kind = valid.clone();
-        bad_kind[MAGIC.len() + 1] = 9;
+        bad_kind[MAGIC.len() + 1] = 12;
         assert!(matches!(
             Frame::decode(&bad_kind),
-            Err(WireError::UnsupportedKind(9))
+            Err(WireError::UnsupportedKind(12))
         ));
 
         let mut trailing = valid;

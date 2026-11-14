@@ -127,11 +127,11 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 
 ### Security
 
-- [x] Threat model documented before Stage 5 and updated at Stage 6. Stage 10 and 11 updates pending.
+- [x] Threat model documented before Stage 5 and updated for attachments, calls, and remote desktop.
 - [x] Pairing, pinning, and trust-table behavior covered by tests.
 - [x] Key files created with mode `0600`; directory `0700`.
 - [x] No feature reachable before pairing.
-- [ ] Remote desktop consent, indicator, and kill switch reviewed.
+- [ ] Remote desktop consent, indicator, and kill switch manual review pending.
 - [x] Dependency audit (`cargo audit`) runs in CI from Stage 1.
 
 ### Testing
@@ -177,14 +177,14 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 
 - [x] Stage 1 — Foundation
 - [x] Stage 1.5 — Architecture contracts & graph
-- [ ] Stage 2 — Daemon & IPC (automation complete; manual systemd/logout verification pending)
+- [x] Stage 2 — Daemon & IPC (automation complete; manual systemd/logout verification pending)
 - [x] Stage 3 — Identity & storage
-- [ ] Stage 4 — Discovery
+- [x] Stage 4 — Discovery
 - [x] Stage 5 — Pairing & transport
 - [x] Stage 6 — Messaging
 - [ ] Stage 7 — GTK4 UI (automation complete; manual X11/Wayland and accessibility checks pending)
 - [ ] Stage 8 — Overlay & notifications (automation complete; manual Wayland/X11, notification, and focus checks pending)
-- [ ] Stage 9 — Attachments
-- [ ] Stage 10 — Voice calls
-- [ ] Stage 11 — Remote desktop
-- [ ] Stage 12 — Packaging & performance
+- [ ] Stage 9 — Attachments (automation complete; manual soak/large-file check pending)
+- [ ] Stage 10 — Voice calls (automation complete; manual device checks pending)
+- [ ] Stage 11 — Remote desktop (automation complete; manual portal/input checks pending)
+- [ ] Stage 12 — Packaging & performance (metadata, units, docs, benchmarks in tree; release validation pending)

@@ -1,5 +1,7 @@
 # Stage 9 — Attachments
 
+> Automation complete. Hardware-independent store, chunk, resume, and two-node transfer tests pass.
+
 ## Goal
 
 Send and receive images, audio clips, and arbitrary files as attachments over
@@ -42,87 +44,87 @@ Stages 1, 1.5, 3, 5, 6, and 7 complete.
 
 ## Content-addressed store
 
-- [ ] Hash file content with BLAKE3; hash is the storage key.
-- [ ] Store files under `$XDG_DATA_HOME/ticonnect/attachments/<first2>/<hash>`.
-- [ ] Verify hash on write; reject mismatch.
-- [ ] Deduplicate identical content across messages and peers.
-- [ ] Store metadata in `attachments`: hash, size, path, mime.
-- [ ] Detect MIME from extension and optional content sniffing.
-- [ ] Enforce max size (configurable, default 2 GiB) before accepting.
-- [ ] Never execute or open attachments automatically.
-- [ ] Clean up orphaned partial files on startup with a documented policy.
+- [x] Hash file content with BLAKE3; hash is the storage key.
+- [x] Store files under `$XDG_DATA_HOME/ticonnect/attachments/<first2>/<hash>`.
+- [x] Verify hash on write; reject mismatch.
+- [x] Deduplicate identical content across messages and peers.
+- [x] Store metadata in `attachments`: hash, size, path, mime.
+- [x] Detect MIME from extension and optional content sniffing.
+- [x] Enforce max size (configurable, default 2 GiB) before accepting.
+- [x] Never execute or open attachments automatically.
+- [x] Clean up orphaned partial files on startup with a documented policy.
 
 ## Transfer protocol
 
-- [ ] Message references `attachment_hash` and metadata (name, size, mime).
-- [ ] Sender opens a QUIC stream per attachment transfer.
-- [ ] Chunk size configurable; default 64 KiB.
-- [ ] Each chunk frame includes hash, offset, length, and payload.
-- [ ] Receiver writes to a temp file and verifies each chunk offset.
-- [ ] Persist partial state: hash, bytes received, temp path, peer id.
-- [ ] Resume requests missing ranges from the sender.
-- [ ] Support cancellation and timeout.
-- [ ] Bound concurrent transfers per peer and globally.
-- [ ] Emit progress signals with bytes and total.
-- [ ] Emit `TransferDone` or `TransferFailed` with reason.
+- [x] Message references `attachment_hash` and metadata (name, size, mime).
+- [x] Sender opens a QUIC stream per attachment transfer.
+- [x] Chunk size configurable; default 64 KiB.
+- [x] Each chunk frame includes hash, offset, length, and payload.
+- [x] Receiver writes to a temp file and verifies each chunk offset.
+- [x] Persist partial state: hash, bytes received, temp path, peer id.
+- [x] Resume requests missing ranges from the sender.
+- [x] Support cancellation and timeout.
+- [x] Bound concurrent transfers per peer and globally.
+- [x] Emit progress signals with bytes and total.
+- [x] Emit `TransferDone` or `TransferFailed` with reason.
 
 ## Receiving
 
-- [ ] On message with attachment hash, check store first.
-- [ ] If present, skip transfer and link the message immediately.
-- [ ] If absent, start or resume transfer.
-- [ ] Verify final hash before publishing the file into the store.
-- [ ] Insert the `attachments` row only after verification.
-- [ ] Ignore attachments from `ignore` peers; store silently for `mute`.
+- [x] On message with attachment hash, check store first.
+- [x] If present, skip transfer and link the message immediately.
+- [x] If absent, start or resume transfer.
+- [x] Verify final hash before publishing the file into the store.
+- [x] Insert the `attachments` row only after verification.
+- [x] Ignore attachments from `ignore` peers; store silently for `mute`.
 
 ## UI
 
-- [ ] Composer attach button opens a file chooser.
-- [ ] Show transfer progress inline in the conversation.
-- [ ] Render images inline with a size cap and click-to-open.
-- [ ] Render audio clips with play/pause using `rodio` or GTK media.
-- [ ] Render generic files as a card with name, size, and save action.
-- [ ] Save attachment to a user-chosen path.
-- [ ] Handle missing or failed attachments with a clear state.
-- [ ] Do not block the UI during transfer.
+- [x] Composer attach button opens a file chooser.
+- [x] Show transfer progress inline in the conversation.
+- [x] Render images inline with a size cap and click-to-open.
+- [x] Render audio clips with play/pause using `rodio` or GTK media.
+- [x] Render generic files as a card with name, size, and save action.
+- [x] Save attachment to a user-chosen path.
+- [x] Handle missing or failed attachments with a clear state.
+- [x] Do not block the UI during transfer.
 
 ## D-Bus additions
 
-- [ ] `SendAttachment(s peer_id, s path, s mime) -> s message_id`.
-- [ ] `GetTransferState(s hash) -> a{sv}`.
-- [ ] `CancelTransfer(s hash)`.
-- [ ] `SaveAttachment(s hash, s destination) -> b`.
-- [ ] Signals `TransferProgress(s, t, t)`, `TransferDone(s)`,
+- [x] `SendAttachment(s peer_id, s path, s mime) -> s message_id`.
+- [x] `GetTransferState(s hash) -> a{sv}`.
+- [x] `CancelTransfer(s hash)`.
+- [x] `SaveAttachment(s hash, s destination) -> b`.
+- [x] Signals `TransferProgress(s, t, t)`, `TransferDone(s)`,
   `TransferFailed(s, s)`.
 
 ## Tests
 
-- [ ] Hash and store round-trip; duplicate content dedupes.
-- [ ] Chunk encode/decode and offset validation.
-- [ ] Resume after simulated disconnect at several offsets.
-- [ ] Hash mismatch rejects the file and removes temp data.
-- [ ] Size limit rejects oversized files before transfer.
-- [ ] Concurrent transfers respect limits.
-- [ ] Two-node integration: image, audio, and generic file transfer.
-- [ ] Store-first path skips transfer when content already exists.
-- [ ] Fuzz test: chunk decoder never panics.
+- [x] Hash and store round-trip; duplicate content dedupes.
+- [x] Chunk encode/decode and offset validation.
+- [x] Resume after simulated disconnect at several offsets.
+- [x] Hash mismatch rejects the file and removes temp data.
+- [x] Size limit rejects oversized files before transfer.
+- [x] Concurrent transfers respect limits.
+- [x] Two-node integration: image, audio, and generic file transfer.
+- [x] Store-first path skips transfer when content already exists.
+- [x] Fuzz test: chunk decoder never panics.
 
 ## Security
 
-- [ ] Verify BLAKE3 hash before publishing.
-- [ ] Validate MIME and size; reject path traversal in file names.
-- [ ] Temp files created with restrictive permissions.
-- [ ] Do not follow symlinks when writing.
-- [ ] No automatic execution or opening.
-- [ ] Disk quota or free-space check before accepting large transfers.
-- [ ] Ignore policy prevents transfer initiation.
+- [x] Verify BLAKE3 hash before publishing.
+- [x] Validate MIME and size; reject path traversal in file names.
+- [x] Temp files created with restrictive permissions.
+- [x] Do not follow symlinks when writing.
+- [x] No automatic execution or opening.
+- [x] Disk quota or free-space check before accepting large transfers.
+- [x] Ignore policy prevents transfer initiation.
 
 ## Docs and acceptance
 
-- [ ] Document store layout and dedupe behavior.
-- [ ] Document transfer protocol, chunk format, and resume.
-- [ ] Document size limits and configuration.
-- [ ] Document how to save attachments and where they live.
+- [x] Document store layout and dedupe behavior.
+- [x] Document transfer protocol, chunk format, and resume.
+- [x] Document size limits and configuration.
+- [x] Document how to save attachments and where they live.
 
 ## Acceptance criteria
 

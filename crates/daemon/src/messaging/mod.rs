@@ -10,14 +10,19 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use ticonnect_core::ack::AckKind;
+use ticonnect_core::attachment::AttachmentRef;
 use ticonnect_core::id::{MessageId, NodeId};
 use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::message::{MessageKind, MessageRecord};
 use ticonnect_core::wire::{Frame, FrameKind};
 use ticonnect_net::transport::{PeerInfo, Session, Transport, TransportEvent};
 use ticonnect_settings::Settings;
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 
+use crate::attachments::transfer::InboundTransfer;
+use crate::calls::{InboundAudio, InboundCallSignal};
+use crate::remote::InboundRemoteFrame;
 use crate::storage::{
     DatabaseHandle, InsertOutcome, MessageState, Peer, PeerPolicy, StorageError, StoredMessage,
 };
@@ -30,6 +35,7 @@ const RECEIPT_TICK: Duration = Duration::from_millis(100);
 const OUTBOX_TICK: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum MessagingEvent {
     MessageReceived {
         peer_id: String,
@@ -66,6 +72,10 @@ struct Inner {
     receipts: Mutex<ReceiptCoalescer>,
     sync_ready: Mutex<HashSet<String>>,
     session_tasks: Mutex<HashMap<String, JoinHandle<()>>>,
+    transfer_tx: Mutex<Option<UnboundedSender<InboundTransfer>>>,
+    call_tx: Mutex<Option<UnboundedSender<InboundCallSignal>>>,
+    audio_tx: Mutex<Option<UnboundedSender<InboundAudio>>>,
+    remote_tx: Mutex<Option<UnboundedSender<InboundRemoteFrame>>>,
 }
 
 impl MessagingService {
@@ -90,12 +100,81 @@ impl MessagingService {
                 receipts: Mutex::new(ReceiptCoalescer::default()),
                 sync_ready: Mutex::new(HashSet::new()),
                 session_tasks: Mutex::new(HashMap::new()),
+                transfer_tx: Mutex::new(None),
+                call_tx: Mutex::new(None),
+                audio_tx: Mutex::new(None),
+                remote_tx: Mutex::new(None),
             }),
         }
     }
 
     pub fn subscribe(&self) -> tokio::sync::broadcast::Receiver<MessagingEvent> {
         self.inner.events.subscribe()
+    }
+
+    pub fn set_transfer_sender(&self, sender: UnboundedSender<InboundTransfer>) {
+        *self
+            .inner
+            .transfer_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(sender);
+    }
+
+    pub fn set_call_channels(
+        &self,
+        call_sender: UnboundedSender<InboundCallSignal>,
+        audio_sender: UnboundedSender<InboundAudio>,
+    ) {
+        *self
+            .inner
+            .call_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(call_sender);
+        *self
+            .inner
+            .audio_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(audio_sender);
+    }
+
+    pub fn set_remote_sender(&self, sender: UnboundedSender<InboundRemoteFrame>) {
+        *self
+            .inner
+            .remote_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(sender);
+    }
+
+    fn remote_sender(&self) -> Option<UnboundedSender<InboundRemoteFrame>> {
+        self.inner
+            .remote_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn call_sender(&self) -> Option<UnboundedSender<InboundCallSignal>> {
+        self.inner
+            .call_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn audio_sender(&self) -> Option<UnboundedSender<InboundAudio>> {
+        self.inner
+            .audio_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn transfer_sender(&self) -> Option<UnboundedSender<InboundTransfer>> {
+        self.inner
+            .transfer_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 
     pub fn local_node(&self) -> NodeId {
@@ -178,6 +257,56 @@ impl MessagingService {
             )
             .await?;
 
+        let ttl_days = u64::from(self.settings().outbox_ttl_days());
+        let expires_at =
+            now.saturating_add(i64::try_from(ttl_days * 86_400_000).unwrap_or(i64::MAX));
+        self.inner
+            .database
+            .enqueue_outbox(&record.message_id.to_string(), now, expires_at)
+            .await?;
+        self.emit(MessagingEvent::MessageStateChanged {
+            message_id: record.message_id.to_string(),
+            state,
+        });
+        outbox::flush_peer(self, peer_id).await;
+        Ok(record.message_id)
+    }
+
+    pub async fn send_attachment(
+        &self,
+        peer_id: &str,
+        attachment: &AttachmentRef,
+    ) -> Result<MessageId, MessagingError> {
+        attachment
+            .validate(ticonnect_core::attachment::DEFAULT_MAX_ATTACHMENT_SIZE)
+            .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
+        let peer = self.peer(peer_id).await?;
+        let peer_node: NodeId = peer
+            .id
+            .parse()
+            .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
+        let now = now_unix_ms();
+        self.inner
+            .database
+            .ensure_conversation(
+                &ticonnect_core::message::conversation_id(self.inner.local, peer_node),
+                peer_id,
+                now,
+            )
+            .await?;
+        let seq = self.inner.database.allocate_seq(peer_id).await?;
+        let record = store::attachment(self.inner.local, peer_node, seq, now, attachment)?;
+        let envelope = record.signed(&self.inner.identity)?;
+        let state = MessageState::Queued;
+        self.inner
+            .database
+            .insert_message(
+                record.clone(),
+                now,
+                envelope.signature().to_vec(),
+                Some(state),
+            )
+            .await?;
         let ttl_days = u64::from(self.settings().outbox_ttl_days());
         let expires_at =
             now.saturating_add(i64::try_from(ttl_days * 86_400_000).unwrap_or(i64::MAX));
@@ -342,6 +471,22 @@ impl MessagingService {
         let peer = session.peer().clone();
         loop {
             tokio::select! {
+                result = session.read_datagram() => {
+                    match result {
+                        Ok(payload) => {
+                            if let Some(sender) = self.audio_sender() {
+                                let _ = sender.send(InboundAudio {
+                                    peer: peer.clone(),
+                                    payload: payload.to_vec(),
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            tracing::debug!(%error, "session datagram read failed");
+                            break;
+                        }
+                    }
+                }
                 result = session.accept_uni() => {
                     match result {
                         Ok(mut recv) => {
@@ -377,6 +522,25 @@ impl MessagingService {
                                         return;
                                     }
                                 };
+                                if first.kind() == FrameKind::Transfer {
+                                    let frame = match ticonnect_net::transfer::TransferFrame::from_wire(&first) {
+                                        Ok(frame) => frame,
+                                        Err(error) => {
+                                            tracing::debug!(%error, "transfer frame rejected");
+                                            return;
+                                        }
+                                    };
+                                    let Some(sender) = service.transfer_sender() else {
+                                        return;
+                                    };
+                                    let _ = sender.send(InboundTransfer {
+                                        peer,
+                                        send,
+                                        recv,
+                                        frame,
+                                    });
+                                    return;
+                                }
                                 if first.kind() != FrameKind::Sync {
                                     return;
                                 }
@@ -406,6 +570,26 @@ impl MessagingService {
     async fn handle_frame(&self, peer: &PeerInfo, frame: Frame) -> Result<(), MessagingError> {
         match frame.kind() {
             FrameKind::Message | FrameKind::Ack => {}
+            FrameKind::Call => {
+                let frame = ticonnect_core::call::CallSignalFrame::from_wire(&frame)
+                    .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
+                if let Some(sender) = self.call_sender() {
+                    let _ = sender.send(InboundCallSignal {
+                        peer: peer.clone(),
+                        frame,
+                    });
+                }
+                return Ok(());
+            }
+            FrameKind::Remote | FrameKind::Input => {
+                if let Some(sender) = self.remote_sender() {
+                    let _ = sender.send(InboundRemoteFrame {
+                        peer: peer.clone(),
+                        frame,
+                    });
+                }
+                return Ok(());
+            }
             other => return Err(MessagingError::UnexpectedFrame(other.as_u8())),
         }
 
@@ -443,11 +627,20 @@ impl MessagingService {
                 self.ingest_ack(&peer, record, signature).await?;
                 Ok(true)
             }
-            MessageKind::Text => {
+            MessageKind::Text | MessageKind::Image | MessageKind::Audio | MessageKind::File => {
+                if record.kind != MessageKind::Text {
+                    record
+                        .attachment_ref()
+                        .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?
+                        .ok_or_else(|| {
+                            MessagingError::InvalidAttachment(
+                                "attachment message has no reference".to_owned(),
+                            )
+                        })?;
+                }
                 self.ingest_text(&peer, record, signature).await?;
                 Ok(true)
             }
-            kind => Err(MessagingError::UnsupportedKind(kind.as_str().to_owned())),
         }
     }
 
@@ -814,6 +1007,9 @@ pub enum MessagingError {
 
     #[error("message kind {0} is not supported in this stage")]
     UnsupportedKind(String),
+
+    #[error("attachment is invalid: {0}")]
+    InvalidAttachment(String),
 
     #[error("message signature is invalid")]
     InvalidSignature,

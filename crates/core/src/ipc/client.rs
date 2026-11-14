@@ -36,6 +36,21 @@ pub trait Daemon {
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
+    fn send_attachment(&self, peer_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
+    fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
+    fn get_attachment_path(&self, hash: &str) -> zbus::Result<String>;
+    fn start_call(&self, peer_id: &str) -> zbus::Result<String>;
+    fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
+    fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -73,4 +88,34 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn settings_changed(&self, key: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn incoming_call(&self, call: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn call_state_changed(&self, call_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn call_ended(&self, call_id: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_requested(&self, session: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_started(&self, session_id: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_session_ended(&self, session_id: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_indicator_changed(&self, session_id: &str, visible: bool) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_progress(&self, hash: &str, bytes: u64, total: u64) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_done(&self, hash: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn transfer_failed(&self, hash: &str, reason: &str) -> zbus::Result<()>;
 }

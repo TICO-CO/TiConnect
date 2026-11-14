@@ -96,7 +96,7 @@ async fn defer(service: &MessagingService, message_id: &str, attempts: u32) {
     let factor = 1_u64 << attempts.min(20);
     let delay = BACKOFF_BASE
         .checked_mul(u32::try_from(factor).unwrap_or(u32::MAX))
-        .map_or(Duration::from_secs(60), |delay| delay)
+        .unwrap_or(Duration::from_secs(60))
         .min(Duration::from_secs(3600));
     let next_try =
         now_unix_ms().saturating_add(i64::try_from(delay.as_millis()).unwrap_or(i64::MAX));

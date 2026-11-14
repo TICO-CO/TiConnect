@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
-use ticonnect_core::ipc::events::{self, Candidate, Message, MessageState, Peer, PeerPolicy};
+use ticonnect_core::ipc::events::{
+    self, Call, Candidate, Message, MessageState, Peer, PeerPolicy, RemoteSession,
+};
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, PairingStart, Status};
 use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
@@ -45,6 +47,20 @@ enum Command {
         body: String,
         reply: Reply<String>,
     },
+    SendAttachment {
+        peer_id: String,
+        path: String,
+        reply: Reply<String>,
+    },
+    AttachmentPath {
+        hash: String,
+        reply: Reply<String>,
+    },
+    SaveAttachment {
+        hash: String,
+        destination: String,
+        reply: Reply<bool>,
+    },
     MarkRead {
         conversation_id: String,
         message_ids: Vec<String>,
@@ -59,6 +75,41 @@ enum Command {
         enabled: bool,
         reply: Reply<()>,
     },
+    StartCall {
+        peer_id: String,
+        reply: Reply<String>,
+    },
+    AcceptCall {
+        call_id: String,
+        reply: Reply<()>,
+    },
+    DeclineCall {
+        call_id: String,
+        reply: Reply<()>,
+    },
+    HangupCall {
+        call_id: String,
+        reply: Reply<()>,
+    },
+    GetCallState(Reply<Option<Call>>),
+    RequestRemoteSession {
+        peer_id: String,
+        reply: Reply<RemoteSession>,
+    },
+    AcceptRemoteSession {
+        session_id: String,
+        pin: String,
+        reply: Reply<()>,
+    },
+    DenyRemoteSession {
+        session_id: String,
+        reply: Reply<()>,
+    },
+    EndRemoteSession {
+        session_id: String,
+        reply: Reply<()>,
+    },
+    GetRemoteSession(Reply<Option<RemoteSession>>),
 }
 
 #[derive(Clone)]
@@ -141,6 +192,29 @@ impl LinkHandle {
         .await
     }
 
+    pub async fn send_attachment(&self, peer_id: String, path: String) -> Result<String> {
+        self.request(|reply| Command::SendAttachment {
+            peer_id,
+            path,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn attachment_path(&self, hash: String) -> Result<String> {
+        self.request(|reply| Command::AttachmentPath { hash, reply })
+            .await
+    }
+
+    pub async fn save_attachment(&self, hash: String, destination: String) -> Result<bool> {
+        self.request(|reply| Command::SaveAttachment {
+            hash,
+            destination,
+            reply,
+        })
+        .await
+    }
+
     pub async fn mark_read(&self, conversation_id: String, message_ids: Vec<String>) -> Result<()> {
         self.request(|reply| Command::MarkRead {
             conversation_id,
@@ -162,6 +236,58 @@ impl LinkHandle {
     pub async fn set_dnd(&self, enabled: bool) -> Result<()> {
         self.request(|reply| Command::SetDnd { enabled, reply })
             .await
+    }
+
+    pub async fn start_call(&self, peer_id: String) -> Result<String> {
+        self.request(|reply| Command::StartCall { peer_id, reply })
+            .await
+    }
+
+    pub async fn accept_call(&self, call_id: String) -> Result<()> {
+        self.request(|reply| Command::AcceptCall { call_id, reply })
+            .await
+    }
+
+    pub async fn decline_call(&self, call_id: String) -> Result<()> {
+        self.request(|reply| Command::DeclineCall { call_id, reply })
+            .await
+    }
+
+    pub async fn hangup_call(&self, call_id: String) -> Result<()> {
+        self.request(|reply| Command::HangupCall { call_id, reply })
+            .await
+    }
+
+    pub async fn call_state(&self) -> Result<Option<Call>> {
+        self.request(Command::GetCallState).await
+    }
+
+    pub async fn request_remote_session(&self, peer_id: String) -> Result<RemoteSession> {
+        self.request(|reply| Command::RequestRemoteSession { peer_id, reply })
+            .await
+    }
+
+    pub async fn accept_remote_session(&self, session_id: String, pin: String) -> Result<()> {
+        self.request(|reply| Command::AcceptRemoteSession {
+            session_id,
+            pin,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn deny_remote_session(&self, session_id: String) -> Result<()> {
+        self.request(|reply| Command::DenyRemoteSession { session_id, reply })
+            .await
+    }
+
+    pub async fn end_remote_session(&self, session_id: String) -> Result<()> {
+        self.request(|reply| Command::EndRemoteSession { session_id, reply })
+            .await
+    }
+
+    pub async fn remote_session(&self) -> Result<Option<RemoteSession>> {
+        self.request(Command::GetRemoteSession).await
     }
 
     async fn request<T>(&self, make: impl FnOnce(Reply<T>) -> Command) -> Result<T> {
@@ -256,6 +382,31 @@ async fn listen(
     let mut policy_changed = proxy.receive_policy_changed().await.map_err(bus_error)?;
     let mut settings_changed = proxy.receive_settings_changed().await.map_err(bus_error)?;
     let mut sync_completed = proxy.receive_sync_completed().await.map_err(bus_error)?;
+    let mut transfer_progress = proxy.receive_transfer_progress().await.map_err(bus_error)?;
+    let mut incoming_call = proxy.receive_incoming_call().await.map_err(bus_error)?;
+    let mut call_state_changed = proxy
+        .receive_call_state_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut call_ended = proxy.receive_call_ended().await.map_err(bus_error)?;
+    let mut remote_requested = proxy
+        .receive_remote_session_requested()
+        .await
+        .map_err(bus_error)?;
+    let mut remote_started = proxy
+        .receive_remote_session_started()
+        .await
+        .map_err(bus_error)?;
+    let mut remote_ended = proxy
+        .receive_remote_session_ended()
+        .await
+        .map_err(bus_error)?;
+    let mut remote_indicator = proxy
+        .receive_remote_indicator_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut transfer_done = proxy.receive_transfer_done().await.map_err(bus_error)?;
+    let mut transfer_failed = proxy.receive_transfer_failed().await.map_err(bus_error)?;
     let mut candidate_found = proxy.receive_candidate_found().await.map_err(bus_error)?;
     let mut candidate_lost = proxy.receive_candidate_lost().await.map_err(bus_error)?;
 
@@ -327,6 +478,79 @@ async fn listen(
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 let _ = events.send(DaemonEvent::SettingsChanged(args.key.to_owned()));
+            }
+            signal = incoming_call.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(call) = events::parse_call(&args.call) {
+                    let _ = events.send(DaemonEvent::IncomingCall(call));
+                }
+            }
+            signal = call_state_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::CallStateChanged {
+                    call_id: args.call_id.to_owned(),
+                    state: args.state.to_owned(),
+                });
+            }
+            signal = call_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::CallEnded {
+                    call_id: args.call_id.to_owned(),
+                    reason: args.reason.to_owned(),
+                });
+            }
+            signal = remote_requested.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(session) = events::parse_remote_session(&args.session) {
+                    let _ = events.send(DaemonEvent::RemoteSessionRequested(session));
+                }
+            }
+            signal = remote_started.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::RemoteSessionStarted(args.session_id.to_owned()));
+            }
+            signal = remote_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::RemoteSessionEnded {
+                    session_id: args.session_id.to_owned(),
+                    reason: args.reason.to_owned(),
+                });
+            }
+            signal = remote_indicator.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::RemoteIndicatorChanged {
+                    session_id: args.session_id.to_owned(),
+                    visible: args.visible,
+                });
+            }
+            signal = transfer_progress.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::TransferProgress {
+                    hash: args.hash.to_owned(),
+                    bytes: args.bytes,
+                    total: args.total,
+                });
+            }
+            signal = transfer_done.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::TransferDone(args.hash.to_owned()));
+            }
+            signal = transfer_failed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::TransferFailed {
+                    hash: args.hash.to_owned(),
+                    reason: args.reason.to_owned(),
+                });
             }
             signal = sync_completed.next() => {
                 let Some(signal) = signal else { break };
@@ -469,6 +693,32 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = proxy.send_message(&peer_id, &body).await.map_err(bus_error);
             let _ = reply.send(result);
         }
+        Command::SendAttachment {
+            peer_id,
+            path,
+            reply,
+        } => {
+            let result = proxy
+                .send_attachment(&peer_id, &path, "")
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::AttachmentPath { hash, reply } => {
+            let result = proxy.get_attachment_path(&hash).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SaveAttachment {
+            hash,
+            destination,
+            reply,
+        } => {
+            let result = proxy
+                .save_attachment(&hash, &destination)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
         Command::MarkRead {
             conversation_id,
             message_ids,
@@ -494,6 +744,72 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         }
         Command::SetDnd { enabled, reply } => {
             let result = proxy.set_dnd(enabled).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::StartCall { peer_id, reply } => {
+            let result = proxy.start_call(&peer_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::AcceptCall { call_id, reply } => {
+            let result = proxy.accept_call(&call_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::DeclineCall { call_id, reply } => {
+            let result = proxy.decline_call(&call_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::HangupCall { call_id, reply } => {
+            let result = proxy.hangup_call(&call_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::RequestRemoteSession { peer_id, reply } => {
+            let result = match proxy.request_remote_session(&peer_id).await {
+                Ok(values) => events::parse_remote_session(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::AcceptRemoteSession {
+            session_id,
+            pin,
+            reply,
+        } => {
+            let result = proxy
+                .accept_remote_session(&session_id, &pin)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::DenyRemoteSession { session_id, reply } => {
+            let result = proxy
+                .deny_remote_session(&session_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::EndRemoteSession { session_id, reply } => {
+            let result = proxy
+                .end_remote_session(&session_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::GetRemoteSession(reply) => {
+            let result = match proxy.get_remote_session().await {
+                Ok(values) if values.is_empty() => Ok(None),
+                Ok(values) => events::parse_remote_session(&values)
+                    .map(Some)
+                    .map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::GetCallState(reply) => {
+            let result = match proxy.get_call_state().await {
+                Ok(values) if values.is_empty() => Ok(None),
+                Ok(values) => events::parse_call(&values).map(Some).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
             let _ = reply.send(result);
         }
     }

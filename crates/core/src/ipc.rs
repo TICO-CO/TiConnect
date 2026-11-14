@@ -62,6 +62,32 @@ pub const MESSAGE_KIND: &str = "kind";
 pub const MESSAGE_TARGET_ID: &str = "target_id";
 pub const MESSAGE_BODY: &str = "body";
 pub const MESSAGE_ATTACHMENT_HASH: &str = "attachment_hash";
+pub const MESSAGE_ATTACHMENT_NAME: &str = "attachment_name";
+pub const MESSAGE_ATTACHMENT_SIZE: &str = "attachment_size";
+pub const MESSAGE_ATTACHMENT_MIME: &str = "attachment_mime";
+pub const MESSAGE_ATTACHMENT_PATH: &str = "attachment_path";
+pub const REMOTE_SESSION_ID: &str = "session_id";
+pub const REMOTE_PEER_ID: &str = "peer_id";
+pub const REMOTE_FINGERPRINT: &str = "fingerprint";
+pub const REMOTE_ROLE: &str = "role";
+pub const REMOTE_STATE: &str = "state";
+pub const REMOTE_PIN: &str = "pin";
+pub const REMOTE_INDICATOR: &str = "indicator";
+pub const REMOTE_EXPIRES_AT: &str = "expires_at";
+pub const CALL_ID: &str = "call_id";
+pub const CALL_PEER_ID: &str = "peer_id";
+pub const CALL_DIRECTION: &str = "direction";
+pub const CALL_STATE: &str = "state";
+pub const CALL_STARTED_AT: &str = "started_at";
+pub const CALL_CONNECTED_AT: &str = "connected_at";
+pub const CALL_REASON: &str = "reason";
+pub const TRANSFER_HASH: &str = "hash";
+pub const TRANSFER_PEER_ID: &str = "peer_id";
+pub const TRANSFER_NAME: &str = "name";
+pub const TRANSFER_SIZE: &str = "size";
+pub const TRANSFER_BYTES: &str = "bytes";
+pub const TRANSFER_PHASE: &str = "phase";
+pub const TRANSFER_REASON: &str = "reason";
 pub const MESSAGE_STATE: &str = "state";
 pub const MESSAGE_NOTIFY: &str = "notify";
 
@@ -88,6 +114,21 @@ pub mod methods {
     pub const GET_MESSAGE_STATE: &str = "GetMessageState";
     pub const SET_PEER_POLICY: &str = "SetPeerPolicy";
     pub const SET_DND: &str = "SetDnd";
+    pub const SEND_ATTACHMENT: &str = "SendAttachment";
+    pub const GET_TRANSFER_STATE: &str = "GetTransferState";
+    pub const CANCEL_TRANSFER: &str = "CancelTransfer";
+    pub const SAVE_ATTACHMENT: &str = "SaveAttachment";
+    pub const GET_ATTACHMENT_PATH: &str = "GetAttachmentPath";
+    pub const START_CALL: &str = "StartCall";
+    pub const ACCEPT_CALL: &str = "AcceptCall";
+    pub const DECLINE_CALL: &str = "DeclineCall";
+    pub const HANGUP_CALL: &str = "HangupCall";
+    pub const GET_CALL_STATE: &str = "GetCallState";
+    pub const REQUEST_REMOTE_SESSION: &str = "RequestRemoteSession";
+    pub const ACCEPT_REMOTE_SESSION: &str = "AcceptRemoteSession";
+    pub const DENY_REMOTE_SESSION: &str = "DenyRemoteSession";
+    pub const END_REMOTE_SESSION: &str = "EndRemoteSession";
+    pub const GET_REMOTE_SESSION: &str = "GetRemoteSession";
     pub const SHUTDOWN: &str = "Shutdown";
 }
 
@@ -106,6 +147,16 @@ pub mod signals {
     pub const MESSAGE_STATE_CHANGED: &str = "MessageStateChanged";
     pub const SYNC_COMPLETED: &str = "SyncCompleted";
     pub const POLICY_CHANGED: &str = "PolicyChanged";
+    pub const TRANSFER_PROGRESS: &str = "TransferProgress";
+    pub const TRANSFER_DONE: &str = "TransferDone";
+    pub const TRANSFER_FAILED: &str = "TransferFailed";
+    pub const INCOMING_CALL: &str = "IncomingCall";
+    pub const CALL_STATE_CHANGED: &str = "CallStateChanged";
+    pub const CALL_ENDED: &str = "CallEnded";
+    pub const REMOTE_SESSION_REQUESTED: &str = "RemoteSessionRequested";
+    pub const REMOTE_SESSION_STARTED: &str = "RemoteSessionStarted";
+    pub const REMOTE_SESSION_ENDED: &str = "RemoteSessionEnded";
+    pub const REMOTE_INDICATOR_CHANGED: &str = "RemoteIndicatorChanged";
 }
 
 pub mod errors {

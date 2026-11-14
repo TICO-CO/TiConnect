@@ -4,6 +4,9 @@ use ed25519_dalek::VerifyingKey;
 use thiserror::Error;
 use uuid::Uuid;
 
+use crate::attachment::{
+    AttachmentError, AttachmentHash, AttachmentRef, validate_mime, validate_name,
+};
 use crate::canonical::{CanonicalError, Decoder, Encoder};
 use crate::id::{IdError, MessageId, NodeId};
 use crate::identity::IdentityKeyPair;
@@ -78,6 +81,9 @@ pub struct MessageRecord {
     pub target_id: Option<String>,
     pub body: Option<String>,
     pub attachment_hash: Option<String>,
+    pub attachment_name: Option<String>,
+    pub attachment_size: Option<u64>,
+    pub attachment_mime: Option<String>,
 }
 
 impl MessageRecord {
@@ -99,7 +105,50 @@ impl MessageRecord {
             target_id: None,
             body,
             attachment_hash: None,
+            attachment_name: None,
+            attachment_size: None,
+            attachment_mime: None,
         }
+    }
+
+    pub fn with_attachment(mut self, attachment: &AttachmentRef) -> Result<Self, MessageError> {
+        self.attachment_hash = Some(attachment.hash.to_hex());
+        self.attachment_name = Some(attachment.name.clone());
+        self.attachment_size = Some(attachment.size);
+        self.attachment_mime = Some(attachment.mime.clone());
+        self.kind = attachment.kind();
+        self.validate()?;
+        Ok(self)
+    }
+
+    pub fn attachment_ref(&self) -> Result<Option<AttachmentRef>, MessageError> {
+        let Some(hash) = &self.attachment_hash else {
+            return Ok(None);
+        };
+        let hash = hash
+            .parse::<AttachmentHash>()
+            .map_err(|_| MessageError::InvalidAttachmentHash)?;
+        let name = self
+            .attachment_name
+            .clone()
+            .ok_or(MessageError::InvalidAttachment)?;
+        let size = self
+            .attachment_size
+            .ok_or(MessageError::InvalidAttachment)?;
+        let mime = self
+            .attachment_mime
+            .clone()
+            .ok_or(MessageError::InvalidAttachment)?;
+        let attachment = AttachmentRef {
+            hash,
+            name,
+            size,
+            mime,
+        };
+        attachment
+            .validate(crate::attachment::DEFAULT_MAX_ATTACHMENT_SIZE)
+            .map_err(MessageError::Attachment)?;
+        Ok(Some(attachment))
     }
 
     pub fn text(
@@ -144,6 +193,15 @@ impl MessageRecord {
         encode_optional(&mut encoder, self.target_id.as_deref())?;
         encode_optional(&mut encoder, self.body.as_deref())?;
         encode_optional(&mut encoder, self.attachment_hash.as_deref())?;
+        encode_optional(&mut encoder, self.attachment_name.as_deref())?;
+        match self.attachment_size {
+            Some(size) => {
+                encoder.u8(1).map_err(MessageError::Canonical)?;
+                encoder.u64(size).map_err(MessageError::Canonical)?;
+            }
+            None => encoder.u8(0).map_err(MessageError::Canonical)?,
+        }
+        encode_optional(&mut encoder, self.attachment_mime.as_deref())?;
         Ok(encoder.finish())
     }
 
@@ -181,6 +239,13 @@ impl MessageRecord {
         let target_id = decode_optional(&mut decoder)?;
         let body = decode_optional(&mut decoder)?;
         let attachment_hash = decode_optional(&mut decoder)?;
+        let attachment_name = decode_optional(&mut decoder)?;
+        let attachment_size = match decoder.u8().map_err(MessageError::Canonical)? {
+            0 => None,
+            1 => Some(decoder.u64().map_err(MessageError::Canonical)?),
+            _ => return Err(MessageError::InvalidOptional),
+        };
+        let attachment_mime = decode_optional(&mut decoder)?;
         decoder.finish().map_err(MessageError::Canonical)?;
 
         let record = Self {
@@ -193,6 +258,9 @@ impl MessageRecord {
             target_id,
             body,
             attachment_hash,
+            attachment_name,
+            attachment_size,
+            attachment_mime,
         };
         record.validate()?;
         Ok(record)
@@ -240,6 +308,22 @@ impl MessageRecord {
             && (hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
         {
             return Err(MessageError::InvalidAttachmentHash);
+        }
+        if let Some(name) = &self.attachment_name {
+            validate_name(name).map_err(MessageError::Attachment)?;
+        }
+        if let Some(mime) = &self.attachment_mime {
+            validate_mime(mime).map_err(MessageError::Attachment)?;
+        }
+        match (
+            &self.attachment_hash,
+            &self.attachment_name,
+            self.attachment_size,
+            &self.attachment_mime,
+        ) {
+            (None, None, None, None) => {}
+            (Some(_), Some(_), Some(_), Some(_)) => {}
+            _ => return Err(MessageError::InvalidAttachment),
         }
         if self.kind == MessageKind::Ack {
             if self.target_id.is_none() {
@@ -336,6 +420,12 @@ pub enum MessageError {
     #[error("attachment hash is invalid")]
     InvalidAttachmentHash,
 
+    #[error("attachment reference is incomplete")]
+    InvalidAttachment,
+
+    #[error(transparent)]
+    Attachment(AttachmentError),
+
     #[error("ack record is invalid")]
     InvalidAck,
 
@@ -399,6 +489,50 @@ mod tests {
             Err(MessageError::Sign(SignError::InvalidSignature))
                 | Err(MessageError::InvalidSignature)
                 | Err(MessageError::Canonical(_))
+        ));
+    }
+
+    #[test]
+    fn attachment_record_round_trips() {
+        let identity = IdentityKeyPair::from_secret_bytes([73_u8; 32]);
+        let sender = NodeId::generate();
+        let peer = NodeId::generate();
+        let attachment =
+            AttachmentRef::new(AttachmentHash::of(b"payload"), "photo.png", 7, "image/png")
+                .expect("attachment");
+        let record = MessageRecord::new(
+            conversation_id(sender, peer),
+            sender.to_string(),
+            1,
+            1,
+            MessageKind::File,
+            None,
+        )
+        .with_attachment(&attachment)
+        .expect("attach");
+        let envelope = record.signed(&identity).expect("sign");
+        let (decoded, _) =
+            MessageRecord::decode_signed(&envelope.encode(), &identity.verifying_key())
+                .expect("decode");
+
+        assert_eq!(decoded.attachment_ref().expect("ref"), Some(attachment));
+        assert_eq!(decoded.kind, MessageKind::Image);
+    }
+
+    #[test]
+    fn rejects_incomplete_attachment() {
+        let mut record = MessageRecord::new(
+            "conversation",
+            NodeId::generate().to_string(),
+            1,
+            1,
+            MessageKind::File,
+            None,
+        );
+        record.attachment_hash = Some("a".repeat(64));
+        assert!(matches!(
+            record.canonical_bytes(),
+            Err(MessageError::InvalidAttachment)
         ));
     }
 

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::id::NodeId;
-use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_MESSAGE_FRAME};
+use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_WIRE_FRAME};
 use tokio::time::timeout;
 
 use super::TransportError;
@@ -87,6 +87,19 @@ impl Session {
     ) -> Result<(quinn::SendStream, quinn::RecvStream), TransportError> {
         self.connection
             .accept_bi()
+            .await
+            .map_err(|error| TransportError::Stream(error.to_string()))
+    }
+
+    pub fn send_datagram(&self, data: &[u8]) -> Result<(), TransportError> {
+        self.connection
+            .send_datagram(bytes::Bytes::copy_from_slice(data))
+            .map_err(|error| TransportError::Stream(error.to_string()))
+    }
+
+    pub async fn read_datagram(&self) -> Result<bytes::Bytes, TransportError> {
+        self.connection
+            .read_datagram()
             .await
             .map_err(|error| TransportError::Stream(error.to_string()))
     }
@@ -241,7 +254,7 @@ async fn read_frame_with_timeout(
         .map_err(|_| TransportError::Handshake("read timed out".to_owned()))?
         .map_err(|error| TransportError::Stream(error.to_string()))?;
     let length = u32::from_be_bytes(length) as usize;
-    if length > MAX_MESSAGE_FRAME {
+    if length > MAX_WIRE_FRAME {
         return Err(TransportError::Handshake("frame is too large".to_owned()));
     }
 

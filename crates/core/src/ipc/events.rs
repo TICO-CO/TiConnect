@@ -4,13 +4,19 @@ use thiserror::Error;
 use zbus::OwnedVariant;
 
 use super::{
+    CALL_CONNECTED_AT, CALL_DIRECTION, CALL_ID, CALL_PEER_ID, CALL_STARTED_AT, CALL_STATE,
     CANDIDATE_ADDRESSES, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT, CANDIDATE_NODE_ID,
-    CANDIDATE_SOURCE, IDENTITY_DISPLAY_NAME, IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_BODY,
-    MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_PEER_ID, MESSAGE_RECEIVED_AT,
-    MESSAGE_SENDER_ID, MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, PAIRING_EXPIRES_AT,
-    PAIRING_NODE_ID, PAIRING_PIN, PAIRING_PORT, PAIRING_QR, PEER_CONNECTED, PEER_DISPLAY_NAME,
-    PEER_FINGERPRINT, PEER_ID, PEER_LAST_SEEN, PEER_POLICY, PEER_TRUSTED_AT,
+    CANDIDATE_SOURCE, IDENTITY_DISPLAY_NAME, IDENTITY_FINGERPRINT, IDENTITY_NODE_ID,
+    MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME, MESSAGE_ATTACHMENT_NAME,
+    MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY, MESSAGE_CONVERSATION_ID,
+    MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_PEER_ID, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
+    MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, PAIRING_EXPIRES_AT, PAIRING_NODE_ID, PAIRING_PIN,
+    PAIRING_PORT, PAIRING_QR, PEER_CONNECTED, PEER_DISPLAY_NAME, PEER_FINGERPRINT, PEER_ID,
+    PEER_LAST_SEEN, PEER_POLICY, PEER_TRUSTED_AT, REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT,
+    REMOTE_INDICATOR, REMOTE_PEER_ID, REMOTE_PIN, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
     STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_PEER_COUNT, STATUS_TRANSPORT_STATE,
+    TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PEER_ID, TRANSFER_PHASE,
+    TRANSFER_REASON, TRANSFER_SIZE,
 };
 
 #[derive(Debug, Error)]
@@ -114,6 +120,11 @@ pub struct Message {
     pub sent_at: u64,
     pub received_at: u64,
     pub body: String,
+    pub attachment_hash: String,
+    pub attachment_name: String,
+    pub attachment_size: u64,
+    pub attachment_mime: String,
+    pub attachment_path: String,
     pub state: MessageState,
     pub notify: bool,
 }
@@ -122,6 +133,39 @@ impl Message {
     pub fn ordering_key(&self) -> (u64, u64, u64) {
         (self.sent_at, self.received_at, self.seq)
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteSession {
+    pub session_id: String,
+    pub peer_id: String,
+    pub fingerprint: String,
+    pub role: String,
+    pub state: String,
+    pub pin: String,
+    pub indicator: bool,
+    pub expires_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Call {
+    pub id: String,
+    pub peer_id: String,
+    pub direction: String,
+    pub state: String,
+    pub started_at: u64,
+    pub connected_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Transfer {
+    pub hash: String,
+    pub peer_id: String,
+    pub name: String,
+    pub size: u64,
+    pub bytes: u64,
+    pub phase: String,
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -176,6 +220,35 @@ pub enum DaemonEvent {
     SyncCompleted {
         peer_id: String,
         count: u32,
+    },
+    TransferProgress {
+        hash: String,
+        bytes: u64,
+        total: u64,
+    },
+    TransferDone(String),
+    TransferFailed {
+        hash: String,
+        reason: String,
+    },
+    IncomingCall(Call),
+    CallStateChanged {
+        call_id: String,
+        state: String,
+    },
+    CallEnded {
+        call_id: String,
+        reason: String,
+    },
+    RemoteSessionRequested(RemoteSession),
+    RemoteSessionStarted(String),
+    RemoteSessionEnded {
+        session_id: String,
+        reason: String,
+    },
+    RemoteIndicatorChanged {
+        session_id: String,
+        visible: bool,
     },
 }
 
@@ -238,8 +311,49 @@ pub fn parse_message(
         sent_at: optional_u64(values, MESSAGE_SENT_AT),
         received_at: optional_u64(values, MESSAGE_RECEIVED_AT),
         body: optional_string(values, MESSAGE_BODY),
+        attachment_hash: optional_string(values, MESSAGE_ATTACHMENT_HASH),
+        attachment_name: optional_string(values, MESSAGE_ATTACHMENT_NAME),
+        attachment_size: optional_u64(values, MESSAGE_ATTACHMENT_SIZE),
+        attachment_mime: optional_string(values, MESSAGE_ATTACHMENT_MIME),
+        attachment_path: optional_string(values, MESSAGE_ATTACHMENT_PATH),
         state: MessageState::parse(&optional_string(values, MESSAGE_STATE)),
         notify: optional_bool(values, MESSAGE_NOTIFY),
+    })
+}
+
+pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<RemoteSession> {
+    Ok(RemoteSession {
+        session_id: required_string(values, REMOTE_SESSION_ID)?,
+        peer_id: optional_string(values, REMOTE_PEER_ID),
+        fingerprint: optional_string(values, REMOTE_FINGERPRINT),
+        role: optional_string(values, REMOTE_ROLE),
+        state: optional_string(values, REMOTE_STATE),
+        pin: optional_string(values, REMOTE_PIN),
+        indicator: optional_bool(values, REMOTE_INDICATOR),
+        expires_at: optional_u64(values, REMOTE_EXPIRES_AT),
+    })
+}
+
+pub fn parse_call(values: &HashMap<String, OwnedVariant>) -> Result<Call> {
+    Ok(Call {
+        id: required_string(values, CALL_ID)?,
+        peer_id: optional_string(values, CALL_PEER_ID),
+        direction: optional_string(values, CALL_DIRECTION),
+        state: optional_string(values, CALL_STATE),
+        started_at: optional_u64(values, CALL_STARTED_AT),
+        connected_at: optional_u64(values, CALL_CONNECTED_AT),
+    })
+}
+
+pub fn parse_transfer(values: &HashMap<String, OwnedVariant>) -> Result<Transfer> {
+    Ok(Transfer {
+        hash: required_string(values, TRANSFER_HASH)?,
+        peer_id: optional_string(values, TRANSFER_PEER_ID),
+        name: optional_string(values, TRANSFER_NAME),
+        size: optional_u64(values, TRANSFER_SIZE),
+        bytes: optional_u64(values, TRANSFER_BYTES),
+        phase: optional_string(values, TRANSFER_PHASE),
+        reason: optional_string(values, TRANSFER_REASON),
     })
 }
 

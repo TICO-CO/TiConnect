@@ -1,5 +1,15 @@
 #![forbid(unsafe_code)]
 
+pub mod audio;
+pub mod h264;
+pub mod jitter;
+pub mod opus_codec;
+pub mod ringtone;
+
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

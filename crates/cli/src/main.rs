@@ -62,6 +62,20 @@ enum Command {
     },
     /// Send a text message to a trusted peer.
     Send { peer_id: String, body: String },
+    /// Send a file attachment to a trusted peer.
+    SendFile {
+        peer_id: String,
+        path: String,
+        #[arg(long, default_value = "")]
+        mime: String,
+    },
+    /// Save a received attachment to a destination path.
+    Download { hash: String, destination: String },
+    /// Show or cancel an attachment transfer.
+    Transfer {
+        #[command(subcommand)]
+        command: TransferCommand,
+    },
     /// List message history for a peer.
     Messages {
         peer_id: String,
@@ -79,6 +93,16 @@ enum Command {
     Policy {
         #[command(subcommand)]
         command: PolicyCommand,
+    },
+    /// Control a voice call.
+    Call {
+        #[command(subcommand)]
+        command: CallCommand,
+    },
+    /// Control a remote desktop session.
+    Remote {
+        #[command(subcommand)]
+        command: RemoteCommand,
     },
 }
 
@@ -110,6 +134,46 @@ enum DiscoverCommand {
     List,
     /// Print candidate found and lost events.
     Watch,
+}
+
+#[derive(Debug, Subcommand)]
+enum TransferCommand {
+    /// Show transfer state for one attachment hash.
+    Status { hash: String },
+    /// Cancel a transfer in progress.
+    Cancel { hash: String },
+}
+
+#[derive(Debug, Subcommand)]
+enum CallCommand {
+    /// Start an outgoing call.
+    Start { peer_id: String },
+    /// Accept an incoming call.
+    Accept { call_id: String },
+    /// Decline an incoming call.
+    Decline { call_id: String },
+    /// Hang up an active call.
+    Hangup { call_id: String },
+    /// Show the current call state.
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
+enum RemoteCommand {
+    /// Request a remote desktop session.
+    Request { peer_id: String },
+    /// Consent on the host or submit a PIN on the viewer.
+    Accept {
+        session_id: String,
+        #[arg(default_value = "")]
+        pin: String,
+    },
+    /// Deny a remote session request.
+    Deny { session_id: String },
+    /// End or kill a remote session.
+    End { session_id: String },
+    /// Show the current remote session.
+    Status,
 }
 
 #[derive(Debug, Subcommand)]
@@ -228,6 +292,55 @@ async fn run(command: Command) -> Result<()> {
                 .context("send message")?;
             println!("{message_id}");
         }
+        Command::SendFile {
+            peer_id,
+            path,
+            mime,
+        } => {
+            let proxy = connect().await?;
+            let message_id = proxy
+                .send_attachment(&peer_id, &path, &mime)
+                .await
+                .context("send attachment")?;
+            println!("{message_id}");
+        }
+        Command::Download { hash, destination } => {
+            let proxy = connect().await?;
+            proxy
+                .save_attachment(&hash, &destination)
+                .await
+                .context("save attachment")?;
+            println!("{destination}");
+        }
+        Command::Transfer { command } => {
+            let proxy = connect().await?;
+            match command {
+                TransferCommand::Status { hash } => {
+                    let state = proxy
+                        .get_transfer_state(&hash)
+                        .await
+                        .context("get transfer state")?;
+                    for key in [
+                        ipc::TRANSFER_HASH,
+                        ipc::TRANSFER_PEER_ID,
+                        ipc::TRANSFER_NAME,
+                        ipc::TRANSFER_SIZE,
+                        ipc::TRANSFER_BYTES,
+                        ipc::TRANSFER_PHASE,
+                        ipc::TRANSFER_REASON,
+                    ] {
+                        println!("{key}: {}", message_value(&state, key));
+                    }
+                }
+                TransferCommand::Cancel { hash } => {
+                    proxy
+                        .cancel_transfer(&hash)
+                        .await
+                        .context("cancel transfer")?;
+                    println!("cancelled");
+                }
+            }
+        }
         Command::Messages {
             peer_id,
             limit,
@@ -249,7 +362,7 @@ async fn run(command: Command) -> Result<()> {
                         message_value(&message, ipc::MESSAGE_STATE),
                         message_value(&message, ipc::MESSAGE_SENT_AT),
                         message_value(&message, ipc::MESSAGE_SENDER_ID),
-                        message_value(&message, ipc::MESSAGE_BODY),
+                        attachment_label(&message),
                     );
                 }
             }
@@ -266,6 +379,107 @@ async fn run(command: Command) -> Result<()> {
                 .await
                 .context("mark read")?;
             println!("marked read");
+        }
+        Command::Call { command } => {
+            let proxy = connect().await?;
+            match command {
+                CallCommand::Start { peer_id } => {
+                    println!(
+                        "{}",
+                        proxy.start_call(&peer_id).await.context("start call")?
+                    );
+                }
+                CallCommand::Accept { call_id } => {
+                    proxy.accept_call(&call_id).await.context("accept call")?;
+                    println!("accepted");
+                }
+                CallCommand::Decline { call_id } => {
+                    proxy.decline_call(&call_id).await.context("decline call")?;
+                    println!("declined");
+                }
+                CallCommand::Hangup { call_id } => {
+                    proxy.hangup_call(&call_id).await.context("hangup call")?;
+                    println!("hung up");
+                }
+                CallCommand::Status => {
+                    let state = proxy.get_call_state().await.context("get call state")?;
+                    if state.is_empty() {
+                        println!("idle");
+                    } else {
+                        for key in [
+                            ipc::CALL_ID,
+                            ipc::CALL_PEER_ID,
+                            ipc::CALL_DIRECTION,
+                            ipc::CALL_STATE,
+                            ipc::CALL_STARTED_AT,
+                            ipc::CALL_CONNECTED_AT,
+                        ] {
+                            println!("{key}: {}", message_value(&state, key));
+                        }
+                    }
+                }
+            }
+        }
+        Command::Remote { command } => {
+            let proxy = connect().await?;
+            match command {
+                RemoteCommand::Request { peer_id } => {
+                    let session = proxy
+                        .request_remote_session(&peer_id)
+                        .await
+                        .context("request remote session")?;
+                    for key in [
+                        ipc::REMOTE_SESSION_ID,
+                        ipc::REMOTE_PEER_ID,
+                        ipc::REMOTE_ROLE,
+                        ipc::REMOTE_STATE,
+                        ipc::REMOTE_PIN,
+                    ] {
+                        println!("{key}: {}", message_value(&session, key));
+                    }
+                }
+                RemoteCommand::Accept { session_id, pin } => {
+                    proxy
+                        .accept_remote_session(&session_id, &pin)
+                        .await
+                        .context("accept remote session")?;
+                    println!("accepted");
+                }
+                RemoteCommand::Deny { session_id } => {
+                    proxy
+                        .deny_remote_session(&session_id)
+                        .await
+                        .context("deny remote session")?;
+                    println!("denied");
+                }
+                RemoteCommand::End { session_id } => {
+                    proxy
+                        .end_remote_session(&session_id)
+                        .await
+                        .context("end remote session")?;
+                    println!("ended");
+                }
+                RemoteCommand::Status => {
+                    let session = proxy
+                        .get_remote_session()
+                        .await
+                        .context("get remote session")?;
+                    if session.is_empty() {
+                        println!("idle");
+                    } else {
+                        for key in [
+                            ipc::REMOTE_SESSION_ID,
+                            ipc::REMOTE_PEER_ID,
+                            ipc::REMOTE_FINGERPRINT,
+                            ipc::REMOTE_ROLE,
+                            ipc::REMOTE_STATE,
+                            ipc::REMOTE_INDICATOR,
+                        ] {
+                            println!("{key}: {}", message_value(&session, key));
+                        }
+                    }
+                }
+            }
         }
         Command::Policy { command } => {
             let proxy = connect().await?;
@@ -402,6 +616,16 @@ fn run_settings(command: SettingsCommand) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn attachment_label(message: &std::collections::HashMap<String, zbus::OwnedVariant>) -> String {
+    let name = message_value(message, ipc::MESSAGE_ATTACHMENT_NAME);
+    let hash = message_value(message, ipc::MESSAGE_ATTACHMENT_HASH);
+    if name.is_empty() {
+        message_value(message, ipc::MESSAGE_BODY)
+    } else {
+        format!("[{name} {hash}]")
+    }
 }
 
 fn group_fingerprint(value: &str) -> String {

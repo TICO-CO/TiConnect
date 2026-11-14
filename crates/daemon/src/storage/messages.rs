@@ -88,8 +88,8 @@ pub fn insert(
     let inserted = connection.execute(
         "INSERT OR IGNORE INTO messages
          (id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id, body,
-          attachment_hash, signature, state)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+          attachment_hash, attachment_name, attachment_size, attachment_mime, signature, state)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             record.message_id.to_string(),
             record.conversation_id,
@@ -102,6 +102,15 @@ pub fn insert(
             record.target_id,
             record.body,
             record.attachment_hash,
+            record.attachment_name,
+            record
+                .attachment_size
+                .map(i64::try_from)
+                .transpose()
+                .map_err(|_| {
+                    StorageError::InvalidData("attachment size overflow".to_owned())
+                })?,
+            record.attachment_mime,
             signature,
             state.map(MessageState::as_str),
         ],
@@ -133,7 +142,8 @@ pub fn get(connection: &Connection, id: &str) -> Result<Option<StoredMessage>, S
     connection
         .query_row(
             "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                    body, attachment_hash, signature, state
+                    body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                    signature, state
              FROM messages WHERE id = ?1",
             params![id],
             row_to_message,
@@ -159,7 +169,8 @@ pub fn history(
 ) -> Result<Vec<StoredMessage>, StorageError> {
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                body, attachment_hash, signature, state
+                body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                signature, state
          FROM messages
          WHERE conversation_id = ?1 AND kind != 'ack'
          ORDER BY CASE WHEN sent_at > received_at THEN received_at ELSE sent_at END,
@@ -187,7 +198,8 @@ pub fn records_between(
 ) -> Result<Vec<StoredMessage>, StorageError> {
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                body, attachment_hash, signature, state
+                body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                signature, state
          FROM messages
          WHERE conversation_id = ?1 AND sender_id = ?2 AND seq >= ?3 AND seq <= ?4
            AND (state IS NULL OR state NOT IN ('expired', 'failed'))
@@ -251,7 +263,7 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
     let kind: String = row.get(6)?;
     let kind = MessageKind::from_str(&kind).map_err(to_sql_error)?;
     let seq: i64 = row.get(3)?;
-    let state: Option<String> = row.get(11)?;
+    let state: Option<String> = row.get(14)?;
     let state = state
         .map(|value| value.parse().map_err(to_sql_error))
         .transpose()?;
@@ -265,11 +277,18 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         target_id: row.get(7)?,
         body: row.get(8)?,
         attachment_hash: row.get(9)?,
+        attachment_name: row.get(10)?,
+        attachment_size: row
+            .get::<_, Option<i64>>(11)?
+            .map(u64::try_from)
+            .transpose()
+            .map_err(to_sql_error)?,
+        attachment_mime: row.get(12)?,
     };
     Ok(StoredMessage {
         record,
         received_at: row.get(5)?,
-        signature: row.get(10)?,
+        signature: row.get(13)?,
         state,
     })
 }

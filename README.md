@@ -8,22 +8,17 @@ the UI was never opened.
 
 ## Status
 
-Stages 1, 1.5, 3, 4, 5, 6, 7, and 8 automation are implemented. Stage 2 is
-implemented, with manual systemd/logout verification pending. Stage 4 discovery
-is implemented, with manual two-machine LAN verification pending. Stage 7 GTK4
-UI is implemented, with manual X11/Wayland and accessibility checks pending.
-Stage 8 overlay is implemented, with manual X11/Wayland, notification fallback,
-and focus checks pending.
-This includes workspace, settings, logging, typed errors, the architecture graph, the D-Bus
-daemon, the CLI, systemd/autostart packaging, Ed25519 identity, SQLite storage,
-settings reload, peer CRUD, mDNS advertisement and browsing, UDP broadcast
-fallback, a discovery candidate cache, SPAKE2 PIN and QR pairing, pinned
-QUIC/TLS transport, trusted peer revocation, automatic reconnect for trusted
-peers, signed text messages, history, outbox retry, gap sync, delivered and read
-receipts, per-peer policy, DND, an optional system tray, a GTK4 main window with
-peers, conversations, settings, and PIN/QR pairing, and a corner overlay with
-system-notification fallback. Attachments, calls, and remote desktop stages are
-not implemented yet.
+Stages 1–11 are implemented in automation. Manual systemd/logout, two-machine
+LAN, X11/Wayland, notification, audio-device, portal, and accessibility checks
+remain release gates. This includes workspace, settings, logging, typed errors,
+the architecture graph, the D-Bus daemon and CLI, systemd/autostart packaging,
+Ed25519 identity, SQLite storage, mDNS and broadcast discovery, SPAKE2 pairing,
+pinned QUIC/TLS transport, signed messaging with sync/receipts/policy, the GTK4
+window, overlay and notification fallback, resumable BLAKE3 attachments, Opus
+voice calls with daemon ringtone and jitter buffer, and PIN-gated consent-based
+remote desktop with portal capture, H.264, input injection, indicator, and kill
+switch. Stage 12 adds Flatpak metadata, hardened units, benchmarks, and release
+documentation.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -68,7 +63,7 @@ required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
 `security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
-sudo apt install libgtk-4-dev libadwaita-1-dev libwayland-dev wayland-protocols
+sudo apt install libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols cmake
 ```
 
 Ubuntu 24.04 does not package `libgtk4-layer-shell-dev`; Ubuntu 25.04+, Debian
@@ -213,6 +208,16 @@ Settings keys:
 | `overlay.timeout_secs` | integer | `5` | Card auto-dismiss timeout; valid range `1..=60` |
 | `read_receipts.enabled` | bool | `true` | Send delivered and read receipts |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
+| `attachments.max_size_mib` | integer | `2048` | Valid range `1..=102400` |
+| `calls.timeout_secs` | integer | `30` | Ringing timeout; valid range `5..=300` |
+| `calls.input_device` | string | empty | Optional input device name |
+| `calls.output_device` | string | empty | Optional output device name |
+| `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
+| `remote.pin_attempts` | integer | `3` | Valid range `1..=10` |
+| `remote.pin_ttl_secs` | integer | `300` | Valid range `30..=3600` |
+| `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
+| `video.fps` | integer | `30` | Valid range `5..=60` |
+| `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
 | `ringtone.path` | optional path | unset | Empty value clears it |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
 | `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
@@ -242,8 +247,9 @@ Settings keys:
 - Schema version is stored in `schema_version` and migrations run on every open.
   Migration failure refuses startup.
 - Stage 3 creates `peers`, `conversations`, `messages`, `outbox`, `attachments`,
-  and `peer_state`. Stage 6 adds `peers.public_key` and `messages.state` and
-  activates the conversation, message, outbox, and peer-state repositories.
+  and `peer_state`. Stage 6 adds `peers.public_key` and `messages.state`. Stage 9
+  adds attachment names and message attachment metadata plus
+  `transfer_partials` for resumable transfers.
 - Configuration lives only in `config.toml`; SQLite stores no configuration.
 - Changing `data_dir` while the daemon is running does not move an existing database;
   it applies on the next start.
@@ -289,6 +295,44 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 `GetMessageState`, `SetPeerPolicy`, and `SetDnd`. Signals are `MessageReceived`,
 `MessageStateChanged`, `SyncCompleted`, and `PolicyChanged`.
 
+## Attachments
+
+- Files are hashed with BLAKE3 and stored under
+  `$XDG_DATA_HOME/ticonnect/attachments/<first2>/<hash>`; identical content
+  dedupes across messages and peers.
+- Messages carry name, size, MIME, and hash. Transfers use a dedicated QUIC
+  bidirectional stream, 64 KiB chunks, persisted missing ranges, and a final
+  hash check before publication.
+- `ticonnect-cli send-file <peer> <path> [--mime TYPE]` sends an attachment.
+- `ticonnect-cli download <hash> <destination>` saves it.
+- `ticonnect-cli transfer status <hash>` and `transfer cancel <hash>` inspect or
+  cancel a transfer.
+- Inbound `ignore` peers are dropped before transfer; `mute` stores silently.
+
+## Voice calls
+
+- The daemon owns `idle`, `ringing`, `in-call`, and `ended` states and rings with
+  the UI closed. Only one call is active per node.
+- Audio uses 48 kHz mono Opus with 20 ms frames over QUIC datagrams, a bounded
+  jitter buffer, packet-loss concealment, and a playback ring. Microphones open
+  only after call acceptance.
+- Ringtone path comes from `ringtone.path`; a bundled generated tone is the
+  fallback. DND suppresses ringing but still reports the call.
+- D-Bus: `StartCall`, `AcceptCall`, `DeclineCall`, `HangupCall`,
+  `GetCallState`; signals `IncomingCall`, `CallStateChanged`, `CallEnded`.
+
+## Remote desktop
+
+- A viewer requests a session from a trusted online peer. The host shows the
+  viewer fingerprint and a fresh PIN, then consents. The viewer enters the PIN.
+- Sessions are scoped to one peer and require per-session consent. A visible
+  indicator stays on while active, and `EndRemoteSession` is a hard kill switch.
+- Capture uses the XDG RemoteDesktop portal and PipeWire fd; input uses libei
+  when available and X11 XTEST otherwise. H.264 encodes at 1080p in software.
+- D-Bus: `RequestRemoteSession`, `AcceptRemoteSession`, `DenyRemoteSession`,
+  `EndRemoteSession`, `GetRemoteSession`; signals `RemoteSessionRequested`,
+  `RemoteSessionStarted`, `RemoteSessionEnded`, `RemoteIndicatorChanged`.
+
 ## Pairing and transport
 
 - Pairing uses SPAKE2 over the `ticonnect-pair/1` ALPN. Session transport uses
@@ -333,4 +377,5 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 ## Documentation
 
 User-facing documentation lives in this file and `docs/`. Rustdoc comments are
-not used in this repository.
+not used in this repository. See `docs/install.md`, `docs/performance.md`, `docs/remote-desktop.md`, and
+`docs/release-checklist.md` for release operations.

@@ -3,6 +3,7 @@
 pub mod discovery;
 pub mod pairing;
 pub mod tls;
+pub mod transfer;
 pub mod transport;
 
 #[cfg(test)]

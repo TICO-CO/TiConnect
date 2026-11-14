@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use ticonnect_core::ipc;
@@ -10,9 +10,14 @@ use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::{DBusError, OwnedVariant, Str};
 
+use std::sync::Arc;
+
+use crate::attachments::{AttachmentService, AttachmentsError, TransferEvent, TransferSnapshot};
+use crate::calls::{CallEvent, CallService};
 use crate::identity::PublicIdentity;
 use crate::messaging::{MessagingEvent, MessagingService};
 use crate::pairing_service::{PairingService, StartPairingResponse};
+use crate::remote::{RemoteEventMessage, RemoteService, RemoteSnapshot};
 use crate::runtime::Shutdown;
 use crate::storage::{DatabaseHandle, Peer, PeerPolicy, StorageError, StoredMessage};
 use crate::trust::TrustStore;
@@ -38,6 +43,9 @@ pub struct DaemonState {
     transport: Arc<Transport>,
     pairing: Arc<PairingService>,
     messaging: Arc<MessagingService>,
+    attachments: Arc<AttachmentService>,
+    calls: Arc<CallService>,
+    remote: Arc<RemoteService>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -47,6 +55,9 @@ pub enum DaemonInitError {
 
     #[error(transparent)]
     Transport(#[from] ticonnect_net::transport::TransportError),
+
+    #[error(transparent)]
+    Attachments(#[from] AttachmentsError),
 }
 
 impl DaemonState {
@@ -86,8 +97,47 @@ impl DaemonState {
             transport.clone(),
             settings.clone(),
         ));
+        let attachments = Arc::new(
+            AttachmentService::new(
+                database.clone(),
+                settings
+                    .data_dir()
+                    .map_err(|error| {
+                        DaemonInitError::Attachments(AttachmentsError::Invalid(error.to_string()))
+                    })?
+                    .join("attachments"),
+                transport.clone(),
+                settings.clone(),
+            )
+            .map_err(DaemonInitError::Attachments)?,
+        );
+        let calls = Arc::new(CallService::new(
+            public.node_id(),
+            database.clone(),
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+            Arc::new(ticonnect_media::ringtone::RodioRingtone::new()),
+        ));
+        let remote = Arc::new(RemoteService::new(
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+            Arc::new(crate::remote::DesktopRemoteHost::default()),
+        ));
         Ok(Self::new(
-            shutdown, public, settings, database, discovery, trust, transport, pairing, messaging,
+            shutdown,
+            public,
+            settings,
+            database,
+            discovery,
+            trust,
+            transport,
+            pairing,
+            messaging,
+            attachments,
+            calls,
+            remote,
         ))
     }
 
@@ -102,6 +152,9 @@ impl DaemonState {
         transport: Arc<Transport>,
         pairing: Arc<PairingService>,
         messaging: Arc<MessagingService>,
+        attachments: Arc<AttachmentService>,
+        calls: Arc<CallService>,
+        remote: Arc<RemoteService>,
     ) -> Self {
         Self {
             started_at: Instant::now(),
@@ -114,6 +167,9 @@ impl DaemonState {
             transport,
             pairing,
             messaging,
+            attachments,
+            calls,
+            remote,
         }
     }
 
@@ -149,6 +205,18 @@ impl DaemonState {
         &self.messaging
     }
 
+    pub fn attachments(&self) -> &Arc<AttachmentService> {
+        &self.attachments
+    }
+
+    pub fn calls(&self) -> &Arc<CallService> {
+        &self.calls
+    }
+
+    pub fn remote(&self) -> &Arc<RemoteService> {
+        &self.remote
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings
             .read()
@@ -158,6 +226,9 @@ impl DaemonState {
 
     pub fn replace_settings(&self, settings: Settings) {
         self.messaging.apply_settings(settings.clone());
+        self.attachments.apply_settings(settings.clone());
+        self.calls.apply_settings(settings.clone());
+        self.remote.apply_settings(settings.clone());
         *self
             .settings
             .write()
@@ -428,7 +499,24 @@ impl DaemonService {
             .list_messages(conversation_id, limit, offset)
             .await
             .map_err(messaging_error)?;
-        Ok(messages.into_iter().map(stored_message_variant).collect())
+        let mut values = Vec::with_capacity(messages.len());
+        for message in messages {
+            let mut variant = stored_message_variant(message);
+            let hash = variant
+                .get(ipc::MESSAGE_ATTACHMENT_HASH)
+                .map(display_variant_string)
+                .unwrap_or_default();
+            if !hash.is_empty()
+                && let Ok(Some(path)) = self.state.attachments().path(&hash).await
+            {
+                variant.insert(
+                    ipc::MESSAGE_ATTACHMENT_PATH.to_owned(),
+                    string_variant(path.display().to_string()),
+                );
+            }
+            values.push(variant);
+        }
+        Ok(values)
     }
 
     async fn count_messages(&self, conversation_id: &str) -> Result<u32, ServiceError> {
@@ -470,6 +558,159 @@ impl DaemonService {
             .set_peer_policy(peer_id, policy)
             .await
             .map_err(messaging_error)
+    }
+
+    async fn start_call(&self, peer_id: &str) -> Result<String, ServiceError> {
+        let call = self
+            .state
+            .calls()
+            .start_call(peer_id)
+            .await
+            .map_err(call_error)?;
+        Ok(call.id.to_string())
+    }
+
+    async fn accept_call(&self, call_id: &str) -> Result<(), ServiceError> {
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .accept_call(call_id)
+            .await
+            .map_err(call_error)?;
+        Ok(())
+    }
+
+    async fn decline_call(&self, call_id: &str) -> Result<(), ServiceError> {
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .decline_call(call_id)
+            .await
+            .map_err(call_error)
+    }
+
+    async fn hangup_call(&self, call_id: &str) -> Result<(), ServiceError> {
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .hangup_call(call_id)
+            .await
+            .map_err(call_error)
+    }
+
+    async fn get_call_state(&self) -> HashMap<String, OwnedVariant> {
+        self.state
+            .calls()
+            .state()
+            .map_or_else(HashMap::new, |call| call_variant(&call))
+    }
+
+    async fn request_remote_session(
+        &self,
+        peer_id: &str,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let snapshot = self
+            .state
+            .remote()
+            .request_session(peer_id)
+            .await
+            .map_err(remote_error)?;
+        Ok(remote_variant(&snapshot))
+    }
+
+    async fn accept_remote_session(&self, session_id: &str, pin: &str) -> Result<(), ServiceError> {
+        self.state
+            .remote()
+            .accept_session(session_id, pin)
+            .await
+            .map_err(remote_error)?;
+        Ok(())
+    }
+
+    async fn deny_remote_session(&self, session_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .remote()
+            .deny_session(session_id)
+            .await
+            .map_err(remote_error)
+    }
+
+    async fn end_remote_session(&self, session_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .remote()
+            .end_session(session_id)
+            .await
+            .map_err(remote_error)
+    }
+
+    async fn get_remote_session(&self) -> HashMap<String, OwnedVariant> {
+        self.state
+            .remote()
+            .snapshot()
+            .map_or_else(HashMap::new, |snapshot| remote_variant(&snapshot))
+    }
+
+    async fn send_attachment(
+        &self,
+        peer_id: &str,
+        path: &str,
+        mime: &str,
+    ) -> Result<String, ServiceError> {
+        let attachment = self
+            .state
+            .attachments()
+            .prepare_file(std::path::Path::new(path), Some(mime))
+            .await
+            .map_err(attachment_error)?;
+        self.state
+            .attachments()
+            .record_local(&attachment)
+            .await
+            .map_err(attachment_error)?;
+        let message_id = self
+            .state
+            .messaging()
+            .send_attachment(peer_id, &attachment)
+            .await
+            .map_err(messaging_error)?;
+        Ok(message_id.to_string())
+    }
+
+    async fn get_transfer_state(
+        &self,
+        hash: &str,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let state = self
+            .state
+            .attachments()
+            .transfer_state(hash)
+            .ok_or_else(|| ServiceError::NotFound(format!("unknown transfer: {hash}")))?;
+        Ok(transfer_variant(&state))
+    }
+
+    async fn cancel_transfer(&self, hash: &str) -> Result<(), ServiceError> {
+        if !self.state.attachments().cancel(hash) {
+            return Err(ServiceError::NotFound(format!("unknown transfer: {hash}")));
+        }
+        Ok(())
+    }
+
+    async fn save_attachment(&self, hash: &str, destination: &str) -> Result<bool, ServiceError> {
+        self.state
+            .attachments()
+            .save(hash, std::path::Path::new(destination))
+            .await
+            .map_err(attachment_error)
+    }
+
+    async fn get_attachment_path(&self, hash: &str) -> Result<String, ServiceError> {
+        self.state
+            .attachments()
+            .path(hash)
+            .await
+            .map_err(attachment_error)?
+            .map(|path| path.display().to_string())
+            .ok_or_else(|| ServiceError::NotFound(format!("unknown attachment: {hash}")))
     }
 
     async fn set_dnd(&self, enabled: bool) -> Result<(), ServiceError> {
@@ -571,6 +812,70 @@ impl DaemonService {
         peer_id: &str,
         policy: &str,
     ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn remote_session_requested(
+        emitter: SignalEmitter<'_>,
+        session: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn remote_session_started(
+        emitter: SignalEmitter<'_>,
+        session_id: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn remote_session_ended(
+        emitter: SignalEmitter<'_>,
+        session_id: &str,
+        reason: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn remote_indicator_changed(
+        emitter: SignalEmitter<'_>,
+        session_id: &str,
+        visible: bool,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn incoming_call(
+        emitter: SignalEmitter<'_>,
+        call: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn call_state_changed(
+        emitter: SignalEmitter<'_>,
+        call_id: &str,
+        state: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn call_ended(
+        emitter: SignalEmitter<'_>,
+        call_id: &str,
+        reason: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn transfer_progress(
+        emitter: SignalEmitter<'_>,
+        hash: &str,
+        bytes: u64,
+        total: u64,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn transfer_done(emitter: SignalEmitter<'_>, hash: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn transfer_failed(
+        emitter: SignalEmitter<'_>,
+        hash: &str,
+        reason: &str,
+    ) -> zbus::Result<()>;
 }
 
 pub(crate) async fn emit_messaging_event(
@@ -652,7 +957,19 @@ fn stored_message_variant_with(
         ),
         (
             ipc::MESSAGE_ATTACHMENT_HASH.to_owned(),
-            string_variant(record.attachment_hash.unwrap_or_default()),
+            string_variant(record.attachment_hash.clone().unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_ATTACHMENT_NAME.to_owned(),
+            string_variant(record.attachment_name.clone().unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_ATTACHMENT_SIZE.to_owned(),
+            OwnedVariant::from(record.attachment_size.unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_ATTACHMENT_MIME.to_owned(),
+            string_variant(record.attachment_mime.clone().unwrap_or_default()),
         ),
         (
             ipc::MESSAGE_STATE.to_owned(),
@@ -664,6 +981,10 @@ fn stored_message_variant_with(
         ),
         (ipc::MESSAGE_NOTIFY.to_owned(), OwnedVariant::from(notify)),
     ])
+}
+
+fn display_variant_string(value: &OwnedVariant) -> String {
+    <&str>::try_from(value).map_or_else(|_| String::new(), str::to_owned)
 }
 
 fn setting_variant(value: SettingValue) -> OwnedVariant {
@@ -801,6 +1122,187 @@ fn start_pairing_variant(started: &StartPairingResponse) -> HashMap<String, Owne
     ])
 }
 
+pub(crate) async fn emit_transfer_event(
+    connection: &zbus::Connection,
+    event: TransferEvent,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    match event {
+        TransferEvent::Progress(snapshot) => {
+            DaemonService::transfer_progress(emitter, &snapshot.hash, snapshot.bytes, snapshot.size)
+                .await
+        }
+        TransferEvent::Done { hash } => DaemonService::transfer_done(emitter, &hash).await,
+        TransferEvent::Failed { hash, reason } => {
+            DaemonService::transfer_failed(emitter, &hash, &reason).await
+        }
+    }
+}
+
+pub(crate) async fn emit_remote_event(
+    connection: &zbus::Connection,
+    event: RemoteEventMessage,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    match event {
+        RemoteEventMessage::Requested(snapshot) => {
+            DaemonService::remote_session_requested(emitter, remote_variant(&snapshot)).await
+        }
+        RemoteEventMessage::Started(snapshot) => {
+            DaemonService::remote_session_started(emitter, &snapshot.session_id).await
+        }
+        RemoteEventMessage::Ended { session_id, reason } => {
+            DaemonService::remote_session_ended(emitter, &session_id, &reason).await
+        }
+        RemoteEventMessage::Indicator {
+            session_id,
+            visible,
+        } => DaemonService::remote_indicator_changed(emitter, &session_id, visible).await,
+    }
+}
+
+fn remote_variant(snapshot: &RemoteSnapshot) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::REMOTE_SESSION_ID.to_owned(),
+            string_variant(snapshot.session_id.clone()),
+        ),
+        (
+            ipc::REMOTE_PEER_ID.to_owned(),
+            string_variant(snapshot.peer_id.clone()),
+        ),
+        (
+            ipc::REMOTE_FINGERPRINT.to_owned(),
+            string_variant(snapshot.fingerprint.clone()),
+        ),
+        (
+            ipc::REMOTE_ROLE.to_owned(),
+            string_variant(snapshot.role.clone()),
+        ),
+        (
+            ipc::REMOTE_STATE.to_owned(),
+            string_variant(snapshot.state.clone()),
+        ),
+        (
+            ipc::REMOTE_PIN.to_owned(),
+            string_variant(snapshot.pin.clone()),
+        ),
+        (
+            ipc::REMOTE_INDICATOR.to_owned(),
+            OwnedVariant::from(snapshot.indicator),
+        ),
+        (
+            ipc::REMOTE_EXPIRES_AT.to_owned(),
+            OwnedVariant::from(snapshot.expires_at),
+        ),
+    ])
+}
+
+fn remote_error(error: crate::remote::RemoteError) -> ServiceError {
+    tracing::warn!(%error, "remote desktop request failed");
+    ServiceError::Failed(error.to_string())
+}
+
+pub(crate) async fn emit_call_event(
+    connection: &zbus::Connection,
+    event: CallEvent,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    match event {
+        CallEvent::IncomingCall(call) => {
+            DaemonService::incoming_call(emitter, call_variant(&call)).await
+        }
+        CallEvent::StateChanged(call) => {
+            DaemonService::call_state_changed(emitter, &call.id.to_string(), call.state.as_str())
+                .await
+        }
+        CallEvent::Ended {
+            call_id, reason, ..
+        } => DaemonService::call_ended(emitter, &call_id.to_string(), &reason).await,
+    }
+}
+
+fn call_variant(call: &crate::calls::state::CallInfo) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (ipc::CALL_ID.to_owned(), string_variant(call.id.to_string())),
+        (
+            ipc::CALL_PEER_ID.to_owned(),
+            string_variant(call.peer_id.clone()),
+        ),
+        (
+            ipc::CALL_DIRECTION.to_owned(),
+            string_variant(
+                match call.direction {
+                    ticonnect_core::call::CallDirection::Incoming => "incoming",
+                    ticonnect_core::call::CallDirection::Outgoing => "outgoing",
+                }
+                .to_owned(),
+            ),
+        ),
+        (
+            ipc::CALL_STATE.to_owned(),
+            string_variant(call.state.as_str().to_owned()),
+        ),
+        (
+            ipc::CALL_STARTED_AT.to_owned(),
+            OwnedVariant::from(call.created_at),
+        ),
+        (
+            ipc::CALL_CONNECTED_AT.to_owned(),
+            OwnedVariant::from(call.connected_at.unwrap_or_default()),
+        ),
+    ])
+}
+
+fn parse_call_id(value: &str) -> Result<ticonnect_core::call::CallId, ServiceError> {
+    value
+        .parse()
+        .map_err(|_| ServiceError::Failed(format!("invalid call id: {value}")))
+}
+
+fn call_error(error: crate::calls::CallError) -> ServiceError {
+    tracing::warn!(%error, "call request failed");
+    ServiceError::Failed(error.to_string())
+}
+
+fn transfer_variant(snapshot: &TransferSnapshot) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::TRANSFER_HASH.to_owned(),
+            string_variant(snapshot.hash.clone()),
+        ),
+        (
+            ipc::TRANSFER_PEER_ID.to_owned(),
+            string_variant(snapshot.peer_id.clone()),
+        ),
+        (
+            ipc::TRANSFER_NAME.to_owned(),
+            string_variant(snapshot.name.clone()),
+        ),
+        (
+            ipc::TRANSFER_SIZE.to_owned(),
+            OwnedVariant::from(snapshot.size),
+        ),
+        (
+            ipc::TRANSFER_BYTES.to_owned(),
+            OwnedVariant::from(snapshot.bytes),
+        ),
+        (
+            ipc::TRANSFER_PHASE.to_owned(),
+            string_variant(snapshot.phase.as_str().to_owned()),
+        ),
+        (
+            ipc::TRANSFER_REASON.to_owned(),
+            string_variant(snapshot.reason.clone()),
+        ),
+    ])
+}
+
+fn attachment_error(error: AttachmentsError) -> ServiceError {
+    tracing::warn!(%error, "attachment request failed");
+    ServiceError::Failed(error.to_string())
+}
+
 fn messaging_error(error: crate::messaging::MessagingError) -> ServiceError {
     tracing::warn!(%error, "messaging request failed");
     ServiceError::Failed(error.to_string())
@@ -928,6 +1430,30 @@ mod tests {
             transport.clone(),
             settings.clone(),
         ));
+        let attachments = Arc::new(
+            AttachmentService::new(
+                database.clone(),
+                dir.join("attachments"),
+                transport.clone(),
+                settings.clone(),
+            )
+            .expect("attachments"),
+        );
+        let calls = Arc::new(CallService::new(
+            public.node_id(),
+            database.clone(),
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+            Arc::new(ticonnect_media::ringtone::NullRingtone::default()),
+        ));
+        calls.set_media_enabled(false);
+        let remote = Arc::new(RemoteService::new(
+            trust.clone(),
+            transport.clone(),
+            settings.clone(),
+            Arc::new(crate::remote::NoopRemoteHost),
+        ));
         let state = Arc::new(DaemonState::new(
             Arc::new(Shutdown::new()),
             public,
@@ -938,6 +1464,9 @@ mod tests {
             transport,
             pairing,
             messaging,
+            attachments,
+            calls,
+            remote,
         ));
         (DaemonService::new(state), dir)
     }

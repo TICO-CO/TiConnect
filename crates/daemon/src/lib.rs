@@ -1,11 +1,14 @@
 #![forbid(unsafe_code)]
 
+pub mod attachments;
+pub mod calls;
 pub mod config_watch;
 pub mod discovery_service;
 pub mod identity;
 pub mod messaging;
 pub mod pairing_service;
 pub mod reconnect_service;
+pub mod remote;
 pub mod runtime;
 pub mod service;
 pub mod storage;

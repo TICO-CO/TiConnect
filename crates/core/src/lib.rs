@@ -1,12 +1,15 @@
 #![forbid(unsafe_code)]
 
 pub mod ack;
+pub mod attachment;
+pub mod call;
 pub mod canonical;
 pub mod fingerprint;
 pub mod id;
 pub mod identity;
 pub mod ipc;
 pub mod message;
+pub mod remote;
 pub mod sign;
 pub mod wire;
 

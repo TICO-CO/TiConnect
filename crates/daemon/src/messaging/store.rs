@@ -17,6 +17,25 @@ pub fn text(local: NodeId, peer: NodeId, seq: u64, sent_at: i64, body: String) -
     )
 }
 
+pub fn attachment(
+    local: NodeId,
+    peer: NodeId,
+    seq: u64,
+    sent_at: i64,
+    attachment: &ticonnect_core::attachment::AttachmentRef,
+) -> Result<MessageRecord, MessagingError> {
+    MessageRecord::new(
+        conversation_id(local, peer),
+        local.to_string(),
+        seq,
+        sent_at,
+        attachment.kind(),
+        None,
+    )
+    .with_attachment(attachment)
+    .map_err(MessagingError::Message)
+}
+
 pub fn ack(
     local: NodeId,
     peer: NodeId,

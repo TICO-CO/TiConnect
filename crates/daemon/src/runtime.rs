@@ -7,11 +7,14 @@ use tokio::signal::unix::{SignalKind, signal};
 use tokio::sync::watch;
 use zbus::object_server::SignalEmitter;
 
+use crate::attachments;
+use crate::calls;
 use crate::config_watch;
 use crate::discovery_service;
 use crate::messaging;
 use crate::pairing_service;
 use crate::reconnect_service;
+use crate::remote;
 use crate::service::{DaemonService, DaemonState};
 use crate::tray;
 
@@ -75,6 +78,77 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
     let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let (transfer_sender, transfer_receiver) = tokio::sync::mpsc::unbounded_channel();
+    state.messaging().set_transfer_sender(transfer_sender);
+    let (call_sender, call_receiver) = tokio::sync::mpsc::unbounded_channel();
+    let (audio_sender, audio_receiver) = tokio::sync::mpsc::unbounded_channel();
+    state
+        .messaging()
+        .set_call_channels(call_sender, audio_sender);
+    let (remote_sender, remote_receiver) = tokio::sync::mpsc::unbounded_channel();
+    state.messaging().set_remote_sender(remote_sender);
+    let remote_task = remote::spawn(state.remote().as_ref().clone(), remote_receiver);
+    let mut remote_events = state.remote().subscribe();
+    let remote_connection = connection.clone();
+    let remote_event_task = tokio::spawn(async move {
+        loop {
+            match remote_events.recv().await {
+                Ok(event) => {
+                    if let Err(error) =
+                        crate::service::emit_remote_event(&remote_connection, event).await
+                    {
+                        tracing::warn!(%error, "failed to emit remote signal");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+    let calls_task = calls::spawn(
+        state.calls().as_ref().clone(),
+        call_receiver,
+        audio_receiver,
+    );
+    let mut call_events = state.calls().subscribe();
+    let call_connection = connection.clone();
+    let call_event_task = tokio::spawn(async move {
+        loop {
+            match call_events.recv().await {
+                Ok(event) => {
+                    if let Err(error) =
+                        crate::service::emit_call_event(&call_connection, event).await
+                    {
+                        tracing::warn!(%error, "failed to emit call signal");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
+    let attachments_task = attachments::spawn(
+        state.attachments().as_ref().clone(),
+        state.messaging().subscribe(),
+        transfer_receiver,
+    );
+    let mut transfer_events = state.attachments().subscribe();
+    let transfer_connection = connection.clone();
+    let transfer_event_task = tokio::spawn(async move {
+        loop {
+            match transfer_events.recv().await {
+                Ok(event) => {
+                    if let Err(error) =
+                        crate::service::emit_transfer_event(&transfer_connection, event).await
+                    {
+                        tracing::warn!(%error, "failed to emit transfer signal");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
     let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
     let tray_task = tray::spawn(
         connection.clone(),
@@ -93,6 +167,12 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     discovery_task.abort();
     pairing_task.abort();
     messaging_task.abort();
+    attachments_task.abort();
+    transfer_event_task.abort();
+    calls_task.abort();
+    call_event_task.abort();
+    remote_task.abort();
+    remote_event_task.abort();
     tray_task.abort();
     reconnect_task.abort();
     state.transport().shutdown().await;

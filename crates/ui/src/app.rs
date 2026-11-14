@@ -8,12 +8,14 @@ use tokio::sync::mpsc;
 use crate::autostart;
 use crate::client::{self, DaemonEvent, Identity, LinkHandle, PairingStart, Status};
 use crate::model::{
-    Candidate, CandidatePresentation, ConversationModel, Message, Peer, PeerListModel, PeerPolicy,
-    PeerPresentation, SettingsForm,
+    Call, Candidate, CandidatePresentation, ConversationModel, Message, Peer, PeerListModel,
+    PeerPolicy, PeerPresentation, RemoteSession, SettingsForm,
 };
+use crate::views::call::CallView;
 use crate::views::chat::ChatView;
 use crate::views::pairing::PairingView;
 use crate::views::peers::PeersView;
+use crate::views::remote::RemoteView;
 use crate::views::settings::SettingsView;
 
 trait SendInput {
@@ -31,8 +33,26 @@ pub enum Msg {
     Daemon(DaemonEvent),
     SelectPeer(String),
     Send(String),
+    ChooseAttachment,
+    AttachmentChosen(Result<Option<String>, String>),
+    SendAttachmentResult {
+        path: String,
+        result: Result<String, String>,
+    },
     LoadOlder,
     MarkRead,
+    StartCall,
+    AcceptCall,
+    DeclineCall,
+    HangupCall,
+    CallAction(Result<(), String>),
+    StartCallResult(Result<String, String>),
+    RequestRemote,
+    RemoteRequestResult(Result<RemoteSession, String>),
+    AcceptRemote(String, String),
+    DenyRemote(String),
+    EndRemote(String),
+    RemoteAction(Result<(), String>),
     OpenPairing,
     StartPairing,
     PairWithPin(String, String),
@@ -90,6 +110,10 @@ pub struct App {
     pairing: Option<PairingStart>,
     peers_view: PeersView,
     chat_view: ChatView,
+    call_view: CallView,
+    active_call: Option<Call>,
+    remote_view: RemoteView,
+    active_remote: Option<RemoteSession>,
     settings_view: SettingsView,
     pairing_view: PairingView,
     banner: adw::Banner,
@@ -144,7 +168,41 @@ impl SimpleComponent for App {
                 let sender = sender.clone();
                 move || sender.send_input(Msg::MarkRead)
             },
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::ChooseAttachment)
+            },
         );
+        let call_view = CallView::new(
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::AcceptCall)
+            },
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::DeclineCall)
+            },
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::HangupCall)
+            },
+        );
+        call_view.hide();
+        let remote_view = RemoteView::new(
+            {
+                let sender = sender.clone();
+                move |session_id, pin| sender.send_input(Msg::AcceptRemote(session_id, pin))
+            },
+            {
+                let sender = sender.clone();
+                move |session_id| sender.send_input(Msg::DenyRemote(session_id))
+            },
+            {
+                let sender = sender.clone();
+                move |session_id| sender.send_input(Msg::EndRemote(session_id))
+            },
+        );
+        remote_view.hide();
         let settings_view = SettingsView::new(
             {
                 let sender = sender.clone();
@@ -194,6 +252,27 @@ impl SimpleComponent for App {
         header_status.add_css_class("dim-label");
         header_status.set_margin_end(8);
         header.pack_end(&header_status);
+
+        let remote_button = gtk::Button::from_icon_name("network-transmit-receive-symbolic");
+        remote_button.set_tooltip_text(Some("Request remote desktop"));
+        remote_button
+            .update_property(&[gtk::accessible::Property::Label("Request remote desktop")]);
+        remote_button.add_css_class("flat");
+        {
+            let sender = sender.clone();
+            remote_button.connect_clicked(move |_| sender.send_input(Msg::RequestRemote));
+        }
+        header.pack_end(&remote_button);
+
+        let call_button = gtk::Button::from_icon_name("call-start-symbolic");
+        call_button.set_tooltip_text(Some("Start a voice call"));
+        call_button.update_property(&[gtk::accessible::Property::Label("Start a voice call")]);
+        call_button.add_css_class("flat");
+        {
+            let sender = sender.clone();
+            call_button.connect_clicked(move |_| sender.send_input(Msg::StartCall));
+        }
+        header.pack_end(&call_button);
 
         let chat_button = gtk::Button::from_icon_name("chat-bubbles-symbolic");
         chat_button.set_tooltip_text(Some("Conversation"));
@@ -252,6 +331,8 @@ impl SimpleComponent for App {
         stack.set_vexpand(true);
         stack.add_named(&empty, Some("empty"));
         stack.add_named(&chat_view.root, Some("chat"));
+        stack.add_named(&call_view.root, Some("call"));
+        stack.add_named(&remote_view.root, Some("remote"));
         stack.add_named(&settings_view.root, Some("settings"));
         stack.set_visible_child_name("empty");
         body.append(&stack);
@@ -351,6 +432,10 @@ impl SimpleComponent for App {
             pairing: None,
             peers_view,
             chat_view,
+            call_view,
+            active_call: None,
+            remote_view,
+            active_remote: None,
             settings_view,
             pairing_view,
             banner,
@@ -386,6 +471,51 @@ impl SimpleComponent for App {
                     });
                 }
             }
+            Msg::ChooseAttachment => {
+                let dialog = gtk::FileDialog::new();
+                dialog.set_title("Attach a file");
+                let sender_for_dialog = sender.clone();
+                dialog.open(
+                    Some(&self.window()),
+                    None::<&gtk::gio::Cancellable>,
+                    move |result| {
+                        let result = result
+                            .map(|file| file.path().map(|path| path.display().to_string()))
+                            .map_err(|error| error.to_string());
+                        sender_for_dialog.send_input(Msg::AttachmentChosen(result));
+                    },
+                );
+            }
+            Msg::AttachmentChosen(result) => match result {
+                Ok(Some(path)) => {
+                    let Some(peer) = self.peers.selected() else {
+                        self.toast("Select a peer before attaching a file".to_owned());
+                        return;
+                    };
+                    let peer_id = peer.id.clone();
+                    let link = self.link.clone();
+                    let sender = sender.clone();
+                    relm4::spawn(async move {
+                        let result = link
+                            .send_attachment(peer_id, path.clone())
+                            .await
+                            .map_err(|error| error.to_string());
+                        sender.send_input(Msg::SendAttachmentResult { path, result });
+                    });
+                }
+                Ok(None) => {}
+                Err(error) => self.toast(error),
+            },
+            Msg::SendAttachmentResult { path, result } => match result {
+                Ok(_) => {
+                    if let Some(peer) = self.peers.selected().cloned() {
+                        self.open_conversation(&peer.id, &sender);
+                    }
+                }
+                Err(error) => {
+                    self.toast(format!("Could not send {path}: {error}"));
+                }
+            },
             Msg::LoadOlder => {
                 let Some((conversation_id, limit, offset)) = self.conversation.older_page() else {
                     return;
@@ -404,6 +534,152 @@ impl SimpleComponent for App {
             }
             Msg::MarkRead => {
                 self.mark_read(&sender);
+            }
+            Msg::RequestRemote => {
+                let Some(peer) = self.peers.selected() else {
+                    self.toast("Select a peer before requesting remote access".to_owned());
+                    return;
+                };
+                let peer_id = peer.id.clone();
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .request_remote_session(peer_id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::RemoteRequestResult(result));
+                });
+            }
+            Msg::RemoteRequestResult(result) => match result {
+                Ok(session) => {
+                    let label = self.remote_peer_label(&session.peer_id);
+                    self.remote_view.show_viewer(&session.session_id, &label);
+                    self.active_remote = Some(session);
+                    self.stack.set_visible_child_name("remote");
+                }
+                Err(error) => self.toast(error),
+            },
+            Msg::AcceptRemote(session_id, pin) => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .accept_remote_session(session_id, pin)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::RemoteAction(result));
+                });
+            }
+            Msg::DenyRemote(session_id) => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .deny_remote_session(session_id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::RemoteAction(result));
+                });
+            }
+            Msg::EndRemote(session_id) => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .end_remote_session(session_id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::RemoteAction(result));
+                });
+            }
+            Msg::RemoteAction(result) => {
+                if let Err(error) = result {
+                    self.toast(error);
+                }
+            }
+            Msg::StartCall => {
+                let Some(peer) = self.peers.selected() else {
+                    self.toast("Select a peer before calling".to_owned());
+                    return;
+                };
+                let peer_id = peer.id.clone();
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .start_call(peer_id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::StartCallResult(result));
+                });
+            }
+            Msg::StartCallResult(result) => match result {
+                Ok(call_id) => {
+                    let peer = self.peers.selected();
+                    let call = Call {
+                        id: call_id,
+                        peer_id: peer.map(|peer| peer.id.clone()).unwrap_or_default(),
+                        direction: "outgoing".to_owned(),
+                        state: "ringing".to_owned(),
+                        started_at: 0,
+                        connected_at: 0,
+                    };
+                    let label = peer
+                        .map(PeerPresentation::display_label)
+                        .unwrap_or_else(|| "Unknown peer".to_owned());
+                    self.active_call = Some(call);
+                    self.call_view.show_ringing(&label);
+                    self.stack.set_visible_child_name("call");
+                }
+                Err(error) => self.toast(error),
+            },
+            Msg::AcceptCall => {
+                let Some(call) = self.active_call.clone() else {
+                    return;
+                };
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .accept_call(call.id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::CallAction(result));
+                });
+            }
+            Msg::DeclineCall => {
+                let Some(call) = self.active_call.clone() else {
+                    return;
+                };
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .decline_call(call.id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::CallAction(result));
+                });
+            }
+            Msg::HangupCall => {
+                let Some(call) = self.active_call.clone() else {
+                    return;
+                };
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .hangup_call(call.id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::CallAction(result));
+                });
+            }
+            Msg::CallAction(result) => {
+                if let Err(error) = result {
+                    self.toast(error);
+                }
             }
             Msg::OpenPairing => {
                 self.pairing_view.reset();
@@ -468,6 +744,16 @@ impl SimpleComponent for App {
             }
             Msg::Tick => {
                 self.pairing_view.tick();
+                if let Some(call) = &self.active_call
+                    && call.state == "in-call"
+                    && call.connected_at > 0
+                {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |duration| duration.as_secs());
+                    self.call_view
+                        .set_duration(now.saturating_sub(call.connected_at));
+                }
             }
             Msg::SetSetting(key, value) => {
                 if key == "appearance.color_scheme"
@@ -685,6 +971,15 @@ impl App {
         self.window.clone().upcast()
     }
 
+    fn remote_peer_label(&self, peer_id: &str) -> String {
+        self.peers
+            .peers()
+            .iter()
+            .find(|peer| peer.id == peer_id)
+            .map(PeerPresentation::display_label)
+            .unwrap_or_else(|| peer_id.to_owned())
+    }
+
     fn handle_daemon(&mut self, event: DaemonEvent, sender: &ComponentSender<App>) {
         match event {
             DaemonEvent::Connected => {
@@ -751,6 +1046,120 @@ impl App {
                     self.conversation.push(message);
                     self.render_conversation();
                     self.mark_read(sender);
+                }
+            }
+            DaemonEvent::TransferProgress { .. } => {}
+            DaemonEvent::TransferDone(_) => {
+                if let Some(peer) = self.peers.selected().cloned() {
+                    self.open_conversation(&peer.id, sender);
+                }
+            }
+            DaemonEvent::TransferFailed { hash, reason } => {
+                self.toast(format!("Attachment {hash} failed: {reason}"));
+            }
+            DaemonEvent::IncomingCall(call) => {
+                let label = self
+                    .peers
+                    .peers()
+                    .iter()
+                    .find(|peer| peer.id == call.peer_id)
+                    .map(PeerPresentation::display_label)
+                    .unwrap_or_else(|| call.peer_id.clone());
+                self.active_call = Some(call);
+                self.call_view.show_incoming(&label);
+                self.stack.set_visible_child_name("call");
+            }
+            DaemonEvent::CallStateChanged { call_id, state } => {
+                if self
+                    .active_call
+                    .as_ref()
+                    .is_some_and(|call| call.id == call_id)
+                {
+                    if let Some(call) = self.active_call.as_mut() {
+                        call.state = state.clone();
+                        if state == "in-call" && call.connected_at == 0 {
+                            call.connected_at = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map_or(0, |duration| duration.as_secs());
+                        }
+                    }
+                    let label = self
+                        .active_call
+                        .as_ref()
+                        .and_then(|call| {
+                            self.peers
+                                .peers()
+                                .iter()
+                                .find(|peer| peer.id == call.peer_id)
+                        })
+                        .map(PeerPresentation::display_label)
+                        .unwrap_or_else(|| "Call".to_owned());
+                    self.call_view.show_active(&label, &state);
+                }
+            }
+            DaemonEvent::RemoteSessionRequested(session) => {
+                let label = self.remote_peer_label(&session.peer_id);
+                if session.role == "viewer" {
+                    self.remote_view.show_viewer(&session.session_id, &label);
+                } else {
+                    self.remote_view.show_request(
+                        &session.session_id,
+                        &label,
+                        &session.fingerprint,
+                        &session.pin,
+                    );
+                }
+                self.active_remote = Some(session);
+                self.stack.set_visible_child_name("remote");
+            }
+            DaemonEvent::RemoteSessionStarted(session_id) => {
+                let label = self
+                    .active_remote
+                    .as_ref()
+                    .map(|session| self.remote_peer_label(&session.peer_id))
+                    .unwrap_or_else(|| "peer".to_owned());
+                self.remote_view.show_active(&session_id, &label);
+                self.stack.set_visible_child_name("remote");
+            }
+            DaemonEvent::RemoteSessionEnded { session_id, reason } => {
+                if self
+                    .active_remote
+                    .as_ref()
+                    .is_none_or(|session| session.session_id == session_id)
+                {
+                    self.active_remote = None;
+                    self.remote_view.hide();
+                    if self.stack.visible_child_name().as_deref() == Some("remote") {
+                        let name = if self.conversation.conversation_id().is_some() {
+                            "chat"
+                        } else {
+                            "empty"
+                        };
+                        self.stack.set_visible_child_name(name);
+                    }
+                    self.toast(format!("Remote session ended: {reason}"));
+                }
+            }
+            DaemonEvent::RemoteIndicatorChanged { visible, .. } => {
+                if !visible {
+                    self.remote_view.hide();
+                }
+            }
+            DaemonEvent::CallEnded { call_id, reason } => {
+                if self
+                    .active_call
+                    .as_ref()
+                    .is_some_and(|call| call.id == call_id)
+                {
+                    self.active_call = None;
+                    self.call_view.hide();
+                    let name = if self.peers.selected().is_some() {
+                        "chat"
+                    } else {
+                        "empty"
+                    };
+                    self.stack.set_visible_child_name(name);
+                    self.toast(format!("Call ended: {reason}"));
                 }
             }
             DaemonEvent::MessageStateChanged { message_id, state } => {

@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 blake3.workspace = true
+bytes = "1"
 hex.workspace = true
 if-addrs.workspace = true
 mdns-sd.workspace = true

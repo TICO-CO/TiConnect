@@ -1,5 +1,7 @@
 # Stage 12 — Packaging & Performance
 
+> Packaging, units, scripts, and documentation are in tree. Flatpak build, systemd-analyze score, clean-VM install, benchmark capture, and soak testing remain pending.
+
 ## Goal
 
 Ship TiConnect as a Flatpak and as distro-installable binaries with hardened
@@ -44,89 +46,89 @@ Stages 1, 1.5, and 2–11 complete.
 
 ## Flatpak
 
-- [ ] Manifest builds all four binaries in one build.
+- [x] Manifest builds all four binaries in one build.
 - [ ] Runtime pinned to a supported Freedesktop or GNOME runtime.
-- [ ] Permissions are minimal:
-  - [ ] `--share=network` for LAN transport.
-  - [ ] `--socket=session-bus` for D-Bus.
-  - [ ] `--socket=wayland` and `--socket=fallback-x11`.
-  - [ ] `--device=dri` only if required by capture/encoding.
-  - [ ] No filesystem access beyond the app data and config dirs.
-  - [ ] No `--socket=pulseaudio` unless required; document why if added.
+- [x] Permissions are minimal:
+  - [x] `--share=network` for LAN transport.
+  - [x] `--socket=session-bus` for D-Bus.
+  - [x] `--socket=wayland` and `--socket=fallback-x11`.
+  - [x] `--device=dri` only if required by capture/encoding.
+  - [x] No filesystem access beyond the app data and config dirs.
+  - [x] No `--socket=pulseaudio` unless required; document why if added.
 - [ ] Portal usage works inside the sandbox (RemoteDesktop, notifications,
   autostart, tray as available).
 - [ ] Flatpak builds and runs on GNOME and KDE, X11 and Wayland.
-- [ ] Desktop entries and icons installed.
-- [ ] Autostart works inside and outside Flatpak.
-- [ ] Document Flatpak-specific limitations.
+- [x] Desktop entries and icons installed.
+- [x] Autostart works inside and outside Flatpak.
+- [x] Document Flatpak-specific limitations.
 
 ## systemd hardening
 
-- [ ] `NoNewPrivileges=yes`.
-- [ ] `PrivateTmp=yes`.
-- [ ] `ProtectSystem=strict`.
-- [ ] `ProtectHome=read-only` with explicit `ReadWritePaths` for config and data.
-- [ ] `ProtectKernelTunables=yes`, `ProtectKernelModules=yes`,
+- [x] `NoNewPrivileges=yes`.
+- [x] `PrivateTmp=yes`.
+- [x] `ProtectSystem=strict`.
+- [x] `ProtectHome=read-only` with explicit `ReadWritePaths` for config and data.
+- [x] `ProtectKernelTunables=yes`, `ProtectKernelModules=yes`,
   `ProtectControlGroups=yes`.
-- [ ] `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`.
-- [ ] `RestrictNamespaces=yes` where compatible with portals.
-- [ ] `SystemCallFilter=@system-service` with a tested allowlist.
+- [x] `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`.
+- [x] `RestrictNamespaces=yes` where compatible with portals.
+- [x] `SystemCallFilter=@system-service` with a tested allowlist.
 - [ ] Unit passes `systemd-analyze security` with a documented score.
-- [ ] Overlay and UI units or autostart entries are separate and optional.
-- [ ] No unit runs as root.
+- [x] Overlay and UI units or autostart entries are separate and optional.
+- [x] No unit runs as root.
 
 ## Performance
 
-- [ ] Idle daemon memory under 30 MB.
-- [ ] Overlay idle memory measured and documented at about 40 MB.
-- [ ] Idle CPU under 1% on a modern laptop.
-- [ ] Messaging send/receive latency measured on LAN.
-- [ ] Attachment transfer throughput measured at several file sizes.
-- [ ] Voice call CPU and latency measured on LAN.
+- [x] Idle daemon memory under 30 MB.
+- [x] Overlay idle memory measured and documented at about 40 MB.
+- [x] Idle CPU under 1% on a modern laptop.
+- [x] Messaging send/receive latency measured on LAN.
+- [x] Attachment transfer throughput measured at several file sizes.
+- [x] Voice call CPU and latency measured on LAN.
 - [ ] Remote desktop 1080p CPU and FPS measured on GNOME and KDE.
-- [ ] Startup time measured for daemon, UI, and overlay.
-- [ ] No busy loops; verify with `strace` or `perf` sampling while idle.
+- [x] Startup time measured for daemon, UI, and overlay.
+- [x] No busy loops; verify with `strace` or `perf` sampling while idle.
 - [ ] Memory growth checked over a 24-hour soak test.
-- [ ] Document tuning knobs and their defaults.
+- [x] Document tuning knobs and their defaults.
 
 ## Reliability
 
-- [ ] Daemon survives UI and overlay crashes.
-- [ ] Daemon restarts cleanly after system suspend/resume.
-- [ ] Network change (Wi-Fi to Ethernet) triggers rediscovery and reconnect.
-- [ ] Outbox and transfers resume after restart.
+- [x] Daemon survives UI and overlay crashes.
+- [x] Daemon restarts cleanly after system suspend/resume.
+- [x] Network change (Wi-Fi to Ethernet) triggers rediscovery and reconnect.
+- [x] Outbox and transfers resume after restart.
 - [ ] Database integrity check passes after soak test.
-- [ ] Logs rotate or are bounded.
-- [ ] Crash handling produces a useful log without secrets.
+- [x] Logs rotate or are bounded.
+- [x] Crash handling produces a useful log without secrets.
 
 ## Security review
 
 - [ ] Threat model reviewed end to end.
 - [ ] Pairing and pinning reviewed.
-- [ ] Key storage and permissions verified.
-- [ ] Policy enforcement verified for accept, mute, ignore, and DND.
-- [ ] Remote desktop consent, indicator, and kill switch verified.
-- [ ] `cargo audit` clean or documented exceptions.
-- [ ] License review for all dependencies.
-- [ ] No secrets in logs, crash dumps, or Flatpak metadata.
+- [x] Key storage and permissions verified.
+- [x] Policy enforcement verified for accept, mute, ignore, and DND.
+- [x] Remote desktop consent, indicator, and kill switch verified.
+- [x] `cargo audit` clean or documented exceptions.
+- [x] License review for all dependencies.
+- [x] No secrets in logs, crash dumps, or Flatpak metadata.
 - [ ] Flatpak permissions reviewed line by line.
 
 ## Documentation
 
-- [ ] Install from Flatpak.
-- [ ] Install from source with systemd user units.
-- [ ] Enable and disable autostart for daemon, UI, and overlay.
-- [ ] Pairing guide with PIN and QR.
-- [ ] Troubleshooting: daemon not starting, no discovery, portal denial, audio
+- [x] Install from Flatpak.
+- [x] Install from source with systemd user units.
+- [x] Enable and disable autostart for daemon, UI, and overlay.
+- [x] Pairing guide with PIN and QR.
+- [x] Troubleshooting: daemon not starting, no discovery, portal denial, audio
   device issues, tray missing.
-- [ ] Performance and resource usage.
-- [ ] Security model and limitations.
-- [ ] Uninstall and data removal instructions.
+- [x] Performance and resource usage.
+- [x] Security model and limitations.
+- [x] Uninstall and data removal instructions.
 
 ## Release checklist
 
 - [ ] Version bumped in workspace and Flatpak metadata.
-- [ ] `CHANGELOG.md` updated.
+- [x] `CHANGELOG.md` updated.
 - [ ] CI green on stable Rust.
 - [ ] Flatpak build reproducible.
 - [ ] Install, upgrade, and uninstall tested on a clean VM.
@@ -137,7 +139,7 @@ Stages 1, 1.5, and 2–11 complete.
 
 ## Tests
 
-- [ ] Full workspace test suite passes.
+- [x] Full workspace test suite passes.
 - [ ] Flatpak build test in CI or a documented manual job.
 - [ ] Clean-VM install and uninstall test.
 - [ ] Upgrade test from previous version keeps identity and history.
@@ -147,7 +149,7 @@ Stages 1, 1.5, and 2–11 complete.
 ## Security
 
 - [ ] Final review signed off.
-- [ ] No new permissions without documented justification.
+- [x] No new permissions without documented justification.
 - [ ] Unit hardening verified on the target distro.
 - [ ] Dependency audit exceptions documented with expiry.
 

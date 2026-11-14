@@ -1,0 +1,15 @@
+[Unit]
+Description=TiConnect desktop window
+Documentation=https://github.com/TICO-CO/TiConnect
+After=graphical-session.target ticonnectd.service
+
+[Service]
+Type=simple
+ExecStart=@BINDIR@/ticonnect-ui
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=graphical-session.target

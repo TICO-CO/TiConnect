@@ -1,3 +1,4 @@
+pub mod attachments;
 pub mod conversations;
 mod error;
 pub mod messages;
@@ -5,6 +6,7 @@ pub mod migrations;
 pub mod outbox;
 pub mod peer_state;
 pub mod peers;
+pub mod transfer_partials;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -14,12 +16,14 @@ use rusqlite::Connection;
 use ticonnect_core::message::MessageRecord;
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
+pub use attachments::AttachmentRecord;
 pub use conversations::Conversation;
 pub use error::StorageError;
 pub use messages::{InsertOutcome, MessageState, StoredMessage};
 pub use outbox::OutboxEntry;
 pub use peer_state::PeerState;
 pub use peers::{NewPeer, Peer, PeerPolicy};
+pub use transfer_partials::TransferPartial;
 
 type Reply<T> = oneshot::Sender<Result<T, StorageError>>;
 
@@ -88,6 +92,13 @@ enum Command {
     DeferOutbox(String, i64, Reply<bool>),
     RemoveOutbox(String, Reply<bool>),
     ExpireOutbox(i64, Reply<Vec<String>>),
+    UpsertAttachment(AttachmentRecord, Reply<()>),
+    GetAttachment(String, Reply<Option<AttachmentRecord>>),
+    ListAttachments(Reply<Vec<AttachmentRecord>>),
+    UpsertTransferPartial(TransferPartial, Reply<()>),
+    GetTransferPartial(String, Reply<Option<TransferPartial>>),
+    ListTransferPartials(Reply<Vec<TransferPartial>>),
+    RemoveTransferPartial(String, Reply<bool>),
 }
 
 #[derive(Clone)]
@@ -387,6 +398,60 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
+    pub async fn upsert_attachment(
+        &self,
+        attachment: AttachmentRecord,
+    ) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::UpsertAttachment(attachment, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn get_attachment(
+        &self,
+        hash: &str,
+    ) -> Result<Option<AttachmentRecord>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::GetAttachment(hash.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_attachments(&self) -> Result<Vec<AttachmentRecord>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListAttachments(reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn upsert_transfer_partial(
+        &self,
+        partial: TransferPartial,
+    ) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::UpsertTransferPartial(partial, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn get_transfer_partial(
+        &self,
+        hash: &str,
+    ) -> Result<Option<TransferPartial>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::GetTransferPartial(hash.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_transfer_partials(&self) -> Result<Vec<TransferPartial>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListTransferPartials(reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn remove_transfer_partial(&self, hash: &str) -> Result<bool, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RemoveTransferPartial(hash.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
     pub async fn integrity_check(&self) -> Result<String, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::IntegrityCheck(reply))?;
@@ -569,6 +634,27 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::IntegrityCheck(reply) => {
             let _ = reply.send(integrity_check(connection));
+        }
+        Command::UpsertAttachment(attachment, reply) => {
+            let _ = reply.send(attachments::upsert(connection, &attachment));
+        }
+        Command::GetAttachment(hash, reply) => {
+            let _ = reply.send(attachments::get(connection, &hash));
+        }
+        Command::ListAttachments(reply) => {
+            let _ = reply.send(attachments::list(connection));
+        }
+        Command::UpsertTransferPartial(partial, reply) => {
+            let _ = reply.send(transfer_partials::upsert(connection, &partial));
+        }
+        Command::GetTransferPartial(hash, reply) => {
+            let _ = reply.send(transfer_partials::get(connection, &hash));
+        }
+        Command::ListTransferPartials(reply) => {
+            let _ = reply.send(transfer_partials::list(connection));
+        }
+        Command::RemoveTransferPartial(hash, reply) => {
+            let _ = reply.send(transfer_partials::remove(connection, &hash));
         }
     }
 }

@@ -11,6 +11,11 @@ fn message(id: &str, sent_at: u64, sender: &str) -> Message {
         sent_at,
         received_at: sent_at,
         body: format!("body {id}"),
+        attachment_hash: String::new(),
+        attachment_name: String::new(),
+        attachment_size: 0,
+        attachment_mime: String::new(),
+        attachment_path: String::new(),
         state: MessageState::Sent,
         notify: true,
     }

@@ -1,5 +1,7 @@
 # Stage 10 — Voice Calls
 
+> Automation complete. Manual real-device calls on X11/Wayland and GNOME/KDE remain pending.
+
 ## Goal
 
 Add one-to-one voice calls over QUIC datagrams. The daemon owns the call state
@@ -48,86 +50,86 @@ are enough to demo calls.
 
 ## Call state machine
 
-- [ ] States: `idle`, `ringing`, `in-call`, `ended`.
-- [ ] Events: `start`, `incoming`, `accept`, `decline`, `hangup`, `timeout`,
+- [x] States: `idle`, `ringing`, `in-call`, `ended`.
+- [x] Events: `start`, `incoming`, `accept`, `decline`, `hangup`, `timeout`,
   `error`.
-- [ ] Only one active call per peer and one active call per node.
-- [ ] Incoming call has a configurable timeout (default 30 s).
-- [ ] Reject calls from untrusted peers before any media setup.
-- [ ] Reject calls from `ignore` peers; `mute` still rings per config.
-- [ ] DND suppresses ringtone but still reports the call.
-- [ ] Emit state changes as D-Bus signals.
-- [ ] Clean up audio devices and ringtone on every terminal transition.
+- [x] Only one active call per peer and one active call per node.
+- [x] Incoming call has a configurable timeout (default 30 s).
+- [x] Reject calls from untrusted peers before any media setup.
+- [x] Reject calls from `ignore` peers; `mute` still rings per config.
+- [x] DND suppresses ringtone but still reports the call.
+- [x] Emit state changes as D-Bus signals.
+- [x] Clean up audio devices and ringtone on every terminal transition.
 
 ## Ringtone
 
-- [ ] `rodio` plays a configurable file from `ringtone.path`.
-- [ ] Loop until answered, declined, or timeout.
-- [ ] Fall back to a bundled tone when the file is missing or invalid.
-- [ ] Run in the daemon, not the UI.
-- [ ] Duck volume once call audio is connected.
-- [ ] Stop immediately on state change.
-- [ ] Respect mute/DND.
-- [ ] Handle audio device absence without crashing.
+- [x] `rodio` plays a configurable file from `ringtone.path`.
+- [x] Loop until answered, declined, or timeout.
+- [x] Fall back to a bundled tone when the file is missing or invalid.
+- [x] Run in the daemon, not the UI.
+- [x] Duck volume once call audio is connected.
+- [x] Stop immediately on state change.
+- [x] Respect mute/DND.
+- [x] Handle audio device absence without crashing.
 
 ## Audio pipeline
 
-- [ ] Enumerate input and output devices with `cpal`.
-- [ ] Capture mono at a supported rate; resample to Opus input rate if needed.
-- [ ] Encode Opus at 20 ms frames with a fixed bitrate target.
-- [ ] Send frames over QUIC datagrams with sequence and timestamp.
-- [ ] Receive, reorder, and decode frames.
-- [ ] Jitter buffer with target latency and adaptive depth.
-- [ ] Packet-loss concealment on gaps.
-- [ ] Playback through `cpal` with a bounded ring buffer.
-- [ ] Handle device changes or unplugging without panic.
-- [ ] Metrics: frames sent/received, loss, jitter, buffer depth.
+- [x] Enumerate input and output devices with `cpal`.
+- [x] Capture mono at a supported rate; resample to Opus input rate if needed.
+- [x] Encode Opus at 20 ms frames with a fixed bitrate target.
+- [x] Send frames over QUIC datagrams with sequence and timestamp.
+- [x] Receive, reorder, and decode frames.
+- [x] Jitter buffer with target latency and adaptive depth.
+- [x] Packet-loss concealment on gaps.
+- [x] Playback through `cpal` with a bounded ring buffer.
+- [x] Handle device changes or unplugging without panic.
+- [x] Metrics: frames sent/received, loss, jitter, buffer depth.
 
 ## D-Bus additions
 
-- [ ] `StartCall(s peer_id) -> s call_id`.
-- [ ] `AcceptCall(s call_id)`.
-- [ ] `DeclineCall(s call_id)`.
-- [ ] `HangupCall(s call_id)`.
-- [ ] `GetCallState() -> a{sv}`.
-- [ ] Signals `IncomingCall(a{sv})`, `CallStateChanged(s, s)`,
+- [x] `StartCall(s peer_id) -> s call_id`.
+- [x] `AcceptCall(s call_id)`.
+- [x] `DeclineCall(s call_id)`.
+- [x] `HangupCall(s call_id)`.
+- [x] `GetCallState() -> a{sv}`.
+- [x] Signals `IncomingCall(a{sv})`, `CallStateChanged(s, s)`,
   `CallEnded(s, s)`.
 
 ## UI
 
-- [ ] Call view with peer name, state, duration, mute, and hangup.
-- [ ] Incoming call prompt with accept and decline.
-- [ ] Device selection in settings.
-- [ ] Show call errors clearly.
-- [ ] No audio handling in the UI process.
+- [x] Call view with peer name, state, duration, mute, and hangup.
+- [x] Incoming call prompt with accept and decline.
+- [x] Device selection in settings.
+- [x] Show call errors clearly.
+- [x] No audio handling in the UI process.
 
 ## Tests
 
-- [ ] State machine transition tests for every event and invalid transition.
-- [ ] Ringtone starts, loops, stops, and ducks using a fake sink.
-- [ ] Opus encode/decode round-trip at 20 ms.
-- [ ] Jitter buffer reorders packets and conceals loss.
-- [ ] Two-node loopback call with synthetic audio; verify frames flow.
-- [ ] Call timeout, decline, and hangup paths.
-- [ ] Untrusted peer call is rejected.
-- [ ] Device unplug simulation does not panic.
+- [x] State machine transition tests for every event and invalid transition.
+- [x] Ringtone starts, loops, stops, and ducks using a fake sink.
+- [x] Opus encode/decode round-trip at 20 ms.
+- [x] Jitter buffer reorders packets and conceals loss.
+- [x] Two-node loopback call with synthetic audio; verify frames flow.
+- [x] Call timeout, decline, and hangup paths.
+- [x] Untrusted peer call is rejected.
+- [x] Device unplug simulation does not panic.
 - [ ] Manual: real call on X11 and Wayland, GNOME and KDE.
 
 ## Security
 
-- [ ] Calls only between trusted, pinned peers.
-- [ ] Media flows only over the authenticated QUIC session.
-- [ ] No microphone access before call acceptance.
-- [ ] No call metadata in logs beyond state and peer id.
-- [ ] Bounded packet and buffer sizes to prevent abuse.
-- [ ] Reject unexpected datagrams outside an active call.
+- [x] Calls only between trusted, pinned peers.
+- [x] Media flows only over the authenticated QUIC session.
+- [x] No microphone access before call acceptance.
+- [x] No call metadata in logs beyond state and peer id.
+- [x] Bounded packet and buffer sizes to prevent abuse.
+- [x] Reject unexpected datagrams outside an active call.
 
 ## Docs and acceptance
 
-- [ ] Document call states and transitions.
-- [ ] Document ringtone configuration and fallback.
-- [ ] Document audio devices, latency target, and known limitations.
-- [ ] Document that the daemon rings with the UI closed.
+- [x] Document call states and transitions.
+- [x] Document ringtone configuration and fallback.
+- [x] Document audio devices, latency target, and known limitations.
+- [x] Document that the daemon rings with the UI closed.
 
 ## Acceptance criteria
 

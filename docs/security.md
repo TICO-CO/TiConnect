@@ -71,3 +71,48 @@ TLS handshake and before accepting the handshake stream.
 - Compromised local accounts or root on either host.
 - WAN discovery or relays.
 - Key rotation, multi-device identities, and group pairing in v1.
+
+## Attachments
+
+- Content is addressed by BLAKE3 and verified before publication into the store.
+- Files are written to private temporary paths and renamed only after the final
+  hash matches.
+- Names reject path separators and control characters; exports never follow
+  symlinks and never overwrite an existing path.
+- Size is bounded by `attachments.max_size_mib` (default 2048). MIME type and
+  extension are validated; nothing is opened or executed automatically.
+- Peer `ignore` policy blocks inbound transfer initiation. `mute` stores content
+  silently.
+- Transfer frames, chunk sizes, concurrent transfers per peer, and total active
+  transfers are bounded.
+
+## Voice calls
+
+- Calls are offered only to trusted, pinned peers over the authenticated QUIC
+  session.
+- The microphone is opened only after the local call is accepted.
+- Audio datagrams are accepted only for the active call and the matching peer.
+- Packet size, jitter depth, and playback buffers are bounded.
+- Ignore policy drops calls before any media setup; DND suppresses the ringtone
+  but still reports the incoming call.
+- Logs contain call state and peer id, not audio contents.
+
+## Remote desktop
+
+- Every session requires explicit host consent and a fresh six-digit PIN.
+- PINs expire after `remote.pin_ttl_secs` (default 300 s) and allow
+  `remote.pin_attempts` failures (default 3), after which the session is denied.
+- A session is scoped to exactly one pinned peer. Untrusted peers cannot request
+  or join a session.
+- Capture and input use the desktop portal grant and begin only after consent.
+- A visible indicator is shown for the whole active session. The kill switch
+  tears down capture, input, and transport immediately.
+- Input events are validated and rate limited before injection. No screen
+  content, keystrokes, or PINs are logged.
+
+## Threat model review status
+
+Pairing, pinning, key storage, message policy, attachments, calls, and remote
+consent are covered by unit and integration tests. Manual GNOME/KDE Wayland and
+X11 verification of portals, input injection, and the indicator remains a
+release gate.

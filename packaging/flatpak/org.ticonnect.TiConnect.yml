@@ -1,0 +1,50 @@
+app-id: org.ticonnect.TiConnect
+runtime: org.gnome.Platform
+runtime-version: '48'
+sdk: org.gnome.Sdk
+command: ticonnect-ui
+
+finish-args:
+  - --share=network
+  - --socket=session-bus
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=xdg-config/ticonnect:create
+  - --filesystem=xdg-data/ticonnect:create
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.Notifications
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.ticonnect.Daemon
+
+modules:
+  - name: gtk4-layer-shell
+    buildsystem: meson
+    config-opts:
+      - -Dintrospection=false
+      - -Dvapi=false
+      - -Dexamples=false
+      - -Ddocs=false
+    sources:
+      - type: git
+        url: https://github.com/wmww/gtk4-layer-shell.git
+        tag: v1.0.4
+
+  - name: ticonnect
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/ticonnect/cargo
+    build-commands:
+      - cargo build --release --workspace --bins
+      - install -Dm755 target/release/ticonnectd /app/bin/ticonnectd
+      - install -Dm755 target/release/ticonnect-ui /app/bin/ticonnect-ui
+      - install -Dm755 target/release/ticonnect-ovl /app/bin/ticonnect-ovl
+      - install -Dm755 target/release/ticonnect-cli /app/bin/ticonnect-cli
+      - install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.desktop /app/share/applications/org.ticonnect.TiConnect.desktop
+      - install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.svg /app/share/icons/hicolor/scalable/apps/org.ticonnect.TiConnect.svg
+      - install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml /app/share/metainfo/org.ticonnect.TiConnect.metainfo.xml
+    sources:
+      - type: dir
+        path: ../..

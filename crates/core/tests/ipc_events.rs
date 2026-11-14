@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::events::{self, MessageState, ParseError, PeerPolicy};
 use zbus::OwnedVariant;
-use zbus::zvariant::Str;
+use zbus::Str;
 
 fn text(value: &str) -> OwnedVariant {
     OwnedVariant::from(Str::from(value.to_owned()))

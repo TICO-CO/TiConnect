@@ -10,7 +10,7 @@ fn migrations_apply_from_empty_and_are_idempotent() {
 
     migrations::run(&mut connection).expect("first migration");
     assert_eq!(schema_version(&connection), migrations::latest_version());
-    assert_eq!(table_count(&connection), 7);
+    assert_eq!(table_count(&connection), 8);
     let settings_table: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'settings'",
@@ -22,7 +22,7 @@ fn migrations_apply_from_empty_and_are_idempotent() {
 
     migrations::run(&mut connection).expect("second migration");
     assert_eq!(schema_version(&connection), migrations::latest_version());
-    assert_eq!(table_count(&connection), 7);
+    assert_eq!(table_count(&connection), 8);
 
     let _ = std::fs::remove_file(path);
 }

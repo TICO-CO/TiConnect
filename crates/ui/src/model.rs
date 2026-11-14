@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use ticonnect_settings::Appearance;
 
 pub use ticonnect_core::ipc::events::{
-    Candidate, DaemonEvent, Identity, Message, MessageState, PairingStart, Peer, PeerPolicy, Status,
+    Call, Candidate, DaemonEvent, Identity, Message, MessageState, PairingStart, Peer, PeerPolicy,
+    RemoteSession, Status,
 };
 
 use crate::error::{Error, Result};
@@ -435,6 +436,11 @@ mod tests {
             sent_at,
             received_at: sent_at,
             body: id.to_owned(),
+            attachment_hash: String::new(),
+            attachment_name: String::new(),
+            attachment_size: 0,
+            attachment_mime: String::new(),
+            attachment_path: String::new(),
             state: MessageState::Sent,
             notify: true,
         }

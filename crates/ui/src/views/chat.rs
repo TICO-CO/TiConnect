@@ -23,6 +23,7 @@ impl ChatView {
         on_send: impl Fn(String) + 'static,
         on_load_older: impl Fn() + 'static,
         on_mark_read: impl Fn() + 'static,
+        on_attach: impl Fn() + 'static,
     ) -> Self {
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.set_hexpand(true);
@@ -104,6 +105,12 @@ impl ChatView {
             .build();
         composer_scroll.set_hexpand(true);
 
+        let attach_button = gtk::Button::from_icon_name("mail-attachment-symbolic");
+        attach_button.set_tooltip_text(Some("Attach a file"));
+        attach_button.update_property(&[gtk::accessible::Property::Label("Attach a file")]);
+        attach_button.set_valign(gtk::Align::End);
+        attach_button.connect_clicked(move |_| on_attach());
+
         let send_button = gtk::Button::from_icon_name("document-send-symbolic");
         send_button.set_tooltip_text(Some("Send message (Enter)"));
         send_button.update_property(&[gtk::accessible::Property::Label("Send message")]);
@@ -156,6 +163,7 @@ impl ChatView {
         composer_bar.set_margin_bottom(12);
         composer_bar.set_margin_top(6);
         composer_bar.append(&composer_scroll);
+        composer_bar.append(&attach_button);
         composer_bar.append(&send_button);
 
         root.append(&header);
@@ -267,17 +275,24 @@ fn message_row(message: &Message, local: bool) -> gtk::ListBoxRow {
         gtk::Align::Start
     });
 
-    let bubble = gtk::Label::new(Some(&message.body));
-    bubble.set_wrap(true);
-    bubble.set_xalign(0.0);
-    bubble.set_selectable(true);
-    bubble.set_max_width_chars(64);
+    let bubble = gtk::Box::new(gtk::Orientation::Vertical, 4);
     bubble.add_css_class("message-bubble");
     bubble.add_css_class(if local {
         "message-outgoing"
     } else {
         "message-incoming"
     });
+    if !message.attachment_name.is_empty() {
+        bubble.append(&attachment_widget(message));
+    }
+    if !message.body.is_empty() {
+        let body = gtk::Label::new(Some(&message.body));
+        body.set_wrap(true);
+        body.set_xalign(0.0);
+        body.set_selectable(true);
+        body.set_max_width_chars(64);
+        bubble.append(&body);
+    }
 
     let meta = gtk::Label::new(Some(&format!(
         "{} {}",
@@ -295,6 +310,49 @@ fn message_row(message: &Message, local: bool) -> gtk::ListBoxRow {
     outer.append(&meta);
     row.set_child(Some(&outer));
     row
+}
+
+fn attachment_widget(message: &Message) -> gtk::Widget {
+    let container = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    if message.attachment_mime.starts_with("image/") && !message.attachment_path.is_empty() {
+        let picture = gtk::Picture::for_filename(&message.attachment_path);
+        picture.set_can_shrink(true);
+        picture.set_content_fit(gtk::ContentFit::Contain);
+        picture.set_size_request(320, 240);
+        container.append(&picture);
+    }
+    if message.attachment_mime.starts_with("audio/") && !message.attachment_path.is_empty() {
+        let media = gtk::MediaFile::for_filename(&message.attachment_path);
+        let video = gtk::Video::new();
+        video.set_media_stream(Some(&media));
+        video.set_height_request(56);
+        container.append(&video);
+    }
+    let label = gtk::Label::new(Some(&format!(
+        "{} · {}",
+        message.attachment_name,
+        format_size(message.attachment_size)
+    )));
+    label.set_xalign(0.0);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    label.add_css_class("caption");
+    container.append(&label);
+    container.upcast()
+}
+
+fn format_size(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KiB", "MiB", "GiB", "TiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} {}", UNITS[unit])
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
 }
 
 fn buffer_text(buffer: &gtk::TextBuffer) -> String {
