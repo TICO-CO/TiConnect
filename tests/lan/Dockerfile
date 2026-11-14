@@ -2,6 +2,13 @@
 
 FROM rust:1.95-bookworm AS builder
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        cmake \
+        libasound2-dev \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /src
 COPY . .
 
@@ -19,6 +26,7 @@ RUN apt-get update \
         dbus \
         iproute2 \
         jq \
+        libasound2 \
         libglib2.0-bin \
         sqlite3 \
     && rm -rf /var/lib/apt/lists/*

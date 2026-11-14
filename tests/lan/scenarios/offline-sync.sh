@@ -12,6 +12,7 @@ export LAN_TEST_DISCOVERY_BROADCAST=
 
 start_nodes
 wait_for 30 candidate_visible node-a "$B_ID" || fail "node-a did not discover node-b"
+wait_for 30 candidate_visible node-b "$A_ID" || fail "node-b did not discover node-a"
 pair_with_pin
 
 log "checking offline queue with multiple messages"
