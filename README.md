@@ -125,7 +125,8 @@ depending on the UI process. Running `ticonnect` with no subcommand opens the UI
 ## Release
 
 Pushing a `v*` tag builds the unified Linux binary and publishes a GitHub
-release with `ticonnect-<tag>-linux-x86_64.tar.gz` and `SHA256SUMS.txt`:
+release with `ticonnect-<tag>-linux-x86_64.tar.gz`,
+`ticonnect-<tag>-x86_64.AppImage`, and `SHA256SUMS.txt`:
 
 ```sh
 git tag v0.0.1

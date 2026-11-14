@@ -16,6 +16,33 @@ Portal-backed capture and input, notifications, autostart, and the status
 notifier must be provided by the host desktop. Portals cannot be bypassed by the
 sandbox.
 
+## AppImage
+
+The release AppImage bundles GTK4, libadwaita, gtk4-layer-shell, ALSA, GLib
+schemas, and gdk-pixbuf loaders. The host still provides the kernel, glibc
+(2.39+), GPU drivers, display server, portals, and audio devices.
+
+```sh
+TAG=v0.0.1
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-$TAG-x86_64.AppImage"
+chmod +x "ticonnect-$TAG-x86_64.AppImage"
+"./ticonnect-$TAG-x86_64.AppImage" --help
+"./ticonnect-$TAG-x86_64.AppImage" daemon
+"./ticonnect-$TAG-x86_64.AppImage" cli status
+"./ticonnect-$TAG-x86_64.AppImage" ui
+```
+
+Without FUSE, or on NixOS, use the extract-and-run flag:
+
+```sh
+"./ticonnect-$TAG-x86_64.AppImage" --appimage-extract-and-run --help
+```
+
+On NixOS, `appimage-run ./ticonnect-v0.0.1-x86_64.AppImage` also works. On
+Manjaro install `fuse2` for direct execution, or use
+`--appimage-extract-and-run`. Pairing and firewall rules are covered in the
+README.
+
 ## From source
 
 Dependencies on Debian/Ubuntu:

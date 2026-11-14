@@ -24,7 +24,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin
 
       - name: Build gtk4-layer-shell
         run: |
@@ -46,6 +46,20 @@ jobs:
           mkdir -p dist
           tar -czf "dist/ticonnect-${TAG}-linux-x86_64.tar.gz" -C target/release ticonnect
           ls -lh dist/
+
+      - name: Download appimagetool
+        run: |
+          curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool
+
+      - name: Build AppImage
+        env:
+          APPIMAGETOOL: /tmp/appimagetool
+          APPIMAGETOOL_EXTRACT_RUN: "1"
+        run: scripts/package-appimage.sh target/release/ticonnect "${GITHUB_REF_NAME}" dist
+
+      - name: Validate AppImage
+        run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
 
       - uses: actions/upload-artifact@v4
         with:

@@ -8,6 +8,7 @@
 - [ ] `cargo xtask systems --check` passes.
 - [ ] `cargo audit` clean or exceptions documented.
 - [ ] Flatpak build reproducible on a clean VM.
+- [ ] AppImage `--help` and daemon/CLI smoke pass on a clean Ubuntu 24.04, and extract-and-run works on NixOS and Manjaro.
 - [ ] Install, upgrade, and uninstall tested on a clean VM.
 - [ ] Two-node smoke test: pairing, messaging, file, call, remote desktop.
 - [ ] X11 and Wayland smoke tests on GNOME and KDE.
