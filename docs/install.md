@@ -5,7 +5,7 @@
 Download the prebuilt package from the latest release:
 
 ```sh
-TAG=v0.0.4
+TAG=v0.0.5
 PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
 curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
 sudo pacman -U "$PKG"
@@ -79,7 +79,7 @@ schemas, and gdk-pixbuf loaders. The host still provides the kernel, glibc
 (2.39+), GPU drivers, display server, portals, and audio devices.
 
 ```sh
-TAG=v0.0.4
+TAG=v0.0.5
 curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-$TAG-x86_64.AppImage"
 chmod +x "ticonnect-$TAG-x86_64.AppImage"
 "./ticonnect-$TAG-x86_64.AppImage" --help
@@ -94,7 +94,7 @@ Without FUSE, or on NixOS, use the extract-and-run flag:
 "./ticonnect-$TAG-x86_64.AppImage" --appimage-extract-and-run --help
 ```
 
-On NixOS, `appimage-run ./ticonnect-v0.0.4-x86_64.AppImage` also works. On
+On NixOS, `appimage-run ./ticonnect-v0.0.5-x86_64.AppImage` also works. On
 Manjaro install `fuse2` for direct execution, or use
 `--appimage-extract-and-run`. Pairing and firewall rules are covered in the
 README.
