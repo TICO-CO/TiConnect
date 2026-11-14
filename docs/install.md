@@ -1,5 +1,61 @@
 # Install
 
+## Manjaro / Arch
+
+Download the prebuilt package from the latest release:
+
+```sh
+TAG=v0.0.3
+PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
+sudo pacman -U "$PKG"
+```
+
+The package installs `ticonnect` to `/usr/bin`, the app-menu entry and icon,
+systemd user units, and XDG autostart entries for the daemon and overlay. The
+daemon and overlay start at the next login. Start them now with:
+
+```sh
+systemctl --user start ticonnectd.service ticonnect-overlay.service
+ticonnect ui
+```
+
+Uninstall:
+
+```sh
+sudo pacman -Rns ticonnect
+```
+
+## NixOS
+
+Add the flake input and module:
+
+```nix
+{
+  inputs.ticonnect.url = "github:TICO-CO/TiConnect";
+
+  # inside your NixOS configuration module
+  imports = [ inputs.ticonnect.nixosModules.default ];
+  services.ticonnect.enable = true;
+}
+```
+
+Then:
+
+```sh
+sudo nixos-rebuild switch --flake /etc/nixos
+```
+
+The module installs the package, adds the app-menu entry, and enables the
+daemon and overlay systemd user services. Package-only install without services:
+
+```sh
+nix profile install github:TICO-CO/TiConnect#ticonnect
+```
+
+Uninstall by removing the module/input and rebuilding, or
+`nix profile remove ticonnect`.
+
 ## Flatpak
 
 ```sh
@@ -23,7 +79,7 @@ schemas, and gdk-pixbuf loaders. The host still provides the kernel, glibc
 (2.39+), GPU drivers, display server, portals, and audio devices.
 
 ```sh
-TAG=v0.0.1
+TAG=v0.0.3
 curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-$TAG-x86_64.AppImage"
 chmod +x "ticonnect-$TAG-x86_64.AppImage"
 "./ticonnect-$TAG-x86_64.AppImage" --help
@@ -38,7 +94,7 @@ Without FUSE, or on NixOS, use the extract-and-run flag:
 "./ticonnect-$TAG-x86_64.AppImage" --appimage-extract-and-run --help
 ```
 
-On NixOS, `appimage-run ./ticonnect-v0.0.1-x86_64.AppImage` also works. On
+On NixOS, `appimage-run ./ticonnect-v0.0.3-x86_64.AppImage` also works. On
 Manjaro install `fuse2` for direct execution, or use
 `--appimage-extract-and-run`. Pairing and firewall rules are covered in the
 README.
@@ -97,5 +153,6 @@ Autostart entries under `packaging/autostart/` install to
 ```sh
 make uninstall-user
 rm -rf ~/.config/ticonnect ~/.local/share/ticonnect
+sudo pacman -Rns ticonnect
 flatpak uninstall org.ticonnect.TiConnect
 ```

@@ -126,7 +126,9 @@ depending on the UI process. Running `ticonnect` with no subcommand opens the UI
 
 Pushing a `v*` tag builds the unified Linux binary and publishes a GitHub
 release with `ticonnect-<tag>-linux-x86_64.tar.gz`,
-`ticonnect-<tag>-x86_64.AppImage`, and `SHA256SUMS.txt`:
+`ticonnect-<tag>-x86_64.AppImage`, the Manjaro/Arch package, and
+`SHA256SUMS.txt`. See `docs/install.md` for `pacman -U`, the NixOS flake
+module, and AppImage instructions.
 
 ```sh
 git tag v0.0.1
