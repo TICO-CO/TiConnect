@@ -77,7 +77,7 @@ jobs:
               su builder -c "cd /tmp && mkdir -p /home/builder/out && /src/scripts/package-arch.sh /src/dist/ticonnect-${TAG}-linux-x86_64.tar.gz \"${TAG}\" /home/builder/out"
               cp /home/builder/out/*.pkg.tar.zst /out/
               pacman -U --noconfirm --needed /out/ticonnect-*.pkg.tar.zst
-              ticconnect --help >/dev/null
+              /usr/bin/ticonnect --help >/dev/null
               test -f /usr/share/applications/org.ticonnect.TiConnect.desktop
               test -f /etc/xdg/autostart/ticonnect.desktop
               test -f /etc/xdg/autostart/ticonnect-overlay.desktop
