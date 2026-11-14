@@ -18,6 +18,9 @@ ticonnect-media = { path = "crates/media" }
 ticonnect-desktop = { path = "crates/desktop" }
 ticonnect-daemon = { path = "crates/daemon" }
 ticonnect-runtime = { path = "crates/runtime" }
+ticonnect-cli = { path = "crates/cli" }
+ticonnect-overlay = { path = "crates/overlay" }
+ticonnect-ui = { path = "crates/ui" }
 
 tokio = "1"
 zbus = { version = "6", default-features = false, features = ["tokio", "proxy", "service", "tracing"] }

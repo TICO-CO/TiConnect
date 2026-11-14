@@ -36,7 +36,7 @@ fingerprint is trusted before accepting `ticonnect/1` streams.
 
 1. The displaying node calls `StartPairing` and receives a six-digit PIN, a QR
    payload, and an expiry time.
-2. The user runs `ticonnect-cli pair with-pin <node-id> <pin>` on the other node.
+2. The user runs `ticonnect cli pair with-pin <node-id> <pin>` on the other node.
 3. Both sides complete a SPAKE2 exchange over the pairing ALPN.
 4. Both sides compute a confirmation value over the transcript and compare it in
    constant time.
@@ -61,7 +61,7 @@ The token is 32 random bytes and is the SPAKE2 secret. It expires after 120
 seconds and is single-use.
 
 ```sh
-ticonnect-cli pair start
+ticonnect cli pair start
 ticonnect-cli pair with-qr '<payload>'
 ```
 

@@ -6,6 +6,10 @@ Generated from `docs/systems/graph/` and checked against `cargo metadata`.
 
 ```mermaid
 flowchart LR
+  p_ticonnect["ticonnect"] --> p_ticonnect_cli["ticonnect-cli"]
+  p_ticonnect["ticonnect"] --> p_ticonnect_overlay["ticonnect-overlay"]
+  p_ticonnect["ticonnect"] --> p_ticonnect_runtime["ticonnect-runtime"]
+  p_ticonnect["ticonnect"] --> p_ticonnect_ui["ticonnect-ui"]
   p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_runtime["ticonnect-runtime"]
   p_ticonnect_cli["ticonnect-cli"] --> p_ticonnect_settings["ticonnect-settings"]
@@ -30,6 +34,10 @@ flowchart LR
 
 | From | To |
 |---|---|
+| `ticonnect` | `ticonnect-cli` |
+| `ticonnect` | `ticonnect-overlay` |
+| `ticonnect` | `ticonnect-runtime` |
+| `ticonnect` | `ticonnect-ui` |
 | `ticonnect-cli` | `ticonnect-core` |
 | `ticonnect-cli` | `ticonnect-runtime` |
 | `ticonnect-cli` | `ticonnect-settings` |

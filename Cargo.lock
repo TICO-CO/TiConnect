@@ -3199,6 +3199,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ticonnect"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ticonnect-cli",
+ "ticonnect-overlay",
+ "ticonnect-runtime",
+ "ticonnect-ui",
+ "tokio",
+]
+
+[[package]]
 name = "ticonnect-cli"
 version = "0.1.0"
 dependencies = [

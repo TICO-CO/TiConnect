@@ -6,7 +6,7 @@ fn systemd_unit_has_required_lifecycle_and_hardening_settings() {
 
     assert!(unit.contains("Type=dbus"));
     assert!(unit.contains("BusName=org.ticonnect.Daemon"));
-    assert!(unit.contains("ExecStart=@BINDIR@/ticonnectd"));
+    assert!(unit.contains("ExecStart=@BINDIR@/ticonnect daemon"));
     assert!(unit.contains("Restart=on-failure"));
     assert!(unit.contains("RestartSec=2"));
     assert!(unit.contains("NoNewPrivileges=yes"));
@@ -21,7 +21,7 @@ fn systemd_unit_has_required_lifecycle_and_hardening_settings() {
 fn autostart_entry_has_required_flags() {
     let entry = read("packaging/autostart/ticonnect.desktop");
 
-    assert!(entry.contains("Exec=@BINDIR@/ticonnectd"));
+    assert!(entry.contains("Exec=@BINDIR@/ticonnect daemon"));
     assert!(entry.contains("Hidden=false"));
     assert!(entry.contains("X-GNOME-Autostart-enabled=true"));
     assert!(entry.contains("NoDisplay=true"));
@@ -65,23 +65,17 @@ fn hardened_units_cover_daemon_overlay_and_ui() {
         "packaging/systemd/ticonnect-ui.service",
     ] {
         let contents = read(unit);
-        assert!(contents.contains("ExecStart=@BINDIR@/ticonnect-"));
+        assert!(contents.contains("ExecStart=@BINDIR@/ticonnect "));
         assert!(contents.contains("NoNewPrivileges=yes"));
         assert!(contents.contains("WantedBy=graphical-session.target"));
     }
 }
 
 #[test]
-fn flatpak_manifest_installs_all_binaries_with_minimal_permissions() {
+fn flatpak_manifest_installs_unified_binary_with_minimal_permissions() {
     let manifest = read("packaging/flatpak/org.ticonnect.TiConnect.yml");
-    for binary in [
-        "ticonnectd",
-        "ticonnect-ui",
-        "ticonnect-ovl",
-        "ticonnect-cli",
-    ] {
-        assert!(manifest.contains(binary), "missing {binary}");
-    }
+    assert!(manifest.contains("command: ticonnect"));
+    assert!(manifest.contains("install -Dm755 target/release/ticonnect /app/bin/ticonnect"));
     for permission in [
         "--share=network",
         "--socket=session-bus",
@@ -99,16 +93,9 @@ fn flatpak_manifest_installs_all_binaries_with_minimal_permissions() {
 }
 
 #[test]
-fn makefile_installs_all_binaries_units_and_autostart_entries() {
+fn makefile_installs_unified_binary_units_and_autostart_entries() {
     let makefile = read("Makefile");
-    for binary in [
-        "ticonnectd",
-        "ticonnect-ui",
-        "ticonnect-ovl",
-        "ticonnect-cli",
-    ] {
-        assert!(makefile.contains(binary), "missing {binary}");
-    }
+    assert!(makefile.contains("install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect"));
     for path in [
         "packaging/systemd/ticonnectd.service",
         "packaging/systemd/ticonnect-overlay.service",

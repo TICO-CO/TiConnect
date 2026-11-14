@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install GTK dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake
+
+      - name: Build gtk4-layer-shell
+        run: |
+          git clone --depth 1 --branch v1.0.4 https://github.com/wmww/gtk4-layer-shell.git /tmp/gtk4-layer-shell
+          meson setup /tmp/gtk4-layer-shell/build /tmp/gtk4-layer-shell -Dintrospection=false -Dvapi=false
+          sudo meson install -C /tmp/gtk4-layer-shell/build
+          sudo ldconfig
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build unified binary
+        run: cargo build --locked --release --bin ticonnect
+
+      - name: Package
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          tar -czf "dist/ticonnect-${TAG}-linux-x86_64.tar.gz" -C target/release ticonnect
+          ls -lh dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticonnect-${{ github.ref_name }}-linux
+          path: dist/ticonnect-*
+          if-no-files-found: error
+
+  release:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: ticonnect-${{ github.ref_name }}-linux
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          (cd dist && sha256sum ticonnect-* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/ticonnect-*
+            dist/SHA256SUMS.txt
+          generate_release_notes: true

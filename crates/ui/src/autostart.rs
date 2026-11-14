@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use crate::error::{Error, Result};
 
-const TEMPLATE: &str = "[Desktop Entry]\nType=Application\nName=TiConnect\nComment=LAN-only messaging, calls, and remote desktop\nExec=ticonnectd\nHidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n";
+const TEMPLATE: &str = "[Desktop Entry]\nType=Application\nName=TiConnect\nComment=LAN-only messaging, calls, and remote desktop\nExec=ticonnect daemon\nHidden=false\nNoDisplay=true\nX-GNOME-Autostart-enabled=true\n";
 
 pub fn path() -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CONFIG_HOME")

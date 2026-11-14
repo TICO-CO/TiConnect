@@ -35,10 +35,11 @@ staged delivery.
 | `ticonnect-media` | Audio and video codecs |
 | `ticonnect-desktop` | Capture and input integration |
 | `ticonnect-daemon` | Daemon service library: D-Bus, identity, SQLite |
-| `ticonnect-runtime` | Composition root and binary `ticonnectd` |
-| `ticonnect-ui` | GTK4 main window, binary `ticonnect-ui` |
-| `ticonnect-overlay` | Toast overlay, binary `ticonnect-ovl` |
-| `ticonnect-cli` | Command-line client, binary `ticonnect-cli` |
+| `ticonnect-runtime` | Composition root and daemon entry point |
+| `ticonnect-ui` | GTK4 main window |
+| `ticonnect-overlay` | Toast overlay |
+| `ticonnect-cli` | Command-line client |
+| `ticonnect` | Unified executable: `daemon`, `ui`, `overlay`, `cli` |
 | `xtask` | Repository architecture graph generator and validator |
 
 Dependency direction is documented in `docs/dependency-direction.md`.
@@ -81,42 +82,55 @@ sudo ldconfig
 Architecture docs are generated. After editing `docs/systems/graph/` or
 `docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
-## Run binaries
+## Run
+
+The release artifact is a single executable, `ticonnect`, with one subcommand
+per process:
 
 ```sh
-cargo run --bin ticonnectd
-cargo run --bin ticonnect-cli -- status
-cargo run --bin ticonnect-cli -- status --json
-cargo run --bin ticonnect-cli -- ping
-cargo run --bin ticonnect-cli -- id show
-cargo run --bin ticonnect-cli -- settings get dnd.enabled
-cargo run --bin ticonnect-cli -- settings set dnd.enabled true
-cargo run --bin ticonnect-cli -- settings list
-cargo run --bin ticonnect-cli -- peers list
-cargo run --bin ticonnect-cli -- discover list
-cargo run --bin ticonnect-cli -- discover watch
-cargo run --bin ticonnect-cli -- pair start
-cargo run --bin ticonnect-cli -- pair with-pin <node-id> <pin>
-cargo run --bin ticonnect-cli -- pair with-qr '<payload>'
-cargo run --bin ticonnect-cli -- pair cancel
-cargo run --bin ticonnect-cli -- pair forget <peer-id>
-cargo run --bin ticonnect-cli -- send <peer-id> "hello"
-cargo run --bin ticonnect-cli -- messages <peer-id>
-cargo run --bin ticonnect-cli -- mark-read <peer-id> <message-id>
-cargo run --bin ticonnect-cli -- policy set <peer-id> mute
-cargo run --bin ticonnect-cli -- policy dnd on
-cargo run --bin ticonnect-cli -- quit
-cargo run --bin ticonnect-ui
-cargo run --bin ticonnect-ovl
+cargo run --bin ticonnect -- daemon
+cargo run --bin ticonnect -- cli status
+cargo run --bin ticonnect -- cli status --json
+cargo run --bin ticonnect -- cli ping
+cargo run --bin ticonnect -- cli id show
+cargo run --bin ticonnect -- cli settings get dnd.enabled
+cargo run --bin ticonnect -- cli settings set dnd.enabled true
+cargo run --bin ticonnect -- cli settings list
+cargo run --bin ticonnect -- cli peers list
+cargo run --bin ticonnect -- cli discover list
+cargo run --bin ticonnect -- cli discover watch
+cargo run --bin ticonnect -- cli pair start
+cargo run --bin ticonnect -- cli pair with-pin <node-id> <pin>
+cargo run --bin ticonnect -- cli pair with-qr '<payload>'
+cargo run --bin ticonnect -- cli pair cancel
+cargo run --bin ticonnect -- cli pair forget <peer-id>
+cargo run --bin ticonnect -- cli send <peer-id> "hello"
+cargo run --bin ticonnect -- cli messages <peer-id>
+cargo run --bin ticonnect -- cli mark-read <peer-id> <message-id>
+cargo run --bin ticonnect -- cli policy set <peer-id> mute
+cargo run --bin ticonnect -- cli policy dnd on
+cargo run --bin ticonnect -- cli quit
+cargo run --bin ticonnect -- ui
+cargo run --bin ticonnect -- overlay
 ```
 
-`ticonnectd` serves `org.ticonnect.Daemon` on the session bus until shutdown.
-`ticonnect-cli` talks to the daemon for status, identity, peers, discovery,
-pairing, messaging, policy, ping, and quit.
+`ticonnect daemon` serves `org.ticonnect.Daemon` on the session bus until
+shutdown. `ticonnect cli` talks to the daemon for status, identity, peers,
+discovery, pairing, messaging, policy, ping, and quit.
 `settings get`, `settings set`, and `settings list` read and write `config.toml`
-directly. `ticonnect-ui` opens the GTK4 window and talks to the daemon only over
-D-Bus. `ticonnect-ovl` shows corner cards for incoming messages without depending
-on the UI process.
+directly. `ticonnect ui` opens the GTK4 window and talks to the daemon only over
+D-Bus. `ticonnect overlay` shows corner cards for incoming messages without
+depending on the UI process. Running `ticonnect` with no subcommand opens the UI.
+
+## Release
+
+Pushing a `v*` tag builds the unified Linux binary and publishes a GitHub
+release with `ticonnect-<tag>-linux-x86_64.tar.gz` and `SHA256SUMS.txt`:
+
+```sh
+git tag v0.0.1
+git push origin v0.0.1
+```
 
 ## UI
 

@@ -2,7 +2,7 @@
 Type=Application
 Name=TiConnect
 Comment=LAN-only messaging
-Exec=ticonnect-ui
+Exec=ticonnect ui
 Icon=org.ticonnect.UI
 Terminal=false
 Categories=Network;InstantMessaging;

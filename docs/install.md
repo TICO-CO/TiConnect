@@ -7,10 +7,10 @@ flatpak-builder --user --install --force-clean build packaging/flatpak/org.ticon
 flatpak run org.ticonnect.TiConnect
 ```
 
-The manifest builds `ticonnectd`, `ticonnect-ui`, `ticonnect-ovl`, and
-`ticonnect-cli` from one source checkout. It requests network access, the
-session bus, Wayland with an X11 fallback, and read/write access only to the
-TiConnect config and data directories.
+The manifest builds the unified `ticonnect` executable from one source
+checkout. It requests network access, the session bus, Wayland with an X11
+fallback, and read/write access only to the TiConnect config and data
+directories.
 
 Portal-backed capture and input, notifications, autostart, and the status
 notifier must be provided by the host desktop. Portals cannot be bypassed by the
@@ -38,11 +38,14 @@ sudo meson install -C gtk4-layer-shell/build
 Build and install as a user:
 
 ```sh
-cargo build --release --workspace --bins
+cargo build --release --bin ticonnect
 make install-user
 systemctl --user daemon-reload
 systemctl --user enable --now ticonnectd.service
 ```
+
+`make install-user` installs `ticonnect` to `$(PREFIX)/bin` and the units point
+at `ticonnect daemon`, `ticonnect overlay`, and `ticonnect ui`.
 
 The `systemd` unit starts the daemon at login. The overlay and UI units are
 optional:

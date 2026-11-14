@@ -42,7 +42,7 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
         .accept_session(&viewer.session_id, "")
         .await
         .expect("host consent");
-    let consented = recv_event(&mut first_events, |event| match event {
+    let _consented = recv_event(&mut first_events, |event| match event {
         RemoteEventMessage::Requested(snapshot)
             if snapshot.session_id == viewer.session_id && snapshot.state == "consented" =>
         {

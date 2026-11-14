@@ -38,9 +38,11 @@ settings   logging        leaf crates
   `ticonnect-core`.
 - `ticonnect-daemon` composes the service crates and exposes its library API.
 - `ticonnect-runtime` owns settings/logging bootstrap, daemon state composition,
-  supervision, and the `ticonnectd` binary. It depends on `ticonnect-daemon`.
+  supervision, and the daemon entry point. It depends on `ticonnect-daemon`.
 - `ticonnect-ui`, `ticonnect-overlay`, and `ticonnect-cli` depend on runtime for
   bootstrap and never import daemon internals directly.
+- `ticonnect` is the unified binary crate. It depends on runtime, UI, overlay,
+  and CLI and only dispatches subcommands.
 - `ticonnect-settings` never depends on `ticonnect-logging`.
 
 ## Errors

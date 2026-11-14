@@ -14,12 +14,15 @@ Constraints:
 ## 1. Process model
 
 ```
-ticonnectd     headless daemon: discovery, transport, storage, calls,
-               capture, ringtone
-ticonnect-ui   GTK4 application: main window
-ticonnect-ovl  corner overlay agent: toast cards
-ticonnect-cli  debugging and scripting
+ticonnect daemon   headless daemon: discovery, transport, storage, calls,
+                   capture, ringtone
+ticonnect ui       GTK4 application: main window
+ticonnect overlay  corner overlay agent: toast cards
+ticonnect cli      debugging and scripting
 ```
+
+All four are subcommands of the single `ticonnect` executable. The daemon, UI,
+and overlay still run as separate processes.
 
 The daemon is a **systemd user unit** plus an XDG autostart entry. It never runs
 as root. The UI is a separate process so the daemon stays small and can run
@@ -27,11 +30,11 @@ without any graphical stack.
 
 D-Bus is the control plane:
 
-- `org.ticonnect.Daemon` — owned by `ticonnectd`. Methods for sending messages,
+- `org.ticonnect.Daemon` — owned by `ticonnect daemon`. Methods for sending messages,
   managing peers, starting calls, granting remote sessions, and reading settings.
   Config writes go through `ticonnect-settings`, not D-Bus. Signals for inbound
   events and config reloads.
-- `org.ticonnect.UI` — owned by `ticonnect-ui`. The overlay activates it by
+- `org.ticonnect.UI` — owned by `ticonnect ui`. The overlay activates it by
   calling `Activate(view)`, which raises the window on the relevant screen.
 - The overlay subscribes to daemon signals directly and does not depend on the
   UI being open.
@@ -56,6 +59,7 @@ crates/
   ui/                       GTK4 main window
   overlay/                  layer-shell toast agent
   cli/                      command-line client
+  ticonnect/                unified executable dispatching the four subcommands
 ```
 
 Component contracts, state ownership, and relation graphs live in
@@ -66,20 +70,22 @@ pure tracing wrapper and depends on neither `settings` nor `core`. `core`
 depends on neither. `net`, `media`, `desktop` depend on `core`. `daemon`
 composes them into the D-Bus service library. `runtime` is the composition
 root: it owns settings/logging bootstrap, identity and database composition,
-supervision, and the `ticonnectd` binary. `ui`, `overlay`, and `cli` use runtime
-bootstrap and never import daemon internals directly. `core` stays free of
-settings and logging.
+supervision, and the daemon entry point. `ui`, `overlay`, and `cli` use runtime
+bootstrap and never import daemon internals directly. `ticonnect` is the unified
+composition entry point that dispatches to runtime, UI, overlay, or CLI. `core`
+stays free of settings and logging.
 
 Each fallible library crate owns its `Error` and `Result` types and maps
 failures from its dependencies into them. `core` exposes domain types only and
 defines no crate-wide error type; fallible `core` modules define local errors
 when they need them. There is no workspace-wide catch-all error enum.
 
-Binary entry points (`ticonnectd`, `ticonnect-cli`, `ticonnect-ui`,
-`ticonnect-ovl`) use `anyhow::Result` to report the full error chain once from
-`main` and exit failure. They add context around each startup step and let
-`anyhow` aggregate crate errors. Only `src/main.rs` uses `anyhow`; library
-modules keep typed errors.
+Binary entry points use `anyhow::Result` to report the full error chain once from
+`main` and exit failure. The unified `ticonnect` binary and the legacy
+`ticonnectd`, `ticonnect-cli`, `ticonnect-ui`, `ticonnect-ovl` compatibility
+bins all delegate to library entry functions. They add context around each
+startup step and let `anyhow` aggregate crate errors. Only `src/main.rs` uses
+`anyhow`; library modules keep typed errors.
 
 ## 3. Stack
 

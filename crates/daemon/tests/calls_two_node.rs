@@ -2,7 +2,7 @@ mod support;
 
 use std::time::Duration;
 
-use support::{TestNode, connect_pair, wait_for, wait_true};
+use support::{TestNode, connect_pair, wait_true};
 use ticonnect_core::call::CallState;
 use ticonnect_daemon::calls::{CallError, CallEvent};
 

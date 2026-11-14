@@ -6,7 +6,7 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=@BINDIR@/ticonnect-ovl
+ExecStart=@BINDIR@/ticonnect overlay
 Restart=on-failure
 RestartSec=3
 NoNewPrivileges=yes
