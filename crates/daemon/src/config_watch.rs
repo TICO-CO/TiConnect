@@ -93,9 +93,10 @@ async fn reloaded(connection: &zbus::Connection, state: &DaemonState, new_settin
         }
     };
 
-    let discovery_changed = new_values
-        .iter()
-        .any(|(key, value)| key.starts_with("discovery.") && old_values.get(key) != Some(value));
+    let discovery_changed = new_values.iter().any(|(key, value)| {
+        (key.starts_with("discovery.") || key == "identity.display_name")
+            && old_values.get(key) != Some(value)
+    });
 
     state.replace_settings(new_settings);
     if discovery_changed {

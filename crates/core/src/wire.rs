@@ -18,6 +18,7 @@ pub const MAX_CALL_FRAME: usize = 16 * 1024;
 pub const MAX_AUDIO_FRAME: usize = 4 * 1024;
 pub const MAX_VIDEO_FRAME: usize = 128 * 1024 + 1024;
 pub const MAX_INPUT_FRAME: usize = 1024;
+pub const MAX_TYPING_FRAME: usize = 256;
 pub const MAX_REMOTE_FRAME: usize = 16 * 1024;
 pub const MAX_WIRE_FRAME: usize = MAX_VIDEO_FRAME;
 
@@ -69,6 +70,7 @@ pub enum FrameKind {
     Video = 9,
     Input = 10,
     Remote = 11,
+    Typing = 12,
 }
 
 impl FrameKind {
@@ -89,6 +91,7 @@ impl FrameKind {
             Self::Video => MAX_VIDEO_FRAME,
             Self::Input => MAX_INPUT_FRAME,
             Self::Remote => MAX_REMOTE_FRAME,
+            Self::Typing => MAX_TYPING_FRAME,
         }
     }
 }
@@ -109,6 +112,7 @@ impl TryFrom<u8> for FrameKind {
             9 => Ok(Self::Video),
             10 => Ok(Self::Input),
             11 => Ok(Self::Remote),
+            12 => Ok(Self::Typing),
             other => Err(WireError::UnsupportedKind(other)),
         }
     }
@@ -243,6 +247,31 @@ impl HandshakeFrame {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TypingFrame {
+    pub typing: bool,
+}
+
+impl TypingFrame {
+    pub fn new(typing: bool) -> Self {
+        Self { typing }
+    }
+
+    pub fn encode(self) -> Vec<u8> {
+        vec![u8::from(self.typing)]
+    }
+
+    pub fn decode(bytes: &[u8]) -> Result<Self, WireError> {
+        match bytes {
+            [value] => Ok(Self {
+                typing: *value != 0,
+            }),
+            [] => Err(WireError::Truncated),
+            _ => Err(WireError::TrailingBytes),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SyncFrame {
     Hello {
@@ -311,6 +340,7 @@ mod tests {
             FrameKind::Video,
             FrameKind::Input,
             FrameKind::Remote,
+            FrameKind::Typing,
         ] {
             let frame = Frame::new(kind, b"payload".to_vec()).expect("frame");
             let decoded = Frame::decode(&frame.encode()).expect("decode");
@@ -366,10 +396,10 @@ mod tests {
         ));
 
         let mut bad_kind = valid.clone();
-        bad_kind[MAGIC.len() + 1] = 12;
+        bad_kind[MAGIC.len() + 1] = 13;
         assert!(matches!(
             Frame::decode(&bad_kind),
-            Err(WireError::UnsupportedKind(12))
+            Err(WireError::UnsupportedKind(13))
         ));
 
         let mut trailing = valid;
@@ -408,6 +438,22 @@ mod tests {
         assert!(matches!(
             HandshakeFrame::decode(&bad_version),
             Err(WireError::UnsupportedProtocolVersion(9))
+        ));
+    }
+
+    #[test]
+    fn typing_frame_round_trips_and_rejects_malformed() {
+        assert_eq!(
+            TypingFrame::decode(&TypingFrame::new(true).encode()).expect("decode"),
+            TypingFrame::new(true)
+        );
+        assert!(matches!(
+            TypingFrame::decode(&[]),
+            Err(WireError::Truncated)
+        ));
+        assert!(matches!(
+            TypingFrame::decode(&[1, 0]),
+            Err(WireError::TrailingBytes)
         ));
     }
 

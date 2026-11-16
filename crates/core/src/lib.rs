@@ -9,6 +9,7 @@ pub mod id;
 pub mod identity;
 pub mod ipc;
 pub mod message;
+pub mod profile;
 pub mod remote;
 pub mod sign;
 pub mod wire;

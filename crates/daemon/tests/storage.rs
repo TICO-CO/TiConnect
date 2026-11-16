@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
+use ticonnect_core::id::NodeId;
+use ticonnect_core::message::{MessageKind, MessageRecord};
 use ticonnect_daemon::storage::{DatabaseHandle, NewPeer, PeerPolicy};
 
 #[tokio::test]
@@ -34,6 +36,56 @@ async fn wal_mode_allows_second_connection_to_read() {
         .query_row("SELECT COUNT(*) FROM peers", [], |row| row.get(0))
         .expect("count");
     assert_eq!(count, 1);
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn conversation_summaries_track_unread_until_marked_read() {
+    let dir = temp_dir();
+    let path = dir.join("ticonnect.db");
+    let database = DatabaseHandle::spawn(&path).await.expect("database");
+    let peer_id = NodeId::generate().to_string();
+    database
+        .insert_peer(peer(&peer_id, "fingerprint-1"))
+        .await
+        .expect("insert");
+    database
+        .ensure_conversation("conversation-1", &peer_id, 1)
+        .await
+        .expect("conversation");
+    let record = MessageRecord::new(
+        "conversation-1",
+        peer_id.clone(),
+        1,
+        100,
+        MessageKind::Text,
+        Some("hello".to_owned()),
+    );
+    database
+        .insert_inbound(record.clone(), 100, vec![0_u8; 64], &peer_id)
+        .await
+        .expect("message");
+
+    let summaries = database
+        .list_conversation_summaries(&NodeId::generate().to_string())
+        .await
+        .expect("summaries");
+    assert_eq!(summaries.len(), 1);
+    assert_eq!(summaries[0].unread_count, 1);
+    assert_eq!(summaries[0].last_body.as_deref(), Some("hello"));
+
+    let updated = database
+        .mark_messages_read("conversation-1", &[record.message_id.to_string()], 110)
+        .await
+        .expect("mark read");
+    assert_eq!(updated, 1);
+    let summaries = database
+        .list_conversation_summaries(&NodeId::generate().to_string())
+        .await
+        .expect("summaries");
+    assert_eq!(summaries[0].unread_count, 0);
 
     drop(database);
     let _ = fs::remove_dir_all(dir);

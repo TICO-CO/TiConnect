@@ -81,6 +81,18 @@ stops. Run the automated harness check with:
 make lab-smoke
 ```
 
+On Nix hosts that mix a host Rust toolchain with Nix GTK libraries, the link
+step can report unresolved `GLIBC_2.43` math symbols from `graphene`. `make
+lab` and `make lab-smoke` detect `NIX_LD` and pass
+`-Wl,--allow-shlib-undefined` to the final `ticonnect` link. Force it with
+`TICONNECT_ALLOW_UNDEFINED=1`, or disable it with
+`TICONNECT_ALLOW_UNDEFINED=0`. A Nix build avoids the workaround:
+
+```sh
+nix build .#ticonnect
+TICONNECT_BIN="$PWD/result/bin/ticonnect" make lab-smoke
+```
+
 ## What is checked
 
 - private per-node D-Bus; no global daemon name collision

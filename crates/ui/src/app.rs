@@ -1,3 +1,6 @@
+use std::collections::{HashMap, HashSet};
+use std::time::Instant;
+
 use gtk4 as gtk;
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -8,8 +11,8 @@ use tokio::sync::mpsc;
 use crate::autostart;
 use crate::client::{self, DaemonEvent, Identity, LinkHandle, PairingStart, Status};
 use crate::model::{
-    BlockedPeer, Call, Candidate, CandidatePresentation, ConversationModel, Message, Peer,
-    PeerListModel, PeerPolicy, PeerPresentation, RemoteSession, SettingsForm,
+    BlockedPeer, Call, Candidate, CandidatePresentation, ConversationModel, ConversationSummary,
+    Message, Peer, PeerListModel, PeerPolicy, PeerPresentation, RemoteSession, SettingsForm,
 };
 use crate::views::call::CallView;
 use crate::views::chat::ChatView;
@@ -76,6 +79,18 @@ pub enum Msg {
     IdentityLoaded(Result<Identity, String>),
     PeersLoaded(Result<Vec<Peer>, String>),
     CandidatesLoaded(Result<Vec<Candidate>, String>),
+    SummariesLoaded(Result<Vec<ConversationSummary>, String>),
+    AvatarLoaded {
+        fingerprint: String,
+        result: Result<Vec<u8>, String>,
+    },
+    SelfAvatarLoaded(Result<Option<Vec<u8>>, String>),
+    AvatarChosen(Result<Option<String>, String>),
+    ChooseAvatar,
+    AvatarResult(Result<(), String>),
+    RemoveAvatar,
+    Typing(bool),
+    TypingSent(Result<(), String>),
     SettingsLoaded(Result<SettingsForm, String>),
     StatusLoaded(Result<Status, String>),
     ConversationLoaded {
@@ -109,6 +124,10 @@ pub struct App {
     peers: PeerListModel,
     blocked: Vec<BlockedPeer>,
     candidates: Vec<Candidate>,
+    summaries: Vec<ConversationSummary>,
+    avatars: HashMap<String, gtk::gdk::Texture>,
+    self_avatar: Option<gtk::gdk::Texture>,
+    typing: HashMap<String, Instant>,
     conversation: ConversationModel,
     settings: SettingsForm,
     autostart_enabled: bool,
@@ -151,6 +170,7 @@ impl SimpleComponent for App {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         relm4::set_global_css(include_str!("../resources/style.css"));
+        install_user_css();
 
         let peers_view = PeersView::new(
             {
@@ -178,6 +198,10 @@ impl SimpleComponent for App {
             {
                 let sender = sender.clone();
                 move || sender.send_input(Msg::ChooseAttachment)
+            },
+            {
+                let sender = sender.clone();
+                move |active| sender.send_input(Msg::Typing(active))
             },
         );
         let call_view = CallView::new(
@@ -234,6 +258,14 @@ impl SimpleComponent for App {
             {
                 let sender = sender.clone();
                 move |fingerprint| sender.send_input(Msg::UnblockPeer(fingerprint))
+            },
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::ChooseAvatar)
+            },
+            {
+                let sender = sender.clone();
+                move || sender.send_input(Msg::RemoveAvatar)
             },
         );
         let pairing_view = PairingView::new(
@@ -379,6 +411,10 @@ impl SimpleComponent for App {
                     ActivationEvent::Show(view) => {
                         activation_msgs.send_input(Msg::ShowView(view));
                     }
+                    ActivationEvent::ShowPeer(peer_id) => {
+                        activation_msgs.send_input(Msg::SelectPeer(peer_id));
+                        activation_msgs.send_input(Msg::ShowView("chat".to_owned()));
+                    }
                     ActivationEvent::Primary => {
                         activation_msgs.send_input(Msg::PrimaryInstance);
                     }
@@ -432,7 +468,21 @@ impl SimpleComponent for App {
         }
         root.add_controller(shortcuts);
 
-        peers_view.render(&PeerListModel::default());
+        {
+            let sender = sender.clone();
+            root.connect_notify_local(Some("is-active"), move |window, _| {
+                if window.is_active() {
+                    sender.send_input(Msg::MarkRead);
+                }
+            });
+        }
+
+        peers_view.render(
+            &PeerListModel::default(),
+            &[],
+            &HashMap::new(),
+            &HashMap::new(),
+        );
         chat_view.set_composer_enabled(false);
 
         let model = App {
@@ -443,6 +493,10 @@ impl SimpleComponent for App {
             peers: PeerListModel::default(),
             blocked: Vec::new(),
             candidates: Vec::new(),
+            summaries: Vec::new(),
+            avatars: HashMap::new(),
+            self_avatar: None,
+            typing: HashMap::new(),
             conversation: ConversationModel::default(),
             settings: SettingsForm::default(),
             autostart_enabled: autostart::enabled(),
@@ -763,6 +817,12 @@ impl SimpleComponent for App {
             }
             Msg::Tick => {
                 self.pairing_view.tick();
+                let before = self.typing.len();
+                self.typing.retain(|_, since| since.elapsed().as_secs() < 7);
+                if before != self.typing.len() {
+                    self.render_chat_header();
+                    self.render_peers();
+                }
                 if let Some(call) = &self.active_call
                     && call.state == "in-call"
                     && call.connected_at > 0
@@ -857,13 +917,97 @@ impl SimpleComponent for App {
                 Ok(peers) => {
                     self.peers.replace(peers);
                     self.render_peers();
+                    self.load_avatars(&sender);
                 }
                 Err(error) => self.toast(error),
             },
+            Msg::SummariesLoaded(result) => match result {
+                Ok(summaries) => {
+                    self.summaries = summaries;
+                    self.render_peers();
+                    self.render_chat_header();
+                }
+                Err(error) => tracing::debug!(%error, "could not load summaries"),
+            },
+            Msg::AvatarLoaded {
+                fingerprint,
+                result,
+            } => match result {
+                Ok(bytes) => {
+                    if let Some(texture) = texture_from_bytes(&bytes) {
+                        self.avatars.insert(fingerprint, texture);
+                        self.render_peers();
+                        self.render_chat_header();
+                        self.pairing_view
+                            .set_candidates(&self.candidates, &self.avatars);
+                    }
+                }
+                Err(error) => tracing::debug!(%error, "avatar unavailable"),
+            },
+            Msg::SelfAvatarLoaded(result) => match result {
+                Ok(Some(bytes)) => {
+                    self.self_avatar = texture_from_bytes(&bytes);
+                    self.render_settings();
+                }
+                Ok(None) => self.self_avatar = None,
+                Err(error) => tracing::debug!(%error, "self avatar unavailable"),
+            },
+            Msg::ChooseAvatar => {
+                let dialog = gtk::FileDialog::new();
+                dialog.set_title("Choose profile photo");
+                let filter = gtk::FileFilter::new();
+                filter.set_name(Some("Images"));
+                filter.add_mime_type("image/png");
+                filter.add_mime_type("image/jpeg");
+                filter.add_mime_type("image/webp");
+                let filters = gtk::gio::ListStore::new::<gtk::FileFilter>();
+                filters.append(&filter);
+                dialog.set_filters(Some(&filters));
+                let sender_for_dialog = sender.clone();
+                dialog.open(
+                    Some(&self.window()),
+                    None::<&gtk::gio::Cancellable>,
+                    move |result| {
+                        let result = result
+                            .map(|file| file.path().map(|path| path.display().to_string()))
+                            .map_err(|error| error.to_string());
+                        sender_for_dialog.send_input(Msg::AvatarChosen(result));
+                    },
+                );
+            }
+            Msg::AvatarChosen(result) => match result {
+                Ok(Some(path)) => self.save_avatar(&path, &sender),
+                Ok(None) => {}
+                Err(error) => self.toast(error),
+            },
+            Msg::AvatarResult(result) => match result {
+                Ok(()) => {
+                    self.toast("Profile photo updated".to_owned());
+                    self.load_self_avatar(&sender);
+                    self.load_identity(&sender);
+                }
+                Err(error) => self.toast(error),
+            },
+            Msg::RemoveAvatar => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link.clear_avatar().await.map_err(|error| error.to_string());
+                    sender.send_input(Msg::AvatarResult(result));
+                });
+            }
+            Msg::Typing(active) => self.send_typing(active),
+            Msg::TypingSent(result) => {
+                if let Err(error) = result {
+                    tracing::debug!(%error, "typing update failed");
+                }
+            }
             Msg::CandidatesLoaded(result) => match result {
                 Ok(candidates) => {
                     self.candidates = candidates;
-                    self.pairing_view.set_candidates(&self.candidates);
+                    self.pairing_view
+                        .set_candidates(&self.candidates, &self.avatars);
+                    self.load_avatars(&sender);
                 }
                 Err(error) => self.toast(error),
             },
@@ -942,9 +1086,8 @@ impl SimpleComponent for App {
                         let peer = self.peers.selected().cloned();
                         self.conversation
                             .reset(conversation_id, peer_id, total, messages);
-                        if let Some(peer) = peer {
-                            self.chat_view
-                                .set_peer(&peer.display_label(), &peer.fingerprint);
+                        if let Some(_peer) = peer {
+                            self.render_chat_header();
                         }
                         self.render_conversation();
                         self.stack.set_visible_child_name("chat");
@@ -1022,11 +1165,10 @@ impl SimpleComponent for App {
                     self.load_peers(&sender);
                 }
             }
-            Msg::MarkReadResult(result) => {
-                if let Err(error) = result {
-                    tracing::debug!(%error, "mark read failed");
-                }
-            }
+            Msg::MarkReadResult(result) => match result {
+                Ok(()) => self.load_summaries(&sender),
+                Err(error) => tracing::debug!(%error, "mark read failed"),
+            },
             Msg::Error(error) => self.toast(error),
         }
     }
@@ -1053,7 +1195,9 @@ impl App {
                 self.banner.set_revealed(false);
                 self.chat_view.set_composer_enabled(true);
                 self.load_identity(sender);
+                self.load_self_avatar(sender);
                 self.load_peers(sender);
+                self.load_summaries(sender);
                 self.load_settings(sender);
                 self.load_candidates(sender);
                 self.load_blocked(sender);
@@ -1106,7 +1250,9 @@ impl App {
                     }
                 }
                 self.candidates.sort_by_key(Candidate::label);
-                self.pairing_view.set_candidates(&self.candidates);
+                self.pairing_view
+                    .set_candidates(&self.candidates, &self.avatars);
+                self.load_avatars(sender);
             }
             DaemonEvent::MessageReceived(message) => {
                 if self.conversation.conversation_id() == Some(message.conversation_id.as_str()) {
@@ -1114,6 +1260,23 @@ impl App {
                     self.render_conversation();
                     self.mark_read(sender);
                 }
+                self.load_summaries(sender);
+            }
+            DaemonEvent::ConversationChanged { .. } => self.load_summaries(sender),
+            DaemonEvent::TypingChanged { peer_id, typing } => {
+                if typing {
+                    self.typing.insert(peer_id, Instant::now());
+                } else {
+                    self.typing.remove(&peer_id);
+                }
+                self.render_chat_header();
+            }
+            DaemonEvent::PeerProfileChanged { fingerprint } => {
+                self.avatars.remove(&fingerprint);
+                self.load_avatar(fingerprint, sender);
+            }
+            DaemonEvent::SelfProfileChanged => {
+                self.load_self_avatar(sender);
             }
             DaemonEvent::TransferProgress { .. } => {}
             DaemonEvent::TransferDone(_) => {
@@ -1236,6 +1399,8 @@ impl App {
             DaemonEvent::PeerConnected(peer) => {
                 self.peers.set_connected(&peer.id, true);
                 self.render_peers();
+                self.load_avatars(sender);
+                self.load_summaries(sender);
             }
             DaemonEvent::PeerDisconnected(peer) => {
                 self.peers.set_connected(&peer.id, false);
@@ -1256,6 +1421,7 @@ impl App {
                 );
                 self.load_peers(sender);
                 self.load_candidates(sender);
+                self.load_summaries(sender);
             }
             DaemonEvent::PairingFailed(reason) => {
                 self.pairing = None;
@@ -1286,12 +1452,10 @@ impl App {
     }
 
     fn select_peer(&mut self, peer_id: &str, sender: &ComponentSender<App>) {
+        self.send_typing(false);
         self.peers.select(peer_id);
         self.render_peers();
-        if let Some(peer) = self.peers.selected().cloned() {
-            self.chat_view
-                .set_peer(&peer.display_label(), &peer.fingerprint);
-        }
+        self.render_chat_header();
         self.stack.set_visible_child_name("chat");
         self.open_conversation(peer_id, sender);
     }
@@ -1342,6 +1506,9 @@ impl App {
     }
 
     fn mark_read(&mut self, sender: &ComponentSender<App>) {
+        if self.stack.visible_child_name().as_deref() != Some("chat") || !self.window.is_active() {
+            return;
+        }
         let Some(conversation_id) = self.conversation.conversation_id().map(ToOwned::to_owned)
         else {
             return;
@@ -1398,6 +1565,101 @@ impl App {
         relm4::spawn(async move {
             let result = link.identity().await.map_err(|error| error.to_string());
             sender.send_input(Msg::IdentityLoaded(result));
+        });
+    }
+
+    fn load_summaries(&self, sender: &ComponentSender<App>) {
+        let link = self.link.clone();
+        let sender = sender.clone();
+        relm4::spawn(async move {
+            let result = link
+                .list_conversation_summaries()
+                .await
+                .map_err(|error| error.to_string());
+            sender.send_input(Msg::SummariesLoaded(result));
+        });
+    }
+
+    fn load_avatar(&mut self, fingerprint: String, sender: &ComponentSender<App>) {
+        if fingerprint.is_empty() || self.avatars.contains_key(&fingerprint) {
+            return;
+        }
+        let link = self.link.clone();
+        let sender = sender.clone();
+        relm4::spawn(async move {
+            let result = link
+                .get_avatar(fingerprint.clone())
+                .await
+                .map_err(|error| error.to_string());
+            sender.send_input(Msg::AvatarLoaded {
+                fingerprint,
+                result,
+            });
+        });
+    }
+
+    fn load_avatars(&mut self, sender: &ComponentSender<App>) {
+        let fingerprints: HashSet<String> = self
+            .peers
+            .peers()
+            .iter()
+            .map(|peer| peer.fingerprint.clone())
+            .chain(
+                self.candidates
+                    .iter()
+                    .map(|candidate| candidate.fingerprint.clone()),
+            )
+            .collect();
+        for fingerprint in fingerprints {
+            self.load_avatar(fingerprint, sender);
+        }
+    }
+
+    fn load_self_avatar(&self, sender: &ComponentSender<App>) {
+        let link = self.link.clone();
+        let sender = sender.clone();
+        relm4::spawn(async move {
+            let result = match link.identity().await {
+                Ok(identity) if !identity.avatar_hash.is_empty() => link
+                    .get_avatar(identity.fingerprint)
+                    .await
+                    .map(Some)
+                    .map_err(|error| error.to_string()),
+                Ok(_) => Ok(None),
+                Err(error) => Err(error.to_string()),
+            };
+            sender.send_input(Msg::SelfAvatarLoaded(result));
+        });
+    }
+
+    fn save_avatar(&self, path: &str, sender: &ComponentSender<App>) {
+        let path = path.to_owned();
+        let link = self.link.clone();
+        let sender = sender.clone();
+        relm4::spawn(async move {
+            let result = match crate::avatar::normalize(std::path::Path::new(&path)) {
+                Ok(bytes) => link
+                    .set_avatar(bytes)
+                    .await
+                    .map_err(|error| error.to_string()),
+                Err(error) => Err(error),
+            };
+            sender.send_input(Msg::AvatarResult(result));
+        });
+    }
+
+    fn send_typing(&self, active: bool) {
+        let Some(peer) = self.peers.selected() else {
+            return;
+        };
+        let peer_id = peer.id.clone();
+        let link = self.link.clone();
+        relm4::spawn(async move {
+            let result = link
+                .set_typing(peer_id, active)
+                .await
+                .map_err(|error| error.to_string());
+            let _ = result;
         });
     }
 
@@ -1460,12 +1722,49 @@ impl App {
             .identity
             .as_ref()
             .map(|identity| identity.node_id.as_str());
+        let peer_avatar = self
+            .peers
+            .selected()
+            .and_then(|peer| self.avatars.get(&peer.fingerprint))
+            .cloned();
+        let local_avatar = self.self_avatar.clone();
+        let peer_initials = self
+            .peers
+            .selected()
+            .map(PeerPresentation::initials)
+            .unwrap_or_else(|| "?".to_owned());
         self.chat_view.set_loading(self.conversation.loading());
-        self.chat_view.render(self.conversation.messages(), local);
+        self.chat_view.render(
+            self.conversation.messages(),
+            local,
+            peer_avatar.as_ref(),
+            local_avatar.as_ref(),
+            &peer_initials,
+        );
+        self.render_chat_header();
+    }
+
+    fn render_chat_header(&mut self) {
+        let Some(peer) = self.peers.selected().cloned() else {
+            return;
+        };
+        let avatar = self.avatars.get(&peer.fingerprint).cloned();
+        let typing = self
+            .typing
+            .get(&peer.id)
+            .is_some_and(|since| since.elapsed().as_secs() < 7);
+        self.chat_view.set_peer(
+            &peer.display_label(),
+            &peer.fingerprint,
+            avatar.as_ref(),
+            peer.connected,
+            typing,
+        );
     }
 
     fn render_peers(&mut self) {
-        self.peers_view.render(&self.peers);
+        self.peers_view
+            .render(&self.peers, &self.summaries, &self.avatars, &self.typing);
         self.render_settings();
     }
 
@@ -1475,6 +1774,7 @@ impl App {
             self.peers.peers(),
             &self.blocked,
             self.autostart_enabled,
+            self.self_avatar.as_ref(),
         );
     }
 
@@ -1518,6 +1818,7 @@ fn apply_appearance(appearance: Appearance) {
 enum ActivationEvent {
     Primary,
     Show(String),
+    ShowPeer(String),
     Duplicate,
 }
 
@@ -1529,6 +1830,15 @@ struct UiService {
 #[zbus::interface(name = "org.ticonnect.UI")]
 impl UiService {
     async fn activate(&self, view: String) -> zbus::fdo::Result<()> {
+        if let Some(peer_id) = view.strip_prefix("chat:") {
+            peer_id
+                .parse::<ticonnect_core::id::NodeId>()
+                .map_err(|_| zbus::fdo::Error::InvalidArgs("invalid peer id".to_owned()))?;
+            self.sender
+                .send(ActivationEvent::ShowPeer(peer_id.to_owned()))
+                .map_err(|_| zbus::fdo::Error::Failed("UI is not available".to_owned()))?;
+            return Ok(());
+        }
         let view = client::parse_activation_view(&view)
             .map_err(|error| zbus::fdo::Error::InvalidArgs(error.to_string()))?;
         self.sender
@@ -1622,6 +1932,30 @@ pub fn run() -> anyhow::Result<()> {
 
     app.run::<App>(());
     Ok(())
+}
+
+fn texture_from_bytes(bytes: &[u8]) -> Option<gtk::gdk::Texture> {
+    let bytes = gtk::glib::Bytes::from(bytes);
+    gtk::gdk::Texture::from_bytes(&bytes).ok()
+}
+
+fn install_user_css() {
+    let Ok(settings) = ticonnect_settings::Settings::load() else {
+        return;
+    };
+    let path = settings.config_dir().join("style.css");
+    if !path.exists() {
+        return;
+    }
+    let provider = gtk::CssProvider::new();
+    provider.load_from_path(&path);
+    if let Some(display) = gtk::gdk::Display::default() {
+        gtk::style_context_add_provider_for_display(
+            &display,
+            &provider,
+            gtk::STYLE_PROVIDER_PRIORITY_USER + 1,
+        );
+    }
 }
 
 #[cfg(test)]

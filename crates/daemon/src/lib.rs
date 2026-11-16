@@ -7,6 +7,7 @@ pub mod discovery_service;
 pub mod identity;
 pub mod messaging;
 pub mod pairing_service;
+pub mod profile;
 pub mod reconnect_service;
 pub mod remote;
 pub mod runtime;

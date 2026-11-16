@@ -48,6 +48,7 @@ pub struct DiscoveryConfig {
     pub broadcast: bool,
     pub beacon_interval: Duration,
     pub display_name: String,
+    pub avatar_hash: Option<String>,
     pub node_id: String,
     pub fingerprint: String,
     pub transport_port: u16,
@@ -67,6 +68,7 @@ impl DiscoveryConfig {
             broadcast: true,
             beacon_interval: BEACON_INTERVAL,
             display_name: display_name.into(),
+            avatar_hash: None,
             node_id: node_id.into(),
             fingerprint: fingerprint.into(),
             transport_port: 0,
@@ -424,6 +426,16 @@ impl Filter {
         if candidate.display_name().len() > MAX_DISPLAY_NAME {
             return Err(FilterError::Invalid("display name is too long".to_owned()));
         }
+        let avatar_hash = candidate
+            .avatar_hash()
+            .map(|value| {
+                if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+                    Err(FilterError::Invalid("invalid avatar hash".to_owned()))
+                } else {
+                    Ok(value.to_ascii_lowercase())
+                }
+            })
+            .transpose()?;
         if candidate
             .display_name()
             .chars()
@@ -464,7 +476,8 @@ impl Filter {
             candidate.protocol_version(),
             candidate.source(),
             Instant::now(),
-        ))
+        )
+        .with_avatar_hash(avatar_hash))
     }
 }
 

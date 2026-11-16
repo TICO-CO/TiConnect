@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use gtk4 as gtk;
@@ -19,6 +20,8 @@ pub struct PairingView {
     qr: gtk::Picture,
     candidates: gtk::ComboBoxText,
     candidate_ids: Rc<RefCell<Vec<String>>>,
+    candidate_fingerprints: Rc<RefCell<Vec<String>>>,
+    candidate_textures: Rc<RefCell<HashMap<String, gtk::gdk::Texture>>>,
     pin_entry: gtk::Entry,
     payload: gtk::Entry,
     status: gtk::Label,
@@ -81,7 +84,12 @@ impl PairingView {
 
         let candidates = gtk::ComboBoxText::new();
         candidates.update_property(&[gtk::accessible::Property::Label("Discovered device")]);
-        content.append(&candidates);
+        let candidate_avatar = adw::Avatar::new(36, Some("?"), true);
+        let candidate_row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        candidate_row.append(&candidate_avatar);
+        candidate_row.append(&candidates);
+        candidates.set_hexpand(true);
+        content.append(&candidate_row);
 
         let pin_entry = gtk::Entry::new();
         pin_entry.set_placeholder_text(Some("6-digit PIN"));
@@ -121,6 +129,33 @@ impl PairingView {
         cancel_button.connect_clicked(move |_| on_cancel());
 
         let candidate_ids = Rc::new(RefCell::new(Vec::<String>::new()));
+        let candidate_fingerprints = Rc::new(RefCell::new(Vec::<String>::new()));
+        let candidate_textures: Rc<RefCell<HashMap<String, gtk::gdk::Texture>>> =
+            Rc::new(RefCell::new(HashMap::new()));
+        let fingerprints_for_change = candidate_fingerprints.clone();
+        let textures_for_change = candidate_textures.clone();
+        let avatar_for_change = candidate_avatar.clone();
+        candidates.connect_changed(move |combo| {
+            let Some(index) = combo.active() else {
+                return;
+            };
+            let index = index as usize;
+            let Some(fingerprint) = fingerprints_for_change.borrow().get(index).cloned() else {
+                return;
+            };
+            avatar_for_change.set_text(Some(
+                &fingerprint
+                    .chars()
+                    .take(2)
+                    .collect::<String>()
+                    .to_uppercase(),
+            ));
+            if let Some(texture) = textures_for_change.borrow().get(&fingerprint) {
+                avatar_for_change.set_custom_image(Some(texture));
+            } else {
+                avatar_for_change.set_custom_image(None::<&gtk::gdk::Texture>);
+            }
+        });
         let ids_for_pair = candidate_ids.clone();
         let pin_for_pair = pin_entry.clone();
         let on_pair_pin = Rc::new(on_pair_pin);
@@ -168,6 +203,8 @@ impl PairingView {
             qr,
             candidates,
             candidate_ids,
+            candidate_fingerprints,
+            candidate_textures,
             pin_entry,
             payload,
             status,
@@ -181,19 +218,41 @@ impl PairingView {
     }
 
     #[allow(deprecated)]
-    pub fn set_candidates(&self, candidates: &[Candidate]) {
+    pub fn set_candidates(
+        &self,
+        candidates: &[Candidate],
+        avatars: &HashMap<String, gtk::gdk::Texture>,
+    ) {
+        let ids: Vec<String> = candidates
+            .iter()
+            .map(|candidate| candidate.node_id.clone())
+            .collect();
+        let fingerprints: Vec<String> = candidates
+            .iter()
+            .map(|candidate| candidate.fingerprint.clone())
+            .collect();
+        let textures: HashMap<String, gtk::gdk::Texture> = candidates
+            .iter()
+            .filter_map(|candidate| {
+                avatars
+                    .get(&candidate.fingerprint)
+                    .map(|texture| (candidate.fingerprint.clone(), texture.clone()))
+            })
+            .collect();
+
         self.candidates.remove_all();
-        let mut ids = self.candidate_ids.borrow_mut();
-        ids.clear();
         for candidate in candidates {
             self.candidates
                 .append(Some(&candidate.node_id), &candidate.label());
-            ids.push(candidate.node_id.clone());
         }
-        if let Some(first) = ids.first() {
-            self.candidates.set_active_id(Some(first));
+        *self.candidate_ids.borrow_mut() = ids;
+        *self.candidate_fingerprints.borrow_mut() = fingerprints;
+        *self.candidate_textures.borrow_mut() = textures;
+
+        let first = self.candidate_ids.borrow().first().cloned();
+        if let Some(first) = first {
+            self.candidates.set_active_id(Some(&first));
         }
-        drop(ids);
     }
 
     pub fn show_pairing(&self, pairing: &PairingStart) -> Result<()> {

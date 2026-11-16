@@ -1,8 +1,9 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
-use gtk::prelude::*;
 use gtk4 as gtk;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use ticonnect_settings::Appearance;
 
 use crate::model::{
@@ -13,6 +14,7 @@ pub struct SettingsView {
     pub root: gtk::Box,
     updating: Rc<Cell<bool>>,
     display_name: gtk::Entry,
+    avatar: adw::Avatar,
     #[allow(deprecated)]
     appearance: gtk::ComboBoxText,
     discovery_enabled: gtk::Switch,
@@ -21,6 +23,7 @@ pub struct SettingsView {
     open_lan: gtk::Switch,
     blocked: gtk::Box,
     read_receipts: gtk::Switch,
+    typing: gtk::Switch,
     dnd: gtk::Switch,
     overlay: gtk::Switch,
     outbox_ttl: gtk::SpinButton,
@@ -34,6 +37,7 @@ pub struct SettingsView {
 
 impl SettingsView {
     #[allow(deprecated)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         on_setting: impl Fn(String, String) + 'static,
         on_dnd: impl Fn(bool) + 'static,
@@ -41,6 +45,8 @@ impl SettingsView {
         on_policy: impl Fn(String, PeerPolicy) + 'static,
         on_block: impl Fn(String) + 'static,
         on_unblock: impl Fn(String) + 'static,
+        on_avatar: impl Fn() + 'static,
+        on_remove_avatar: impl Fn() + 'static,
     ) -> Self {
         let updating = Rc::new(Cell::new(false));
         let on_setting: Rc<dyn Fn(String, String)> = Rc::new(on_setting);
@@ -49,6 +55,8 @@ impl SettingsView {
         let on_policy: Rc<dyn Fn(String, PeerPolicy)> = Rc::new(on_policy);
         let on_block: Rc<dyn Fn(String)> = Rc::new(on_block);
         let on_unblock: Rc<dyn Fn(String)> = Rc::new(on_unblock);
+        let on_avatar: Rc<dyn Fn()> = Rc::new(on_avatar);
+        let on_remove_avatar: Rc<dyn Fn()> = Rc::new(on_remove_avatar);
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.set_hexpand(true);
@@ -69,6 +77,11 @@ impl SettingsView {
         content.set_margin_bottom(18);
 
         let identity = section("Identity");
+        let identity_row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        let avatar = adw::Avatar::new(64, Some("?"), true);
+        avatar.add_css_class("profile-avatar");
+        let identity_text = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        identity_text.set_hexpand(true);
         let display_name = gtk::Entry::new();
         display_name.set_placeholder_text(Some("Display name"));
         display_name.update_property(&[gtk::accessible::Property::Label("Display name")]);
@@ -87,7 +100,28 @@ impl SettingsView {
             });
         }
         display_name.add_controller(focus);
-        identity.append(&display_name);
+        let avatar_actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let choose_avatar = gtk::Button::with_label("Choose photo");
+        choose_avatar.add_css_class("flat");
+        choose_avatar.update_property(&[gtk::accessible::Property::Label("Choose profile photo")]);
+        {
+            let on_avatar = on_avatar.clone();
+            choose_avatar.connect_clicked(move |_| on_avatar());
+        }
+        let remove_avatar = gtk::Button::with_label("Remove");
+        remove_avatar.add_css_class("flat");
+        remove_avatar.update_property(&[gtk::accessible::Property::Label("Remove profile photo")]);
+        {
+            let on_remove_avatar = on_remove_avatar.clone();
+            remove_avatar.connect_clicked(move |_| on_remove_avatar());
+        }
+        avatar_actions.append(&choose_avatar);
+        avatar_actions.append(&remove_avatar);
+        identity_text.append(&display_name);
+        identity_text.append(&avatar_actions);
+        identity_row.append(&avatar);
+        identity_row.append(&identity_text);
+        identity.append(&identity_row);
         content.append(&identity);
 
         let appearance = section("Appearance");
@@ -184,6 +218,13 @@ impl SettingsView {
             &updating,
             on_setting.clone(),
         );
+        let typing = setting_switch(
+            "Typing indicators",
+            "Show peers when you are typing and show when they type",
+            "typing.enabled",
+            &updating,
+            on_setting.clone(),
+        );
         let dnd = gtk::Switch::new();
         dnd.update_property(&[gtk::accessible::Property::Label("Do not disturb")]);
         {
@@ -222,6 +263,11 @@ impl SettingsView {
             "Read receipts",
             "Send read receipts for inbound messages",
             &read_receipts,
+        ));
+        messaging.append(&row(
+            "Typing indicators",
+            "Show peers when you are typing and show when they type",
+            &typing,
         ));
         messaging.append(&row(
             "Do not disturb",
@@ -292,6 +338,7 @@ impl SettingsView {
             root,
             updating,
             display_name,
+            avatar,
             appearance: appearance_choice,
             discovery_enabled,
             discovery_mdns,
@@ -299,6 +346,7 @@ impl SettingsView {
             open_lan,
             blocked,
             read_receipts,
+            typing,
             dnd,
             overlay,
             outbox_ttl,
@@ -318,10 +366,23 @@ impl SettingsView {
         peers: &[Peer],
         blocked_peers: &[BlockedPeer],
         autostart_enabled: bool,
+        self_avatar: Option<&gtk::gdk::Texture>,
     ) {
         self.updating.set(true);
         self.display_name
             .set_text(form.get("identity.display_name").unwrap_or_default());
+        let display_name = form.get("identity.display_name").unwrap_or_default();
+        self.avatar
+            .set_text(Some(if display_name.trim().is_empty() {
+                "?"
+            } else {
+                display_name
+            }));
+        if let Some(texture) = self_avatar {
+            self.avatar.set_custom_image(Some(texture));
+        } else {
+            self.avatar.set_custom_image(None::<&gtk::gdk::Texture>);
+        }
         self.appearance
             .set_active_id(Some(form.appearance().as_str()));
         self.discovery_enabled
@@ -334,6 +395,8 @@ impl SettingsView {
             .set_active(form.bool_value("trust.open_lan", true));
         self.read_receipts
             .set_active(form.bool_value("read_receipts.enabled", true));
+        self.typing
+            .set_active(form.bool_value("typing.enabled", true));
         self.dnd.set_active(form.bool_value("dnd.enabled", false));
         self.overlay
             .set_active(form.bool_value("overlay.enabled", true));

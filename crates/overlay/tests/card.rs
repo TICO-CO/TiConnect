@@ -5,6 +5,7 @@ use ticonnect_overlay::card::{
 fn card(id: &str) -> Card {
     Card {
         id: id.to_owned(),
+        peer_id: format!("peer-{id}"),
         sender: "Ada".to_owned(),
         preview: format!("body {id}"),
         sent_at: 1,

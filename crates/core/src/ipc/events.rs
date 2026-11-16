@@ -5,18 +5,20 @@ use zbus::OwnedVariant;
 
 use super::{
     CALL_CONNECTED_AT, CALL_DIRECTION, CALL_ID, CALL_PEER_ID, CALL_STARTED_AT, CALL_STATE,
-    CANDIDATE_ADDRESSES, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT, CANDIDATE_NODE_ID,
-    CANDIDATE_SOURCE, IDENTITY_DISPLAY_NAME, IDENTITY_FINGERPRINT, IDENTITY_NODE_ID,
-    MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME, MESSAGE_ATTACHMENT_NAME,
-    MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY, MESSAGE_CONVERSATION_ID,
-    MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_PEER_ID, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
-    MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, PAIRING_EXPIRES_AT, PAIRING_NODE_ID, PAIRING_PIN,
-    PAIRING_PORT, PAIRING_QR, PEER_CONNECTED, PEER_DISPLAY_NAME, PEER_FINGERPRINT, PEER_ID,
-    PEER_LAST_SEEN, PEER_POLICY, PEER_TRUSTED_AT, REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT,
-    REMOTE_INDICATOR, REMOTE_PEER_ID, REMOTE_PIN, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
-    STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_PEER_COUNT, STATUS_TRANSPORT_STATE,
-    TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PEER_ID, TRANSFER_PHASE,
-    TRANSFER_REASON, TRANSFER_SIZE,
+    CANDIDATE_ADDRESSES, CANDIDATE_AVATAR_HASH, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT,
+    CANDIDATE_NODE_ID, CANDIDATE_SOURCE, CONVERSATION_ID, CONVERSATION_LAST_BODY,
+    CONVERSATION_LAST_MESSAGE_ID, CONVERSATION_LAST_SENDER_ID, CONVERSATION_LAST_SENT_AT,
+    CONVERSATION_PEER_ID, CONVERSATION_UNREAD_COUNT, IDENTITY_AVATAR_HASH, IDENTITY_DISPLAY_NAME,
+    IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME,
+    MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY,
+    MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_PEER_ID, MESSAGE_RECEIVED_AT,
+    MESSAGE_SENDER_ID, MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, PAIRING_EXPIRES_AT,
+    PAIRING_NODE_ID, PAIRING_PIN, PAIRING_PORT, PAIRING_QR, PEER_AVATAR_HASH, PEER_CONNECTED,
+    PEER_DISPLAY_NAME, PEER_FINGERPRINT, PEER_ID, PEER_LAST_SEEN, PEER_POLICY, PEER_TRUSTED_AT,
+    REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_PEER_ID, REMOTE_PIN,
+    REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH,
+    STATUS_PEER_COUNT, STATUS_TRANSPORT_STATE, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME,
+    TRANSFER_PEER_ID, TRANSFER_PHASE, TRANSFER_REASON, TRANSFER_SIZE,
 };
 
 #[derive(Debug, Error)]
@@ -94,6 +96,7 @@ pub struct Peer {
     pub id: String,
     pub fingerprint: String,
     pub display_name: String,
+    pub avatar_hash: String,
     pub policy: PeerPolicy,
     pub trusted_at: u64,
     pub last_seen: u64,
@@ -105,8 +108,20 @@ pub struct Candidate {
     pub node_id: String,
     pub fingerprint: String,
     pub display_name: String,
+    pub avatar_hash: String,
     pub addresses: String,
     pub source: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationSummary {
+    pub conversation_id: String,
+    pub peer_id: String,
+    pub last_message_id: String,
+    pub last_sender_id: String,
+    pub last_body: String,
+    pub last_sent_at: u64,
+    pub unread_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -173,6 +188,7 @@ pub struct Identity {
     pub node_id: String,
     pub fingerprint: String,
     pub display_name: String,
+    pub avatar_hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -204,6 +220,17 @@ pub enum DaemonEvent {
         message_id: String,
         state: MessageState,
     },
+    ConversationChanged {
+        peer_id: String,
+    },
+    TypingChanged {
+        peer_id: String,
+        typing: bool,
+    },
+    PeerProfileChanged {
+        fingerprint: String,
+    },
+    SelfProfileChanged,
     PeerConnected(Peer),
     PeerDisconnected(Peer),
     PairingStarted(PairingStart),
@@ -257,6 +284,7 @@ pub fn parse_identity(values: &HashMap<String, OwnedVariant>) -> Result<Identity
         node_id: required_string(values, IDENTITY_NODE_ID)?,
         fingerprint: required_string(values, IDENTITY_FINGERPRINT)?,
         display_name: optional_string(values, IDENTITY_DISPLAY_NAME),
+        avatar_hash: optional_string(values, IDENTITY_AVATAR_HASH),
     })
 }
 
@@ -278,6 +306,7 @@ pub fn parse_peer(values: &HashMap<String, OwnedVariant>) -> Result<Peer> {
         id: required_string(values, PEER_ID)?,
         fingerprint: required_string(values, PEER_FINGERPRINT)?,
         display_name: optional_string(values, PEER_DISPLAY_NAME),
+        avatar_hash: optional_string(values, PEER_AVATAR_HASH),
         policy: PeerPolicy::parse(&optional_string(values, PEER_POLICY)),
         trusted_at: optional_u64(values, PEER_TRUSTED_AT),
         last_seen: optional_u64(values, PEER_LAST_SEEN),
@@ -290,8 +319,23 @@ pub fn parse_candidate(values: &HashMap<String, OwnedVariant>) -> Result<Candida
         node_id: required_string(values, CANDIDATE_NODE_ID)?,
         fingerprint: required_string(values, CANDIDATE_FINGERPRINT)?,
         display_name: optional_string(values, CANDIDATE_DISPLAY_NAME),
+        avatar_hash: optional_string(values, CANDIDATE_AVATAR_HASH),
         addresses: optional_string(values, CANDIDATE_ADDRESSES),
         source: optional_string(values, CANDIDATE_SOURCE),
+    })
+}
+
+pub fn parse_conversation_summary(
+    values: &HashMap<String, OwnedVariant>,
+) -> Result<ConversationSummary> {
+    Ok(ConversationSummary {
+        conversation_id: required_string(values, CONVERSATION_ID)?,
+        peer_id: required_string(values, CONVERSATION_PEER_ID)?,
+        last_message_id: optional_string(values, CONVERSATION_LAST_MESSAGE_ID),
+        last_sender_id: optional_string(values, CONVERSATION_LAST_SENDER_ID),
+        last_body: optional_string(values, CONVERSATION_LAST_BODY),
+        last_sent_at: optional_u64(values, CONVERSATION_LAST_SENT_AT),
+        unread_count: optional_u64(values, CONVERSATION_UNREAD_COUNT) as u32,
     })
 }
 

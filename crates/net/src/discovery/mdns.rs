@@ -17,6 +17,8 @@ const TXT_VERSION: &str = "v";
 const TXT_NODE_ID: &str = "id";
 const TXT_FINGERPRINT: &str = "fp";
 const TXT_DISPLAY_NAME: &str = "name";
+const TXT_AVATAR_HASH: &str = "avh";
+const TXT_AVATAR_MIME: &str = "avm";
 const TXT_PORT: &str = "port";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,6 +27,7 @@ pub struct TxtRecord {
     pub node_id: String,
     pub fingerprint: String,
     pub display_name: String,
+    pub avatar_hash: Option<String>,
     pub port: u16,
 }
 
@@ -41,18 +44,29 @@ impl TxtRecord {
             node_id: node_id.into(),
             fingerprint: fingerprint.into(),
             display_name: display_name.into(),
+            avatar_hash: None,
             port,
         }
     }
 
+    pub fn with_avatar_hash(mut self, avatar_hash: Option<String>) -> Self {
+        self.avatar_hash = avatar_hash;
+        self
+    }
+
     pub fn encode(&self) -> HashMap<String, String> {
-        HashMap::from([
+        let mut properties = HashMap::from([
             (TXT_VERSION.to_owned(), self.protocol_version.to_string()),
             (TXT_NODE_ID.to_owned(), self.node_id.clone()),
             (TXT_FINGERPRINT.to_owned(), self.fingerprint.clone()),
             (TXT_DISPLAY_NAME.to_owned(), self.display_name.clone()),
             (TXT_PORT.to_owned(), self.port.to_string()),
-        ])
+        ]);
+        if let Some(avatar_hash) = &self.avatar_hash {
+            properties.insert(TXT_AVATAR_HASH.to_owned(), avatar_hash.clone());
+            properties.insert(TXT_AVATAR_MIME.to_owned(), "png".to_owned());
+        }
+        properties
     }
 
     pub fn decode(properties: &HashMap<String, String>) -> Result<Self, DiscoveryError> {
@@ -95,11 +109,17 @@ impl TxtRecord {
             .map_or(Ok(0), |value| value.parse::<u16>())
             .map_err(|_| DiscoveryError::InvalidRecord("invalid TXT port".to_owned()))?;
 
+        let avatar_hash = properties.get(TXT_AVATAR_HASH).and_then(|value| {
+            (value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+                .then(|| value.to_ascii_lowercase())
+        });
+
         Ok(Self {
             protocol_version: version,
             node_id: node_id.clone(),
             fingerprint: fingerprint.to_ascii_lowercase(),
             display_name,
+            avatar_hash,
             port,
         })
     }
@@ -111,6 +131,8 @@ impl TxtRecord {
             TXT_NODE_ID,
             TXT_FINGERPRINT,
             TXT_DISPLAY_NAME,
+            TXT_AVATAR_HASH,
+            TXT_AVATAR_MIME,
             TXT_PORT,
         ] {
             if let Some(value) = resolved.get_property_val_str(key) {
@@ -136,6 +158,7 @@ pub(crate) fn spawn(
         config.display_name.clone(),
         config.transport_port,
     )
+    .with_avatar_hash(config.avatar_hash.clone())
     .encode();
     let ip = local_ip_argument();
     let service = ServiceInfo::new(SERVICE_TYPE, &instance, &host, ip.as_str(), 0, properties)
@@ -215,16 +238,19 @@ fn resolved_service(resolved: &ResolvedService, sink: &Sink, names: &mut HashMap
         resolved.get_fullname().to_owned(),
         record.fingerprint.clone(),
     );
-    sink.offer(Candidate::new(
-        record.node_id,
-        record.fingerprint,
-        record.display_name,
-        addresses,
-        record.port,
-        record.protocol_version,
-        CandidateSource::Mdns,
-        Instant::now(),
-    ));
+    sink.offer(
+        Candidate::new(
+            record.node_id,
+            record.fingerprint,
+            record.display_name,
+            addresses,
+            record.port,
+            record.protocol_version,
+            CandidateSource::Mdns,
+            Instant::now(),
+        )
+        .with_avatar_hash(record.avatar_hash),
+    );
 }
 
 fn instance_name(config: &DiscoveryConfig) -> String {

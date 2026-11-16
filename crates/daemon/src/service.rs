@@ -17,6 +17,7 @@ use crate::calls::{CallEvent, CallService};
 use crate::identity::PublicIdentity;
 use crate::messaging::{MessagingEvent, MessagingService};
 use crate::pairing_service::{PairingService, StartPairingResponse};
+use crate::profile::ProfileService;
 use crate::remote::{RemoteEventMessage, RemoteService, RemoteSnapshot};
 use crate::runtime::Shutdown;
 use crate::storage::{DatabaseHandle, Peer, PeerPolicy, StorageError, StoredMessage};
@@ -42,6 +43,7 @@ pub struct DaemonState {
     trust: Arc<TrustStore>,
     transport: Arc<Transport>,
     pairing: Arc<PairingService>,
+    profile: Arc<ProfileService>,
     messaging: Arc<MessagingService>,
     attachments: Arc<AttachmentService>,
     calls: Arc<CallService>,
@@ -58,6 +60,9 @@ pub enum DaemonInitError {
 
     #[error(transparent)]
     Attachments(#[from] AttachmentsError),
+
+    #[error(transparent)]
+    Profile(#[from] ticonnect_core::profile::ProfileError),
 }
 
 impl DaemonState {
@@ -71,9 +76,6 @@ impl DaemonState {
         let trust = Arc::new(TrustStore::load(database.clone()).await?);
         trust.set_open_lan(settings.trust_open_lan());
         let port = settings.transport_port();
-        let discovery = Arc::new(LanDiscovery::new(discovery_config(
-            &settings, &public, port,
-        )));
         let transport = Arc::new(
             Transport::bind(ticonnect_net::transport::TransportConfig {
                 identity: identity.key_pair().clone(),
@@ -84,6 +86,23 @@ impl DaemonState {
             })
             .await?,
         );
+        let data_dir = settings.data_dir().map_err(|error| {
+            DaemonInitError::Attachments(AttachmentsError::Invalid(error.to_string()))
+        })?;
+        let profile = Arc::new(ProfileService::load(
+            &data_dir,
+            identity.key_pair().clone(),
+            public.node_id(),
+            settings.identity_display_name().to_owned(),
+            database.clone(),
+            transport.clone(),
+        )?);
+        let discovery = Arc::new(LanDiscovery::new(discovery_config(
+            &settings,
+            &public,
+            port,
+            profile.avatar_hash(),
+        )));
         let pairing = Arc::new(PairingService::new(
             public.clone(),
             trust.clone(),
@@ -101,12 +120,7 @@ impl DaemonState {
         let attachments = Arc::new(
             AttachmentService::new(
                 database.clone(),
-                settings
-                    .data_dir()
-                    .map_err(|error| {
-                        DaemonInitError::Attachments(AttachmentsError::Invalid(error.to_string()))
-                    })?
-                    .join("attachments"),
+                data_dir.join("attachments"),
                 transport.clone(),
                 settings.clone(),
             )
@@ -135,6 +149,7 @@ impl DaemonState {
             trust,
             transport,
             pairing,
+            profile,
             messaging,
             attachments,
             calls,
@@ -152,6 +167,7 @@ impl DaemonState {
         trust: Arc<TrustStore>,
         transport: Arc<Transport>,
         pairing: Arc<PairingService>,
+        profile: Arc<ProfileService>,
         messaging: Arc<MessagingService>,
         attachments: Arc<AttachmentService>,
         calls: Arc<CallService>,
@@ -167,6 +183,7 @@ impl DaemonState {
             trust,
             transport,
             pairing,
+            profile,
             messaging,
             attachments,
             calls,
@@ -202,6 +219,10 @@ impl DaemonState {
         &self.pairing
     }
 
+    pub fn profile(&self) -> &Arc<ProfileService> {
+        &self.profile
+    }
+
     pub fn messaging(&self) -> &Arc<MessagingService> {
         &self.messaging
     }
@@ -227,6 +248,8 @@ impl DaemonState {
 
     pub fn replace_settings(&self, settings: Settings) {
         self.trust.set_open_lan(settings.trust_open_lan());
+        self.profile
+            .set_display_name(settings.identity_display_name().to_owned());
         self.messaging.apply_settings(settings.clone());
         self.attachments.apply_settings(settings.clone());
         self.calls.apply_settings(settings.clone());
@@ -239,7 +262,12 @@ impl DaemonState {
 
     pub async fn reconfigure_discovery(&self) {
         let settings = self.settings();
-        let config = discovery_config(&settings, &self.identity, settings.transport_port());
+        let config = discovery_config(
+            &settings,
+            &self.identity,
+            settings.transport_port(),
+            self.profile.avatar_hash(),
+        );
         if let Err(error) = self.discovery.reconfigure(config).await {
             tracing::warn!(%error, "failed to reconfigure discovery");
         }
@@ -316,6 +344,10 @@ impl DaemonService {
                 ipc::IDENTITY_DISPLAY_NAME.to_owned(),
                 string_variant(settings.identity_display_name().to_owned()),
             ),
+            (
+                ipc::IDENTITY_AVATAR_HASH.to_owned(),
+                string_variant(self.state.profile().avatar_hash().unwrap_or_default()),
+            ),
         ])
     }
 }
@@ -336,6 +368,67 @@ impl DaemonService {
 
     async fn get_identity(&self) -> HashMap<String, OwnedVariant> {
         self.identity()
+    }
+
+    async fn get_avatar(&self, fingerprint: &str) -> Result<Vec<u8>, ServiceError> {
+        if fingerprint == self.state.identity().fingerprint().to_hex() {
+            let avatar = self.state.profile().avatar();
+            if !avatar.is_empty() {
+                return Ok(avatar);
+            }
+        }
+        let profile = self
+            .state
+            .database()
+            .get_peer_profile(fingerprint)
+            .await
+            .map_err(database_error)?
+            .ok_or_else(|| ServiceError::NotFound(format!("avatar {fingerprint}")))?;
+        if profile.avatar.is_empty() {
+            return Err(ServiceError::NotFound(format!("avatar {fingerprint}")));
+        }
+        Ok(profile.avatar)
+    }
+
+    async fn set_avatar(&self, avatar: Vec<u8>) -> Result<(), ServiceError> {
+        self.state
+            .profile()
+            .set_avatar(avatar)
+            .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        self.state.reconfigure_discovery().await;
+        Ok(())
+    }
+
+    async fn clear_avatar(&self) -> Result<(), ServiceError> {
+        self.state
+            .profile()
+            .clear_avatar()
+            .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        self.state.reconfigure_discovery().await;
+        Ok(())
+    }
+
+    async fn list_conversation_summaries(
+        &self,
+    ) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let summaries = self
+            .state
+            .database()
+            .list_conversation_summaries(&self.state.identity().node_id().to_string())
+            .await
+            .map_err(database_error)?;
+        Ok(summaries
+            .into_iter()
+            .map(conversation_summary_variant)
+            .collect())
+    }
+
+    async fn set_typing(&self, peer_id: &str, typing: bool) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .set_typing(peer_id, typing)
+            .await
+            .map_err(|error| ServiceError::Failed(error.to_string()))
     }
 
     async fn get_setting(&self, key: &str) -> Result<OwnedVariant, ServiceError> {
@@ -864,6 +957,28 @@ impl DaemonService {
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    pub async fn conversation_changed(
+        emitter: SignalEmitter<'_>,
+        peer_id: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn typing_changed(
+        emitter: SignalEmitter<'_>,
+        peer_id: &str,
+        typing: bool,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn peer_profile_changed(
+        emitter: SignalEmitter<'_>,
+        fingerprint: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn self_profile_changed(emitter: SignalEmitter<'_>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
     pub async fn sync_completed(
         emitter: SignalEmitter<'_>,
         peer_id: &str,
@@ -953,6 +1068,11 @@ pub(crate) async fn emit_messaging_event(
             message,
             notify,
         } => {
+            DaemonService::conversation_changed(
+                SignalEmitter::new(connection, ipc::DAEMON_PATH)?,
+                &peer_id,
+            )
+            .await?;
             DaemonService::message_received(
                 emitter,
                 stored_message_variant_with(peer_id, message, notify),
@@ -967,6 +1087,9 @@ pub(crate) async fn emit_messaging_event(
         }
         MessagingEvent::PolicyChanged { peer_id, policy } => {
             DaemonService::policy_changed(emitter, &peer_id, policy.as_str()).await
+        }
+        MessagingEvent::TypingChanged { peer_id, typing } => {
+            DaemonService::typing_changed(emitter, &peer_id, typing).await
         }
     }
 }
@@ -1077,6 +1200,10 @@ fn peer_variant(peer: Peer, connected: bool) -> HashMap<String, OwnedVariant> {
             string_variant(peer.display_name.unwrap_or_default()),
         ),
         (
+            ipc::PEER_AVATAR_HASH.to_owned(),
+            string_variant(String::new()),
+        ),
+        (
             ipc::PEER_POLICY.to_owned(),
             string_variant(peer.policy.as_str().to_owned()),
         ),
@@ -1120,6 +1247,10 @@ pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVa
             string_variant(candidate.display_name().to_owned()),
         ),
         (
+            ipc::CANDIDATE_AVATAR_HASH.to_owned(),
+            string_variant(candidate.avatar_hash().unwrap_or_default().to_owned()),
+        ),
+        (
             ipc::CANDIDATE_ADDRESSES.to_owned(),
             string_variant(candidate.addresses_display()),
         ),
@@ -1142,16 +1273,55 @@ pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVa
     ])
 }
 
+fn conversation_summary_variant(
+    summary: crate::storage::messages::ConversationSummary,
+) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::CONVERSATION_ID.to_owned(),
+            string_variant(summary.conversation_id),
+        ),
+        (
+            ipc::CONVERSATION_PEER_ID.to_owned(),
+            string_variant(summary.peer_id),
+        ),
+        (
+            ipc::CONVERSATION_LAST_MESSAGE_ID.to_owned(),
+            string_variant(summary.last_message_id.unwrap_or_default()),
+        ),
+        (
+            ipc::CONVERSATION_LAST_SENDER_ID.to_owned(),
+            string_variant(summary.last_sender_id.unwrap_or_default()),
+        ),
+        (
+            ipc::CONVERSATION_LAST_BODY.to_owned(),
+            string_variant(summary.last_body.unwrap_or_default()),
+        ),
+        (
+            ipc::CONVERSATION_LAST_SENT_AT.to_owned(),
+            OwnedVariant::from(
+                u64::try_from(summary.last_sent_at.unwrap_or_default()).unwrap_or_default(),
+            ),
+        ),
+        (
+            ipc::CONVERSATION_UNREAD_COUNT.to_owned(),
+            OwnedVariant::from(u64::from(summary.unread_count)),
+        ),
+    ])
+}
+
 pub fn discovery_config(
     settings: &Settings,
     identity: &PublicIdentity,
     transport_port: u16,
+    avatar_hash: Option<String>,
 ) -> DiscoveryConfig {
     let mut config = DiscoveryConfig::new(
         settings.identity_display_name(),
         identity.node_id().to_string(),
         identity.fingerprint().to_hex(),
     );
+    config.avatar_hash = avatar_hash;
     config.enabled = settings.discovery_enabled();
     config.mdns = settings.discovery_mdns();
     config.broadcast = settings.discovery_broadcast();
@@ -1184,6 +1354,19 @@ fn start_pairing_variant(started: &StartPairingResponse) -> HashMap<String, Owne
             OwnedVariant::from(u32::from(started.port)),
         ),
     ])
+}
+
+pub(crate) async fn emit_profile_event(
+    connection: &zbus::Connection,
+    fingerprint: &str,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    DaemonService::peer_profile_changed(emitter, fingerprint).await
+}
+
+pub(crate) async fn emit_self_profile_event(connection: &zbus::Connection) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    DaemonService::self_profile_changed(emitter).await
 }
 
 pub(crate) async fn emit_transfer_event(
@@ -1468,7 +1651,9 @@ mod tests {
             .await
             .expect("database");
         let trust = Arc::new(TrustStore::load(database.clone()).await.expect("trust"));
-        let discovery = Arc::new(LanDiscovery::new(discovery_config(&settings, &public, 0)));
+        let discovery = Arc::new(LanDiscovery::new(discovery_config(
+            &settings, &public, 0, None,
+        )));
         let transport = Arc::new(
             Transport::bind(TransportConfig {
                 identity: identity.key_pair().clone(),
@@ -1518,6 +1703,17 @@ mod tests {
             settings.clone(),
             Arc::new(crate::remote::NoopRemoteHost),
         ));
+        let profile = Arc::new(
+            ProfileService::load(
+                &dir,
+                identity.key_pair().clone(),
+                public.node_id(),
+                settings.identity_display_name().to_owned(),
+                database.clone(),
+                transport.clone(),
+            )
+            .expect("profile"),
+        );
         let state = Arc::new(DaemonState::new(
             Arc::new(Shutdown::new()),
             public,
@@ -1527,6 +1723,7 @@ mod tests {
             trust,
             transport,
             pairing,
+            profile,
             messaging,
             attachments,
             calls,

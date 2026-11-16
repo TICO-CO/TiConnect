@@ -61,6 +61,11 @@ pub enum TransportEvent {
         address: SocketAddr,
         connection: quinn::Connection,
     },
+    ProfileRequested {
+        fingerprint: Fingerprint,
+        address: SocketAddr,
+        connection: quinn::Connection,
+    },
     PeerConnected(PeerInfo),
     PeerDisconnected(PeerInfo),
 }
@@ -234,6 +239,13 @@ impl Transport {
         target: DialTarget,
     ) -> Result<quinn::Connection, TransportError> {
         client::connect_pairing(self, target).await
+    }
+
+    pub async fn connect_profile(
+        &self,
+        target: DialTarget,
+    ) -> Result<(quinn::Connection, [u8; 32]), TransportError> {
+        client::connect_profile(self, target).await
     }
 
     pub async fn connect_pairing_with_retry(

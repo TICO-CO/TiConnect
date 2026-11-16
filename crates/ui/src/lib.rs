@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod autostart;
+pub mod avatar;
 pub mod client;
 pub mod error;
 pub mod model;

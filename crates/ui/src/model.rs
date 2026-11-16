@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use ticonnect_settings::Appearance;
 
 pub use ticonnect_core::ipc::events::{
-    Call, Candidate, DaemonEvent, Identity, Message, MessageState, PairingStart, Peer, PeerPolicy,
-    RemoteSession, Status,
+    Call, Candidate, ConversationSummary, DaemonEvent, Identity, Message, MessageState,
+    PairingStart, Peer, PeerPolicy, RemoteSession, Status,
 };
 
 use crate::error::{Error, Result};
@@ -436,6 +436,7 @@ mod tests {
             id: id.to_owned(),
             fingerprint: "abc".to_owned(),
             display_name: name.to_owned(),
+            avatar_hash: String::new(),
             policy: PeerPolicy::Accept,
             trusted_at: 0,
             last_seen: 0,

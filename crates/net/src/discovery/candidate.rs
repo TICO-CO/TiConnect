@@ -21,6 +21,7 @@ pub struct Candidate {
     node_id: String,
     fingerprint: String,
     display_name: String,
+    avatar_hash: Option<String>,
     addresses: BTreeSet<String>,
     port: u16,
     protocol_version: u16,
@@ -45,6 +46,7 @@ impl Candidate {
             node_id,
             fingerprint,
             display_name,
+            avatar_hash: None,
             addresses,
             port,
             protocol_version,
@@ -64,6 +66,15 @@ impl Candidate {
 
     pub fn display_name(&self) -> &str {
         &self.display_name
+    }
+
+    pub fn avatar_hash(&self) -> Option<&str> {
+        self.avatar_hash.as_deref()
+    }
+
+    pub(crate) fn with_avatar_hash(mut self, avatar_hash: Option<String>) -> Self {
+        self.avatar_hash = avatar_hash;
+        self
     }
 
     pub fn addresses(&self) -> impl Iterator<Item = &str> {
@@ -98,6 +109,9 @@ impl Candidate {
         self.addresses.extend(other.addresses);
         if self.display_name.is_empty() {
             self.display_name = other.display_name;
+        }
+        if other.avatar_hash.is_some() {
+            self.avatar_hash = other.avatar_hash;
         }
         if self.port == 0 {
             self.port = other.port;

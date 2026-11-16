@@ -41,10 +41,10 @@ fn frame_decode_rejects_every_malformed_shape() {
     ));
 
     let mut bad_kind = valid.clone();
-    bad_kind[5] = 12;
+    bad_kind[5] = 13;
     assert!(matches!(
         Frame::decode(&bad_kind),
-        Err(WireError::UnsupportedKind(12))
+        Err(WireError::UnsupportedKind(13))
     ));
 
     let mut trailing = valid;

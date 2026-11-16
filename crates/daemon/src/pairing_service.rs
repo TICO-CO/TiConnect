@@ -616,6 +616,7 @@ pub fn spawn(connection: zbus::Connection, service: Arc<PairingService>) -> Join
                                 service.handle_pairing_request(pairing_connection, fingerprint).await;
                             });
                         }
+                        Ok(TransportEvent::ProfileRequested { .. }) => {}
                         Ok(TransportEvent::PeerConnected(peer)) => {
                             let emitter = match SignalEmitter::new(&connection, ticonnect_core::ipc::DAEMON_PATH) {
                                 Ok(emitter) => emitter,

@@ -41,6 +41,15 @@ async fn handle_incoming(
         return Ok(());
     }
 
+    if alpn.as_deref() == Some(crate::tls::PROFILE_ALPN) {
+        let _ = transport.events().send(TransportEvent::ProfileRequested {
+            fingerprint,
+            address: connection.remote_address(),
+            connection,
+        });
+        return Ok(());
+    }
+
     if alpn.as_deref() != Some(SESSION_ALPN) {
         transport.note_failure();
         connection.close(SESSION_REJECTED.into(), b"unsupported alpn");

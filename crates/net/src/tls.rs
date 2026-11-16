@@ -18,6 +18,7 @@ use x509_parser::prelude::*;
 use crate::pairing::PAIRING_ALPN;
 
 pub const SESSION_ALPN: &[u8] = b"ticonnect/1";
+pub const PROFILE_ALPN: &[u8] = b"ticonnect-profile/1";
 pub const TLS_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 pub const TLS_KEEP_ALIVE: Duration = Duration::from_secs(10);
 pub const DATAGRAM_BUFFER: usize = 64 * 1024;
@@ -107,6 +108,7 @@ impl IdentityCertificate {
 pub enum ClientAlpn {
     Session,
     Pairing,
+    Profile,
 }
 
 impl ClientAlpn {
@@ -114,6 +116,7 @@ impl ClientAlpn {
         match self {
             Self::Session => SESSION_ALPN,
             Self::Pairing => PAIRING_ALPN,
+            Self::Profile => PROFILE_ALPN,
         }
     }
 }
@@ -128,7 +131,11 @@ pub fn server_config(certificate: &IdentityCertificate) -> Result<quinn::ServerC
         }))
         .with_single_cert(vec![certificate.certificate().clone()], certificate.key())
         .map_err(config_error)?;
-    config.alpn_protocols = vec![SESSION_ALPN.to_vec(), PAIRING_ALPN.to_vec()];
+    config.alpn_protocols = vec![
+        SESSION_ALPN.to_vec(),
+        PAIRING_ALPN.to_vec(),
+        PROFILE_ALPN.to_vec(),
+    ];
     config.max_early_data_size = 0;
 
     let crypto = QuicServerConfig::try_from(config).map_err(config_error)?;

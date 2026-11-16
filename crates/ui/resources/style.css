@@ -1,13 +1,52 @@
+@define-color tc_sidebar alpha(@sidebar_bg_color, 0.78);
+@define-color tc_bubble_in @card_bg_color;
+@define-color tc_bubble_out @accent_bg_color;
+@define-color tc_bubble_out_fg @accent_fg_color;
+@define-color tc_muted alpha(@window_fg_color, 0.58);
+@define-color tc_divider alpha(@borders, 0.45);
+
 .sidebar {
-  background-color: @sidebar_bg_color;
-  border-right: 1px solid alpha(@borders, 0.35);
+  background: @tc_sidebar;
+  border-right: 1px solid @tc_divider;
 }
 
-.avatar {
-  background-color: alpha(@accent_bg_color, 0.18);
-  border-radius: 17px;
-  color: @accent_fg_color;
-  font-weight: 700;
+.chat-header {
+  border-bottom: 1px solid @tc_divider;
+  background: alpha(@window_bg_color, 0.35);
+}
+
+.chat-title {
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.peer-avatar {
+  border-radius: 999px;
+}
+
+.profile-avatar {
+  border-radius: 999px;
+}
+
+.peer-row {
+  border-radius: 10px;
+  margin: 2px 6px;
+}
+
+.peer-row:hover {
+  background: alpha(@accent_bg_color, 0.07);
+}
+
+.peer-row:selected {
+  background: alpha(@accent_bg_color, 0.16);
+}
+
+.peer-name {
+  font-weight: 650;
+}
+
+.presence-dot {
+  font-size: 9px;
 }
 
 .presence-online {
@@ -18,19 +57,125 @@
   color: @insensitive_fg_color;
 }
 
+.unread-badge {
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 999px;
+  padding: 0 5px;
+  background: @accent_bg_color;
+  color: @accent_fg_color;
+  font-weight: 800;
+  font-size: 11px;
+}
+
+.typing-preview,
+.typing-label {
+  color: @accent_color;
+  font-style: italic;
+}
+
+.message-list {
+  background: transparent;
+}
+
+.message-list row {
+  background: transparent;
+}
+
+.message-row {
+  margin: 1px 0;
+}
+
 .message-bubble {
-  border-radius: 12px;
-  padding: 8px 11px;
+  border-radius: 18px;
+  padding: 8px 12px;
+  box-shadow: 0 1px 2px alpha(black, 0.07);
 }
 
 .message-incoming {
-  background-color: alpha(@card_bg_color, 0.9);
-  border: 1px solid alpha(@borders, 0.35);
+  background: @tc_bubble_in;
+  border: 1px solid @tc_divider;
+  border-bottom-left-radius: 6px;
 }
 
 .message-outgoing {
-  background-color: alpha(@accent_bg_color, 0.22);
-  border: 1px solid alpha(@accent_bg_color, 0.35);
+  background: @tc_bubble_out;
+  color: @tc_bubble_out_fg;
+  border-bottom-right-radius: 6px;
+}
+
+.message-outgoing label {
+  color: @tc_bubble_out_fg;
+}
+
+.message-incoming label {
+  color: @window_fg_color;
+}
+
+.message-meta {
+  margin-top: 1px;
+}
+
+.message-meta label {
+  font-size: 11px;
+  opacity: 0.72;
+}
+
+.message-image {
+  border-radius: 12px;
+}
+
+.day-separator {
+  background: alpha(@window_fg_color, 0.07);
+  border-radius: 999px;
+  padding: 3px 12px;
+
+  font-weight: 650;
+  color: @tc_muted;
+}
+
+.tick {
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.tick-pending,
+.tick-sent,
+.tick-delivered {
+  opacity: 0.72;
+}
+
+.tick-read {
+  color: #58c9ff;
+  opacity: 1;
+}
+
+.tick-failed {
+  color: @error_color;
+}
+
+.composer-bar {
+  border-top: 1px solid @tc_divider;
+  background: alpha(@window_bg_color, 0.55);
+  padding-top: 2px;
+}
+
+.composer-input-frame {
+  background: @card_bg_color;
+  border: 1px solid @tc_divider;
+  border-radius: 16px;
+}
+
+.composer-input,
+.composer-input text {
+  background: transparent;
+  color: @window_fg_color;
+}
+
+.send-button {
+  min-width: 40px;
+  min-height: 40px;
+  border-radius: 999px;
 }
 
 .error {
@@ -39,4 +184,8 @@
 
 .monospace {
   font-family: monospace;
+}
+
+.sidebar .heading {
+  font-weight: 800;
 }

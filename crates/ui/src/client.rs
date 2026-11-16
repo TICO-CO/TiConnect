@@ -4,7 +4,8 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, Call, Candidate, Message, MessageState, Peer, PeerPolicy, RemoteSession,
+    self, Call, Candidate, ConversationSummary, Message, MessageState, Peer, PeerPolicy,
+    RemoteSession,
 };
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, PairingStart, Status};
 use tokio::sync::{mpsc, oneshot};
@@ -17,9 +18,19 @@ type Reply<T> = oneshot::Sender<Result<T>>;
 
 enum Command {
     GetIdentity(Reply<Identity>),
+    GetAvatar {
+        fingerprint: String,
+        reply: Reply<Vec<u8>>,
+    },
+    SetAvatar {
+        avatar: Vec<u8>,
+        reply: Reply<()>,
+    },
+    ClearAvatar(Reply<()>),
     GetStatus(Reply<Status>),
     ListPeers(Reply<Vec<Peer>>),
     ListCandidates(Reply<Vec<Candidate>>),
+    ListConversationSummaries(Reply<Vec<ConversationSummary>>),
     ListBlockedPeers(Reply<Vec<BlockedPeer>>),
     ListSettings(Reply<SettingsForm>),
     StartPairing(Reply<PairingStart>),
@@ -80,6 +91,11 @@ enum Command {
         policy: PeerPolicy,
         reply: Reply<()>,
     },
+    SetTyping {
+        peer_id: String,
+        typing: bool,
+        reply: Reply<()>,
+    },
     SetDnd {
         enabled: bool,
         reply: Reply<()>,
@@ -129,6 +145,24 @@ pub struct LinkHandle {
 impl LinkHandle {
     pub async fn identity(&self) -> Result<Identity> {
         self.request(Command::GetIdentity).await
+    }
+
+    pub async fn get_avatar(&self, fingerprint: String) -> Result<Vec<u8>> {
+        self.request(|reply| Command::GetAvatar { fingerprint, reply })
+            .await
+    }
+
+    pub async fn set_avatar(&self, avatar: Vec<u8>) -> Result<()> {
+        self.request(|reply| Command::SetAvatar { avatar, reply })
+            .await
+    }
+
+    pub async fn clear_avatar(&self) -> Result<()> {
+        self.request(Command::ClearAvatar).await
+    }
+
+    pub async fn list_conversation_summaries(&self) -> Result<Vec<ConversationSummary>> {
+        self.request(Command::ListConversationSummaries).await
     }
 
     pub async fn status(&self) -> Result<Status> {
@@ -251,6 +285,15 @@ impl LinkHandle {
         self.request(|reply| Command::SetPeerPolicy {
             peer_id,
             policy,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_typing(&self, peer_id: String, typing: bool) -> Result<()> {
+        self.request(|reply| Command::SetTyping {
+            peer_id,
+            typing,
             reply,
         })
         .await
@@ -397,6 +440,19 @@ async fn listen(
         .receive_message_state_changed()
         .await
         .map_err(bus_error)?;
+    let mut conversation_changed = proxy
+        .receive_conversation_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut typing_changed = proxy.receive_typing_changed().await.map_err(bus_error)?;
+    let mut peer_profile_changed = proxy
+        .receive_peer_profile_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut self_profile_changed = proxy
+        .receive_self_profile_changed()
+        .await
+        .map_err(bus_error)?;
     let mut connected = proxy.receive_peer_connected().await.map_err(bus_error)?;
     let mut disconnected = proxy.receive_peer_disconnected().await.map_err(bus_error)?;
     let mut pairing_started = proxy.receive_pairing_started().await.map_err(bus_error)?;
@@ -454,6 +510,32 @@ async fn listen(
                     message_id: args.message_id.to_owned(),
                     state: MessageState::parse(args.state),
                 });
+            }
+            signal = conversation_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::ConversationChanged {
+                    peer_id: args.peer_id.to_owned(),
+                });
+            }
+            signal = typing_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::TypingChanged {
+                    peer_id: args.peer_id.to_owned(),
+                    typing: args.typing,
+                });
+            }
+            signal = peer_profile_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::PeerProfileChanged {
+                    fingerprint: args.fingerprint.to_owned(),
+                });
+            }
+            signal = self_profile_changed.next() => {
+                let Some(_signal) = signal else { break };
+                let _ = events.send(DaemonEvent::SelfProfileChanged);
             }
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
@@ -621,6 +703,18 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
+        Command::GetAvatar { fingerprint, reply } => {
+            let result = proxy.get_avatar(&fingerprint).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetAvatar { avatar, reply } => {
+            let result = proxy.set_avatar(&avatar).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::ClearAvatar(reply) => {
+            let result = proxy.clear_avatar().await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
         Command::GetStatus(reply) => {
             let result = match proxy.get_status().await {
                 Ok(values) => events::parse_status(&values).map_err(payload_error),
@@ -640,6 +734,16 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 Ok(values) => values
                     .iter()
                     .map(|values| events::parse_candidate(values).map_err(payload_error))
+                    .collect::<Result<Vec<_>>>(),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::ListConversationSummaries(reply) => {
+            let result = match proxy.list_conversation_summaries().await {
+                Ok(values) => values
+                    .iter()
+                    .map(|values| events::parse_conversation_summary(values).map_err(payload_error))
                     .collect::<Result<Vec<_>>>(),
                 Err(error) => Err(bus_error(error)),
             };
@@ -786,6 +890,14 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .set_peer_policy(&peer_id, policy.as_str())
                 .await
                 .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetTyping {
+            peer_id,
+            typing,
+            reply,
+        } => {
+            let result = proxy.set_typing(&peer_id, typing).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SetDnd { enabled, reply } => {

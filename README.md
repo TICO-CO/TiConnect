@@ -189,8 +189,15 @@ not supported by libadwaita and overrides its styling.
 
 The UI owns `org.ticonnect.UI` on the session bus and exposes
 `Activate(s view)`. Views are `peers`, `chat`, `settings`, and `pairing`; an
-empty value means `chat`. The tray uses `Activate("chat")`. Starting a second UI
-forwards activation to the running instance.
+empty value means `chat`. `Activate("chat:<node-id>")` opens one conversation;
+the tray and overlay use it for notification clicks. The tray uses
+`Activate("chat")`. Starting a second UI forwards activation to the running
+instance.
+
+The built-in stylesheet is `crates/ui/resources/style.css`. If
+`$XDG_CONFIG_HOME/ticonnect/style.css` exists, it is loaded at user priority
+after the built-in stylesheet. Custom CSS can override the bundled theme without
+changing the GTK4/libadwaita stack.
 
 Keyboard shortcuts:
 
@@ -269,6 +276,7 @@ Settings keys:
 | `overlay.enabled` | bool | `true` | Show corner cards; false uses system notifications |
 | `overlay.timeout_secs` | integer | `5` | Card auto-dismiss timeout; valid range `1..=60` |
 | `read_receipts.enabled` | bool | `true` | Send delivered and read receipts |
+| `typing.enabled` | bool | `true` | Send and show typing indicators |
 | `outbox.ttl_days` | integer | `7` | Valid range `1..=365` |
 | `attachments.max_size_mib` | integer | `2048` | Valid range `1..=102400` |
 | `calls.timeout_secs` | integer | `30` | Ringing timeout; valid range `5..=300` |
@@ -291,6 +299,15 @@ Settings keys:
 - Identity metadata: `$XDG_CONFIG_HOME/ticonnect/identity.toml`, mode `0600`.
   It contains the UUIDv7 `node_id`; the public key is derived from the private
   key.
+- Profile photo: `$XDG_DATA_HOME/ticonnect/profile/self.png`, mode `0600`.
+  The UI center-crops and resizes the chosen image to a 192x192 PNG before
+  handing it to the daemon. The daemon advertises the BLAKE3 hash over mDNS.
+- Peers discover the profile over the `ticonnect-profile/1` ALPN. The profile
+  payload is signed with the identity key and verified against the pinned TLS
+  certificate and advertised avatar hash. Profile data is public LAN data and
+  never implies trust.
+- Cached peer profiles live in the `peer_profiles` table; `GetAvatar(fingerprint)`
+  returns the cached PNG or the local photo for the local fingerprint.
 - The config directory is mode `0700`. A key with any group or other permission
   bit is rejected at startup.
 - The fingerprint is BLAKE3 of the Ed25519 public key, rendered as lowercase hex
@@ -344,8 +361,14 @@ Settings keys:
   receipts are queued by `MarkRead`. Receipts are signed ack records, coalesced
   for 500 ms, and sent through the outbox. Mute suppresses delivered receipts;
   ignore suppresses all receipts.
-- Message state is `queued`, `sent`, `delivered`, `read`, `failed`, or `expired`.
-  Inbound messages have no local outbound state.
+- `MarkRead` always records local read state in `messages.read_at`, even when
+  read receipts are disabled. `ListConversationSummaries` returns the last
+  message, unread count, and conversation id for sidebar previews.
+- Outgoing message state is rendered as clock, single check, double check, and
+  blue double check for queued, sent, delivered, and read.
+- Typing indicators use a bounded `typing` wire frame over a short
+  unidirectional stream. They are not stored, respect `typing.enabled`, and are
+  cleared when the composer is idle, loses focus, or sends.
 - `accept` stores and may notify; `mute` stores silently and suppresses
   delivered receipts; `ignore` drops inbound records before verification,
   storage, receipt creation, or notification. DND suppresses notifications but

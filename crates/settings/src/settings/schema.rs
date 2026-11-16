@@ -86,6 +86,18 @@ impl Default for ReadReceiptsSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct TypingSettings {
+    pub enabled: bool,
+}
+
+impl Default for TypingSettings {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct OutboxSettings {
     pub ttl_days: u32,
 }
@@ -250,6 +262,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "overlay.enabled",
     "overlay.timeout_secs",
     "read_receipts.enabled",
+    "typing.enabled",
     "outbox.ttl_days",
     "attachments.max_size_mib",
     "calls.timeout_secs",
@@ -394,6 +407,16 @@ settings_schema! {
         };
         set(&mut self, value: ReadReceiptsSettings) -> set_read_receipts as active {
             active.read_receipts = value;
+        };
+    };
+
+    #[serde(default)]
+    typing: TypingSettings = TypingSettings::default() => {
+        get(&self) -> &TypingSettings as active {
+            &active.typing
+        };
+        set(&mut self, value: TypingSettings) -> set_typing as active {
+            active.typing = value;
         };
     };
 
@@ -575,6 +598,15 @@ impl Settings {
         self.active.read_receipts.enabled = enabled;
     }
 
+    pub fn typing_enabled(&self) -> bool {
+        self.active.typing.enabled
+    }
+
+    pub fn set_typing_enabled(&mut self, enabled: bool) {
+        self.changes.typing = true;
+        self.active.typing.enabled = enabled;
+    }
+
     pub fn outbox_ttl_days(&self) -> u32 {
         self.active.outbox.ttl_days
     }
@@ -719,6 +751,7 @@ impl Settings {
             "overlay.enabled" => Ok(SettingValue::Bool(self.overlay_enabled())),
             "overlay.timeout_secs" => Ok(SettingValue::Integer(self.overlay_timeout_secs())),
             "read_receipts.enabled" => Ok(SettingValue::Bool(self.read_receipts_enabled())),
+            "typing.enabled" => Ok(SettingValue::Bool(self.typing_enabled())),
             "outbox.ttl_days" => Ok(SettingValue::Integer(self.outbox_ttl_days())),
             "attachments.max_size_mib" => Ok(SettingValue::Integer(self.attachment_max_size_mib())),
             "calls.timeout_secs" => Ok(SettingValue::Integer(self.call_timeout_secs())),
@@ -818,6 +851,9 @@ impl Settings {
             }
             "read_receipts.enabled" => {
                 self.set_read_receipts_enabled(parse_bool(key, value)?);
+            }
+            "typing.enabled" => {
+                self.set_typing_enabled(parse_bool(key, value)?);
             }
             "outbox.ttl_days" => {
                 let days = value.parse::<u32>().map_err(|_| Error::InvalidSetting {

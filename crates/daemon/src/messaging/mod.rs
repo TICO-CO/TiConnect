@@ -5,6 +5,7 @@ pub mod store;
 pub mod sync;
 
 use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -53,6 +54,10 @@ pub enum MessagingEvent {
     PolicyChanged {
         peer_id: String,
         policy: PeerPolicy,
+    },
+    TypingChanged {
+        peer_id: String,
+        typing: bool,
     },
 }
 
@@ -347,6 +352,10 @@ impl MessagingService {
     ) -> Result<(), MessagingError> {
         let peer_id = self.conversation_peer(conversation_id).await?;
         let peer = self.peer(&peer_id).await?;
+        self.inner
+            .database
+            .mark_messages_read(conversation_id, message_ids, now_unix_ms())
+            .await?;
         if !policy::read_receipt(peer.policy, self.settings().read_receipts_enabled()) {
             return Ok(());
         }
@@ -374,6 +383,28 @@ impl MessagingService {
             .message_state(message_id)
             .await?
             .ok_or_else(|| MessagingError::UnknownMessage(message_id.to_owned()))
+    }
+
+    pub async fn set_typing(&self, peer_id: &str, typing: bool) -> Result<(), MessagingError> {
+        if !self.settings().typing_enabled() {
+            return Ok(());
+        }
+        let peer = self.peer(peer_id).await?;
+        if peer.policy == PeerPolicy::Ignore {
+            return Ok(());
+        }
+        let node_id = NodeId::from_str(peer_id)
+            .map_err(|_| MessagingError::UnknownPeer(peer_id.to_owned()))?;
+        let Some(session) = self.inner.transport.session_by_node_id(node_id) else {
+            return Ok(());
+        };
+        let frame = Frame::new(
+            FrameKind::Typing,
+            ticonnect_core::wire::TypingFrame::new(typing).encode(),
+        )?;
+        let mut send = session.open_uni().await?;
+        ticonnect_net::transport::session::write_frame(&mut send, &frame).await?;
+        Ok(())
     }
 
     pub async fn set_peer_policy(
@@ -575,6 +606,22 @@ impl MessagingService {
     async fn handle_frame(&self, peer: &PeerInfo, frame: Frame) -> Result<(), MessagingError> {
         match frame.kind() {
             FrameKind::Message | FrameKind::Ack => {}
+            FrameKind::Typing => {
+                let typing = ticonnect_core::wire::TypingFrame::decode(frame.payload())?;
+                let stored = self
+                    .inner
+                    .trust
+                    .peer_by_fingerprint(&peer.fingerprint.to_hex())
+                    .await?
+                    .ok_or_else(|| MessagingError::UnknownPeer(peer.node_id.to_string()))?;
+                if stored.policy != PeerPolicy::Ignore && self.settings().typing_enabled() {
+                    self.emit(MessagingEvent::TypingChanged {
+                        peer_id: stored.id,
+                        typing: typing.typing,
+                    });
+                }
+                return Ok(());
+            }
             FrameKind::Call => {
                 let frame = ticonnect_core::call::CallSignalFrame::from_wire(&frame)
                     .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
@@ -918,6 +965,7 @@ pub fn spawn(connection: zbus::Connection, service: MessagingService) -> JoinHan
                         Ok(TransportEvent::PeerConnected(peer)) => service.on_peer_connected(peer).await,
                         Ok(TransportEvent::PeerDisconnected(peer)) => service.on_peer_disconnected(&peer),
                         Ok(TransportEvent::PairingRequested { .. }) => {}
+                        Ok(TransportEvent::ProfileRequested { .. }) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }

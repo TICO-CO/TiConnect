@@ -75,6 +75,88 @@ pub enum InsertOutcome {
     Duplicate,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationSummary {
+    pub conversation_id: String,
+    pub peer_id: String,
+    pub last_message_id: Option<String>,
+    pub last_sender_id: Option<String>,
+    pub last_body: Option<String>,
+    pub last_sent_at: Option<i64>,
+    pub unread_count: u32,
+}
+
+pub fn conversation_summaries(
+    connection: &Connection,
+    local_node_id: &str,
+) -> Result<Vec<ConversationSummary>, StorageError> {
+    let mut conversations = connection.prepare("SELECT id, peer_id FROM conversations")?;
+    let rows = conversations.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    let mut summaries = Vec::new();
+    for row in rows {
+        let (conversation_id, peer_id) = row?;
+        let last = connection
+            .query_row(
+                "SELECT id, sender_id, body, sent_at
+                 FROM messages
+                 WHERE conversation_id = ?1 AND kind != 'ack'
+                 ORDER BY CASE WHEN sent_at > received_at THEN received_at ELSE sent_at END DESC,
+                          received_at DESC, id DESC
+                 LIMIT 1",
+                params![conversation_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, i64>(3)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let unread: i64 = connection.query_row(
+            "SELECT COUNT(*) FROM messages
+             WHERE conversation_id = ?1 AND sender_id != ?2 AND kind != 'ack'
+               AND read_at IS NULL",
+            params![conversation_id, local_node_id],
+            |row| row.get(0),
+        )?;
+        summaries.push(ConversationSummary {
+            conversation_id,
+            peer_id,
+            last_message_id: last.as_ref().map(|item| item.0.clone()),
+            last_sender_id: last.as_ref().map(|item| item.1.clone()),
+            last_body: last.as_ref().and_then(|item| item.2.clone()),
+            last_sent_at: last.as_ref().map(|item| item.3),
+            unread_count: u32::try_from(unread).unwrap_or(u32::MAX),
+        });
+    }
+    Ok(summaries)
+}
+
+pub fn mark_read(
+    connection: &Connection,
+    conversation_id: &str,
+    message_ids: &[String],
+    read_at: i64,
+) -> Result<u32, StorageError> {
+    let mut updated = 0_u32;
+    let mut statement = connection.prepare(
+        "UPDATE messages SET read_at = ?3
+         WHERE id = ?1 AND conversation_id = ?2 AND read_at IS NULL",
+    )?;
+    for message_id in message_ids {
+        updated = updated.saturating_add(
+            u32::try_from(statement.execute(params![message_id, conversation_id, read_at])?)
+                .unwrap_or(u32::MAX),
+        );
+    }
+    Ok(updated)
+}
+
 pub fn insert(
     connection: &Connection,
     record: &MessageRecord,

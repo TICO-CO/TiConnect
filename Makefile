@@ -7,7 +7,7 @@ METAINFO_DIR ?= $(DATADIR)/metainfo
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
 
-.PHONY: install-user uninstall-user check-user-surface lab lab-smoke lan-test
+.PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
@@ -29,11 +29,25 @@ target/release/ticonnect:
 target/debug/ticonnect:
 	CARGO_PROFILE_DEV_DEBUG=0 cargo build --bin ticonnect
 
-lab: target/debug/ticonnect
-	tests/local/lab.sh
+build-bin:
+	@if [ -n "$(TICONNECT_BIN)" ]; then \
+		test -x "$(TICONNECT_BIN)" || { echo "TICONNECT_BIN is not executable: $(TICONNECT_BIN)" >&2; exit 1; }; \
+		echo "using TICONNECT_BIN=$(TICONNECT_BIN)"; \
+	else \
+		allow="$(TICONNECT_ALLOW_UNDEFINED)"; \
+		if [ -z "$$allow" ] && [ -n "$${NIX_LD:-}" ]; then allow=1; fi; \
+		if [ "$$allow" = "1" ]; then \
+			CARGO_PROFILE_DEV_DEBUG=0 cargo rustc -p ticonnect --bin ticonnect -- -C link-arg=-Wl,--allow-shlib-undefined; \
+		else \
+			CARGO_PROFILE_DEV_DEBUG=0 cargo build --bin ticonnect; \
+		fi; \
+	fi
 
-lab-smoke: target/debug/ticonnect
-	tests/local/lab.sh --smoke
+lab: build-bin
+	TICONNECT_BIN="$(TICONNECT_BIN)" tests/local/lab.sh
+
+lab-smoke: build-bin
+	TICONNECT_BIN="$(TICONNECT_BIN)" tests/local/lab.sh --smoke
 
 uninstall-user:
 	rm -f $(BINDIR)/ticonnect

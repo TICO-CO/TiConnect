@@ -14,6 +14,7 @@ use crate::config_watch;
 use crate::discovery_service;
 use crate::messaging::{self, MessagingEvent};
 use crate::pairing_service;
+use crate::profile;
 use crate::reconnect_service;
 use crate::remote;
 use crate::service::{DaemonService, DaemonState};
@@ -79,6 +80,12 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
     let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let profile_task = profile::spawn(
+        connection.clone(),
+        state.discovery().clone(),
+        state.profile().clone(),
+        state.transport().clone(),
+    );
     let (transfer_sender, transfer_receiver) = tokio::sync::mpsc::unbounded_channel();
     state.messaging().set_transfer_sender(transfer_sender);
     let (call_sender, call_receiver) = tokio::sync::mpsc::unbounded_channel();
@@ -183,6 +190,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     state.discovery().stop_and_wait().await;
     discovery_task.abort();
     pairing_task.abort();
+    profile_task.abort();
     messaging_task.abort();
     message_sound_task.abort();
     attachments_task.abort();

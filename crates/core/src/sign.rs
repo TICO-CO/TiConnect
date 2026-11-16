@@ -3,7 +3,7 @@ use thiserror::Error;
 
 use crate::identity::IdentityKeyPair;
 
-pub const MAX_SIGNED_PAYLOAD: usize = 64 * 1024;
+pub const MAX_SIGNED_PAYLOAD: usize = 256 * 1024;
 
 const MAGIC: &[u8; 4] = b"TICS";
 const VERSION: u8 = 1;

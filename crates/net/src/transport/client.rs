@@ -59,6 +59,19 @@ pub(crate) async fn connect_pairing(
     result
 }
 
+pub(crate) async fn connect_profile(
+    transport: &Transport,
+    target: DialTarget,
+) -> Result<(quinn::Connection, [u8; 32]), TransportError> {
+    let connection = open_connection(transport, &target, ClientAlpn::Profile).await?;
+    let (certificate_fingerprint, public_key) = peer_certificate(&connection)?;
+    if certificate_fingerprint != target.fingerprint {
+        connection.close(0u32.into(), b"profile identity mismatch");
+        return Err(TransportError::IdentityMismatch);
+    }
+    Ok((connection, public_key))
+}
+
 pub(crate) async fn connect_pairing_with_retry(
     transport: &Transport,
     target: DialTarget,

@@ -6,6 +6,7 @@ pub mod migrations;
 pub mod outbox;
 pub mod peer_state;
 pub mod peers;
+pub mod profiles;
 pub mod transfer_partials;
 
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ pub use messages::{InsertOutcome, MessageState, StoredMessage};
 pub use outbox::OutboxEntry;
 pub use peer_state::PeerState;
 pub use peers::{BlockedPeer, NewPeer, Peer, PeerPolicy};
+pub use profiles::PeerProfile;
 pub use transfer_partials::TransferPartial;
 
 type Reply<T> = oneshot::Sender<Result<T, StorageError>>;
@@ -32,6 +34,7 @@ enum Command {
     CountPeers(Reply<u32>),
     OutboxDepth(Reply<u32>),
     ListPeers(Reply<Vec<Peer>>),
+    ListConversationSummaries(String, Reply<Vec<messages::ConversationSummary>>),
     GetPeer(String, Reply<Option<Peer>>),
     GetPeerByFingerprint(String, Reply<Option<Peer>>),
     InsertPeer(NewPeer, Reply<Peer>),
@@ -83,6 +86,12 @@ enum Command {
         reply: Reply<Vec<StoredMessage>>,
     },
     SetMessageState(String, MessageState, Reply<bool>),
+    MarkMessagesRead {
+        conversation_id: String,
+        message_ids: Vec<String>,
+        read_at: i64,
+        reply: Reply<u32>,
+    },
     MessageState(String, Reply<Option<MessageState>>),
     GetPeerState(String, Reply<PeerState>),
     AdvanceRecvSeq(String, u64, Reply<()>),
@@ -103,6 +112,8 @@ enum Command {
     GetTransferPartial(String, Reply<Option<TransferPartial>>),
     ListTransferPartials(Reply<Vec<TransferPartial>>),
     RemoveTransferPartial(String, Reply<bool>),
+    UpsertPeerProfile(PeerProfile, Reply<()>),
+    GetPeerProfile(String, Reply<Option<PeerProfile>>),
 }
 
 #[derive(Clone)]
@@ -153,6 +164,33 @@ impl DatabaseHandle {
     pub async fn get_peer(&self, id: &str) -> Result<Option<Peer>, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::GetPeer(id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_conversation_summaries(
+        &self,
+        local_node_id: &str,
+    ) -> Result<Vec<messages::ConversationSummary>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListConversationSummaries(
+            local_node_id.to_owned(),
+            reply,
+        ))?;
+        receive(receiver).await
+    }
+
+    pub async fn upsert_peer_profile(&self, profile: PeerProfile) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::UpsertPeerProfile(profile, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn get_peer_profile(
+        &self,
+        fingerprint: &str,
+    ) -> Result<Option<PeerProfile>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::GetPeerProfile(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
@@ -366,6 +404,22 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
+    pub async fn mark_messages_read(
+        &self,
+        conversation_id: &str,
+        message_ids: &[String],
+        read_at: i64,
+    ) -> Result<u32, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::MarkMessagesRead {
+            conversation_id: conversation_id.to_owned(),
+            message_ids: message_ids.to_vec(),
+            read_at,
+            reply,
+        })?;
+        receive(receiver).await
+    }
+
     pub async fn peer_state(&self, peer_id: &str) -> Result<PeerState, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::GetPeerState(peer_id.to_owned(), reply))?;
@@ -534,6 +588,9 @@ fn dispatch(connection: &Connection, command: Command) {
         Command::ListPeers(reply) => {
             let _ = reply.send(peers::list(connection));
         }
+        Command::ListConversationSummaries(local_node_id, reply) => {
+            let _ = reply.send(messages::conversation_summaries(connection, &local_node_id));
+        }
         Command::GetPeer(id, reply) => {
             let _ = reply.send(peers::get_by_id(connection, &id));
         }
@@ -638,6 +695,19 @@ fn dispatch(connection: &Connection, command: Command) {
         Command::SetMessageState(id, state, reply) => {
             let _ = reply.send(messages::set_state(connection, &id, state));
         }
+        Command::MarkMessagesRead {
+            conversation_id,
+            message_ids,
+            read_at,
+            reply,
+        } => {
+            let _ = reply.send(messages::mark_read(
+                connection,
+                &conversation_id,
+                &message_ids,
+                read_at,
+            ));
+        }
         Command::MessageState(id, reply) => {
             let _ = reply.send(messages::state(connection, &id));
         }
@@ -695,6 +765,12 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::RemoveTransferPartial(hash, reply) => {
             let _ = reply.send(transfer_partials::remove(connection, &hash));
+        }
+        Command::UpsertPeerProfile(profile, reply) => {
+            let _ = reply.send(profiles::upsert(connection, &profile));
+        }
+        Command::GetPeerProfile(fingerprint, reply) => {
+            let _ = reply.send(profiles::get(connection, &fingerprint));
         }
     }
 }

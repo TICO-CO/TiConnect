@@ -17,6 +17,9 @@ messaging. Files, calls, and remote desktop add their own gates in later stages.
   trust.
 - The pairing endpoint is reachable before trust. It exposes no feature other
   than the pairing exchange.
+- The profile endpoint (`ticonnect-profile/1`) is reachable before trust. It
+  serves only the local display name and avatar, bounded to 160 KiB. Profile
+  data is public LAN data and never grants trust.
 - Post-pairing sessions are reachable only after the peer certificate
   fingerprint matches a trusted peer.
 - The D-Bus session bus is the local control boundary. Any local process on the
@@ -32,7 +35,8 @@ messaging. Files, calls, and remote desktop add their own gates in later stages.
 | PIN guessing | PINs are six digits, expire after 120 seconds, and allow three failures per session. A new PIN is required after exhaustion. |
 | QR replay | QR tokens are 32 random bytes, expire after 120 seconds, and are single-use. The listener clears the active session after success. |
 | Certificate substitution | The client pins the expected BLAKE3 fingerprint before the handshake completes. The server requires the certificate fingerprint to be in the trust store before accepting session streams. |
-| Unpaired access | Only the `ticonnect-pair/1` ALPN is reachable before trust. `ticonnect/1` closes the connection when the peer fingerprint is not trusted. |
+| Unpaired access | Only the `ticonnect-pair/1` and `ticonnect-profile/1` ALPNs are reachable before trust. `ticonnect/1` closes the connection when the peer fingerprint is not trusted. |
+| Spoofed profile | The profile endpoint is self-asserted. Clients verify the signed profile against the certificate key and advertised avatar hash, but profile data never grants trust. Pairing and session trust remain authoritative. |
 | Key substitution | The self-signed certificate uses the Ed25519 identity key. TLS proves possession of that key, and the fingerprint is the BLAKE3 hash of the public key. |
 | Replay of pairing messages | The transcript includes both identities, the token, and a protocol version. Pairing messages are length-prefixed and bounded. 0-RTT is disabled. |
 | Oversized or malformed frames | Every decoder enforces fixed maximum sizes and returns typed errors. Fuzz targets cover wire and pairing decoders. |

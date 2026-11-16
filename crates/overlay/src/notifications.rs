@@ -18,7 +18,7 @@ pub fn show(card: Card, timeout_ms: u64, commands: UnboundedSender<Command>) {
         match notification.show() {
             Ok(handle) => handle.wait_for_action(move |action| {
                 if action == "default" {
-                    let _ = commands.send(Command::Activate("chat".to_owned()));
+                    let _ = commands.send(Command::Activate(format!("chat:{}", card.peer_id)));
                 }
             }),
             Err(error) => tracing::warn!(%error, "system notification failed"),

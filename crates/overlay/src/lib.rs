@@ -181,10 +181,18 @@ impl State {
 
     fn render(&self) {
         let cards: Vec<Card> = self.router.visible().cloned().collect();
+        let peers: std::collections::HashMap<String, String> = cards
+            .iter()
+            .map(|card| (card.id.clone(), card.peer_id.clone()))
+            .collect();
         let commands = self.commands.clone();
         let ui = self.ui_tx.clone();
         let on_click: ClickHandler = Rc::new(move |id| {
-            let _ = commands.send(Command::Activate("chat".to_owned()));
+            if let Some(peer_id) = peers.get(id) {
+                let _ = commands.send(Command::Activate(format!("chat:{peer_id}")));
+            } else {
+                let _ = commands.send(Command::Activate("chat".to_owned()));
+            }
             let _ = ui.send(UiEvent::Dismiss(id.to_owned()));
         });
         let ui = self.ui_tx.clone();

@@ -12,6 +12,7 @@ const PREVIEW_CHARS: usize = 140;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Card {
     pub id: String,
+    pub peer_id: String,
     pub sender: String,
     pub preview: String,
     pub sent_at: u64,
@@ -21,6 +22,11 @@ impl Card {
     pub fn from_message(message: &Message, sender: String) -> Self {
         Self {
             id: message.id.clone(),
+            peer_id: if message.peer_id.is_empty() {
+                message.sender_id.clone()
+            } else {
+                message.peer_id.clone()
+            },
             sender,
             preview: preview(&message.body),
             sent_at: message.sent_at,

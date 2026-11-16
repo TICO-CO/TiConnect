@@ -32,6 +32,7 @@
 
           buildInputs = [
             pkgs.alsa-lib
+            pkgs.gdk-pixbuf
             pkgs.gtk4
             pkgs.gtk4-layer-shell
             pkgs.libadwaita

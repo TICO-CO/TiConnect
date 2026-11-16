@@ -19,7 +19,10 @@ fails to acquire the name and exits non-zero.
 | `Ping` | `() -> s` | Returns `pong`. |
 | `GetVersion` | `() -> s` | Returns the daemon package version. |
 | `GetStatus` | `() -> a{sv}` | Returns live daemon status. |
-| `GetIdentity` | `() -> a{sv}` | Returns node id, fingerprint, and display name. |
+| `GetIdentity` | `() -> a{sv}` | Returns node id, fingerprint, display name, and avatar hash. |
+| `GetAvatar` | `(s) -> ay` | Returns a cached or local PNG avatar for a fingerprint. |
+| `SetAvatar` | `(ay) -> ()` | Stores a normalized PNG profile photo. |
+| `ClearAvatar` | `() -> ()` | Removes the local profile photo. |
 | `GetSetting` | `(s) -> v` | Returns one effective setting; unknown keys return `NotFound`. |
 | `ListSettings` | `() -> a{sv}` | Returns all effective settings. |
 | `ListPeers` | `() -> aa{sv}` | Returns known peers; empty before pairing. |
@@ -34,7 +37,9 @@ fails to acquire the name and exits non-zero.
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
 | `CountMessages` | `(s) -> u` | Returns the number of stored text messages in a conversation. |
-| `MarkRead` | `(s as) -> ()` | Marks inbound messages read and queues receipts. |
+| `ListConversationSummaries` | `() -> aa{sv}` | Returns last message, unread count, and conversation id per peer. |
+| `MarkRead` | `(s as) -> ()` | Marks inbound messages read locally and queues receipts when enabled. |
+| `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted peer. |
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
 | `SetPeerPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one peer. |
 | `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |
@@ -80,6 +85,10 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `PeerDisconnected(a{sv})` | When a trusted QUIC session closes. |
 | `MessageReceived(a{sv})` | When an inbound message is stored. |
 | `MessageStateChanged(ss)` | When a message state changes. |
+| `ConversationChanged(s)` | When a conversation summary should be reloaded. |
+| `TypingChanged(sb)` | When a peer starts or stops typing. |
+| `PeerProfileChanged(s)` | When a cached peer profile or avatar changes. |
+| `SelfProfileChanged()` | When the local display name or avatar changes. |
 | `SyncCompleted(su)` | When gap sync finishes for a peer. |
 | `PolicyChanged(ss)` | When a peer policy changes. |
 
@@ -104,6 +113,7 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `node_id` | `s` | Persistent UUIDv7 node id. |
 | `fingerprint` | `s` | Lowercase hex BLAKE3 fingerprint of the Ed25519 public key. |
 | `display_name` | `s` | Effective `identity.display_name`, possibly empty. |
+| `avatar_hash` | `s` | BLAKE3 hex hash of the local PNG avatar, or empty. |
 
 ## Setting keys
 

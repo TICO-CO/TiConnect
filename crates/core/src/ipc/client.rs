@@ -13,6 +13,9 @@ pub trait Daemon {
     fn get_version(&self) -> zbus::Result<String>;
     fn get_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn get_identity(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_avatar(&self, fingerprint: &str) -> zbus::Result<Vec<u8>>;
+    fn set_avatar(&self, avatar: &[u8]) -> zbus::Result<()>;
+    fn clear_avatar(&self) -> zbus::Result<()>;
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
@@ -33,8 +36,10 @@ pub trait Daemon {
         limit: u32,
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_conversation_summaries(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn count_messages(&self, conversation_id: &str) -> zbus::Result<u32>;
     fn mark_read(&self, conversation_id: &str, message_ids: &[&str]) -> zbus::Result<()>;
+    fn set_typing(&self, peer_id: &str, typing: bool) -> zbus::Result<()>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
@@ -82,6 +87,18 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn message_state_changed(&self, message_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn conversation_changed(&self, peer_id: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn typing_changed(&self, peer_id: &str, typing: bool) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn peer_profile_changed(&self, fingerprint: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn self_profile_changed(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn sync_completed(&self, peer_id: &str, count: u32) -> zbus::Result<()>;

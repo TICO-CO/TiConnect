@@ -5,6 +5,7 @@ fn peer(name: &str) -> Peer {
         id: "12345678-1234-1234-1234-123456789abc".to_owned(),
         fingerprint: "a".repeat(64),
         display_name: name.to_owned(),
+        avatar_hash: String::new(),
         policy: PeerPolicy::Accept,
         trusted_at: 0,
         last_seen: 0,
