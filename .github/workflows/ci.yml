@@ -44,7 +44,7 @@ jobs:
           appstreamcli validate --no-net packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml
           units="$(mktemp -d)"
           for unit in packaging/systemd/*.service; do
-            sed 's|@BINDIR@|$PWD/target/debug|g' "$unit" > "$units/$(basename "$unit")"
+            sed "s|@BINDIR@|$PWD/target/debug|g" "$unit" > "$units/$(basename "$unit")"
           done
           systemd-analyze --user verify "$units"/*.service
           target/debug/ticonnect --help

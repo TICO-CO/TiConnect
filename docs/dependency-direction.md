@@ -42,7 +42,8 @@ settings   logging        leaf crates
 - `ticonnect-ui`, `ticonnect-overlay`, and `ticonnect-cli` depend on runtime for
   bootstrap and never import daemon internals directly.
 - `ticonnect` is the unified binary crate. It depends on runtime, UI, overlay,
-  and CLI and only dispatches subcommands.
+  and CLI and dispatches the app launcher, CLI, hidden process entries, and user
+  installer.
 - `ticonnect-settings` never depends on `ticonnect-logging`.
 
 ## Errors

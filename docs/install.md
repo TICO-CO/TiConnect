@@ -6,30 +6,36 @@ Download `ticonnect-<tag>-x86_64.AppImage` from the latest release and install
 the per-user app integration:
 
 ```sh
-chmod +x ticonnect-v0.0.5-x86_64.AppImage
-./ticonnect-v0.0.5-x86_64.AppImage --install-user
+chmod +x ticonnect-v0.1.0-x86_64.AppImage
+./ticonnect-v0.1.0-x86_64.AppImage --install-user
 # launch TiConnect from the app menu
 ```
 
 The installer extracts the AppImage once to
 `$XDG_DATA_HOME/ticonnect/app/`, writes a wrapper to `~/.local/bin/ticonnect`,
 adds the desktop entry, icon, metainfo, systemd user units, and autostart
-entries, and enables the daemon and overlay services when a user systemd session
-is available. Autostart entries remain the fallback.
+entries for the daemon, overlay, and UI, and enables the daemon and overlay
+services when a user systemd session is available. It records every installed
+path in `$XDG_DATA_HOME/ticonnect/install-manifest.txt`. Autostart entries remain
+the fallback.
+
+Ensure `~/.local/bin` is on your session `PATH`. If
+`~/.local/bin/ticonnect` already exists and was not created by TiConnect, the
+installer refuses to overwrite it unless you pass `--force`.
 
 Without FUSE, or on NixOS, use the extract-and-run flag:
 
 ```sh
-./ticonnect-v0.0.5-x86_64.AppImage --appimage-extract-and-run --install-user
+./ticonnect-v0.1.0-x86_64.AppImage --appimage-extract-and-run --install-user
 ```
 
-On NixOS, `appimage-run ./ticonnect-v0.0.5-x86_64.AppImage --install-user` also
+On NixOS, `appimage-run ./ticonnect-v0.1.0-x86_64.AppImage --install-user` also
 works.
 
 ## Arch / Manjaro
 
 ```sh
-TAG=v0.0.5
+TAG=v0.1.0
 PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
 curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
 sudo pacman -U "$PKG"
@@ -91,6 +97,8 @@ ticonnect settings list
 
 The command line starts the daemon when it is absent. `ticonnect --help` lists
 the user-facing surface; `ticonnect --version` prints the binary version.
+`ticonnect version` is an alias. `ticonnect cli ...` remains a hidden
+compatibility alias.
 
 ## Uninstall and purge
 
@@ -101,8 +109,9 @@ ticonnect --uninstall-user
 ```
 
 This removes the wrapper, app payload, desktop entry, icon, metainfo, units, and
-autostart entries. It keeps `$XDG_CONFIG_HOME/ticonnect` and
-`$XDG_DATA_HOME/ticonnect`, including identity, database, and attachments.
+autostart entries. It keeps `$XDG_CONFIG_HOME/ticonnect`,
+`$XDG_DATA_HOME/ticonnect`, and `$XDG_STATE_HOME/ticonnect`, including identity,
+database, attachments, and logs.
 
 To remove all user data as well:
 
@@ -169,7 +178,8 @@ make install-user
 
 `make install-user` installs `ticonnect` to `$(PREFIX)/bin`, the app-menu entry,
 icon, metainfo, systemd units, and autostart entries. It does not start or
-enable services; autostart or your desktop session starts the daemon.
+enable services; autostart entries start the daemon, overlay, and UI, or your
+desktop session starts them.
 
 ## Data locations
 
@@ -177,4 +187,6 @@ enable services; autostart or your desktop session starts the daemon.
 - Identity: `$XDG_CONFIG_HOME/ticonnect/identity.key` (mode `0600`)
 - Data and history: `$XDG_DATA_HOME/ticonnect/ticonnect.db`
 - Attachments: `$XDG_DATA_HOME/ticonnect/attachments/`
+- App payload: `$XDG_DATA_HOME/ticonnect/app/`
+- Installer manifest: `$XDG_DATA_HOME/ticonnect/install-manifest.txt`
 - Daemon log: `$XDG_STATE_HOME/ticonnect/daemon.log`

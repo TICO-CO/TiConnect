@@ -345,6 +345,7 @@ impl PairingService {
         .await
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn pair_as_initiator(
         &self,
         address: SocketAddr,

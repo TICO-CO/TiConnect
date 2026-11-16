@@ -17,8 +17,8 @@ pinned QUIC/TLS transport, signed messaging with sync/receipts/policy, the GTK4
 window, overlay and notification fallback, resumable BLAKE3 attachments, Opus
 voice calls with daemon ringtone and jitter buffer, and PIN-gated consent-based
 remote desktop with portal capture, H.264, input injection, indicator, and kill
-switch. Stage 12 adds Flatpak metadata, hardened units, benchmarks, and release
-documentation.
+switch. Stage 12 adds Flatpak metadata, hardened units, benchmarks, release
+documentation, the AppImage user installer, and the unified launcher.
 
 See `main.md` for product intent, `architecture.md` for the design,
 `docs/systems/` for component contracts and graphs, and `roadmap/roadmap.md` for
@@ -39,7 +39,7 @@ staged delivery.
 | `ticonnect-ui` | GTK4 main window |
 | `ticonnect-overlay` | Toast overlay |
 | `ticonnect-cli` | Command-line client |
-| `ticonnect` | Unified executable: `daemon`, `ui`, `overlay`, `cli` |
+| `ticonnect` | Launcher and CLI dispatcher; hidden internal `daemon`, `ui`, `overlay` entries |
 | `xtask` | Repository architecture graph generator and validator |
 
 Dependency direction is documented in `docs/dependency-direction.md`.
@@ -58,7 +58,7 @@ cargo xtask systems --check
 make lan-test
 ```
 
-`tests/local/run.sh` runs local X11, Weston Wayland, and KWin Wayland
+`tests/local/run.sh` runs local X11, Weston Wayland, KWin Wayland, and Hyprland
 integration tests. See `docs/local-testing.md`. `make lan-test` runs the
 two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
 (`control`, `discovery`, `pairing`, `transport`, `messaging`, `offline-sync`,
@@ -90,13 +90,13 @@ Download `ticonnect-<tag>-x86_64.AppImage`, then install the per-user app
 integration:
 
 ```sh
-chmod +x ticonnect-v0.0.5-x86_64.AppImage
-./ticonnect-v0.0.5-x86_64.AppImage --install-user
+chmod +x ticonnect-v0.1.0-x86_64.AppImage
+./ticonnect-v0.1.0-x86_64.AppImage --install-user
 ```
 
 Launch TiConnect from the app menu. `--uninstall-user` removes the app
-integration and keeps your configuration, identity, database, and attachments.
-Use `--uninstall-user --purge` to remove those too.
+integration and keeps your configuration, identity, database, attachments, and
+logs. Use `--uninstall-user --purge` to remove those too.
 
 ### Arch
 
@@ -129,16 +129,22 @@ The same executable is the command-line client:
 
 ```sh
 ticonnect status
+ticonnect version
 ticonnect id show
 ticonnect peers list
 ticonnect pair start
 ticonnect send <peer-id> "hello"
+ticonnect send-file <peer-id> <path>
+ticonnect download <hash> <destination>
+ticonnect transfer status <hash>
 ticonnect messages <peer-id>
 ticonnect settings list
 ```
 
 `ticonnect --help` lists the user-facing surface. `ticonnect --version` prints
-the binary version.
+the binary version; `ticonnect version` is an alias. `ticonnect cli ...` is a
+hidden compatibility alias, and `ticonnect cli version` reports the daemon
+version.
 
 ## Development / internals
 
@@ -152,8 +158,9 @@ ticonnect cli status
 ```
 
 `ticonnect daemon` serves `org.ticonnect.Daemon` on the session bus until
-shutdown. `ticonnect cli` talks to the daemon for status, identity, peers,
-discovery, pairing, messaging, policy, ping, and quit. `settings get`,
+shutdown. `ticonnect <command>` talks to the daemon for status, identity, peers,
+discovery, pairing, messaging, policy, ping, and quit. The hidden
+`ticonnect cli <command>` alias reaches the same client. `settings get`,
 `settings set`, and `settings list` read and write `config.toml` directly.
 `ticonnect ui` opens the GTK4 window and talks to the daemon only over D-Bus.
 `ticonnect overlay` shows corner cards for incoming messages without depending
@@ -163,12 +170,13 @@ starts the daemon when it is absent.
 ## Release
 
 Pushing a `v*` tag builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the
-Arch package, and `SHA256SUMS.txt`. See `docs/install.md` for AppImage,
-`pacman -U`, and Nix instructions.
+Arch package, and `SHA256SUMS.txt`. The binary tarball is an internal Arch build
+input and is not published. See `docs/install.md` for AppImage, `pacman -U`, and
+Nix instructions.
 
 ```sh
-git tag v0.0.1
-git push origin v0.0.1
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 ## UI
@@ -359,10 +367,10 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 - Messages carry name, size, MIME, and hash. Transfers use a dedicated QUIC
   bidirectional stream, 64 KiB chunks, persisted missing ranges, and a final
   hash check before publication.
-- `ticonnect-cli send-file <peer> <path> [--mime TYPE]` sends an attachment.
-- `ticonnect-cli download <hash> <destination>` saves it.
-- `ticonnect-cli transfer status <hash>` and `transfer cancel <hash>` inspect or
-  cancel a transfer.
+- `ticonnect send-file <peer> <path> [--mime TYPE]` sends an attachment.
+- `ticonnect download <hash> <destination>` saves it.
+- `ticonnect transfer status <hash>` and `ticonnect transfer cancel <hash>`
+  inspect or cancel a transfer.
 - Inbound `ignore` peers are dropped before transfer; `mute` stores silently.
 
 ## Voice calls
@@ -393,16 +401,16 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 
 - Pairing uses SPAKE2 over the `ticonnect-pair/1` ALPN. Session transport uses
   `ticonnect/1` on the same UDP port.
-- `ticonnect-cli pair start` prints a six-digit PIN, a QR payload, and the
+- `ticonnect pair start` prints a six-digit PIN, a QR payload, and the
   expiry time. PINs and QR tokens expire after 120 seconds. A pairing session
   allows three PIN failures.
-- `ticonnect-cli pair with-pin <node-id> <pin>` uses a discovery candidate.
-  `ticonnect-cli pair with-qr '<payload>'` uses the address and port in the QR
+- `ticonnect pair with-pin <node-id> <pin>` uses a discovery candidate.
+  `ticonnect pair with-qr '<payload>'` uses the address and port in the QR
   payload and does not require discovery.
 - The self-signed TLS certificate reuses the Ed25519 identity key. The identity
   fingerprint and certificate fingerprint are the same BLAKE3 value. Certificates
   are pinned to the trusted peer table.
-- `ticonnect-cli pair forget <peer-id>` removes trust, deletes local history
+- `ticonnect pair forget <peer-id>` removes trust, deletes local history
   and queued outbox rows, and closes the active session. Sequence high-water
   marks are retained so re-pairing continues sequence numbers instead of
   reusing them. Trusted peers are reconnected automatically when rediscovered.
@@ -427,7 +435,7 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 - Firewall expectations: allow UDP port `5353` for mDNS and UDP port `45870` for
   broadcast discovery on the local network. Discovery never opens a transport
   connection.
-- `ticonnect-cli discover list` prints current candidates. `discover watch`
+- `ticonnect discover list` prints current candidates. `ticonnect discover watch`
   prints `found` and `lost` events until interrupted.
 
 ## Documentation

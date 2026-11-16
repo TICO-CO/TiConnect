@@ -14,15 +14,17 @@ Constraints:
 ## 1. Process model
 
 ```
-ticonnect daemon   headless daemon: discovery, transport, storage, calls,
-                   capture, ringtone
-ticonnect ui       GTK4 application: main window
-ticonnect overlay  corner overlay agent: toast cards
-ticonnect cli      debugging and scripting
+ticonnect          launcher: starts the daemon if absent, opens the GTK4 UI
+ticonnect <cmd>    command-line client: scripting and diagnostics
+ticonnect daemon   hidden internal: headless daemon, discovery, transport,
+                   storage, calls, capture, ringtone
+ticonnect ui       hidden internal: GTK4 application, main window
+ticonnect overlay  hidden internal: corner overlay agent, toast cards
 ```
 
-All four are subcommands of the single `ticonnect` executable. The daemon, UI,
-and overlay still run as separate processes.
+All are entries of the single `ticonnect` executable. The daemon, UI, and
+overlay still run as separate processes. The no-argument form opens the UI;
+command-line commands start the daemon on demand.
 
 The daemon is a **systemd user unit** plus an XDG autostart entry. It never runs
 as root. The UI is a separate process so the daemon stays small and can run
@@ -59,7 +61,8 @@ crates/
   ui/                       GTK4 main window
   overlay/                  layer-shell toast agent
   cli/                      command-line client
-  ticonnect/                unified executable dispatching the four subcommands
+  ticonnect/                launcher, CLI dispatcher, hidden process entries,
+                            and user installer
 ```
 
 Component contracts, state ownership, and relation graphs live in

@@ -52,6 +52,10 @@ logs                  show the daemon log
 help-lab              list commands
 ```
 
+The `ui` and `ovl` helpers call the hidden internal `ticonnect ui` and
+`ticonnect overlay` entries. The rest use the same unified `ticonnect` binary as
+a normal install.
+
 Open LAN mode is enabled by default, so the two nodes trust each other
 automatically and the peer list populates without pairing. Set
 `LAB_OPEN_LAN=0 make lab` to test manual pairing instead; the `pair` helper is

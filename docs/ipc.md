@@ -171,36 +171,41 @@ names are `Failed` and `NotFound`.
 
 ## CLI
 
-`ticonnect-cli` maps the methods directly:
+`ticonnect` maps the methods directly:
 
 ```sh
-ticonnect-cli status
-ticonnect-cli status --json
-ticonnect-cli version
-ticonnect-cli ping
-ticonnect-cli id show
-ticonnect-cli peers list
-ticonnect-cli discover list
-ticonnect-cli discover watch
-ticonnect-cli pair start
-ticonnect-cli pair with-pin <node-id> <pin>
-ticonnect-cli pair with-qr '<payload>'
-ticonnect-cli pair cancel
-ticonnect-cli pair forget <peer-id>
-ticonnect-cli quit
+ticonnect status
+ticonnect status --json
+ticonnect version
+ticonnect ping
+ticonnect id show
+ticonnect peers list
+ticonnect discover list
+ticonnect discover watch
+ticonnect pair start
+ticonnect pair with-pin <node-id> <pin>
+ticonnect pair with-qr '<payload>'
+ticonnect pair cancel
+ticonnect pair forget <peer-id>
+ticonnect quit
 ```
+
+`ticonnect cli <command>` is a hidden compatibility alias for the same client.
+`ticonnect version` prints the binary version; `ticonnect cli version` asks the
+daemon for its version.
 
 Settings commands use `ticonnect-settings` directly and do not require the
 daemon:
 
 ```sh
-ticonnect-cli settings get dnd.enabled
-ticonnect-cli settings set dnd.enabled true
-ticonnect-cli settings list
+ticonnect settings get dnd.enabled
+ticonnect settings set dnd.enabled true
+ticonnect settings list
 ```
 
-`status --json` emits an object with the same status keys. When the daemon is
-absent, daemon commands exit non-zero with a typed connection error.
+`status --json` emits an object with the same status keys. Daemon commands start
+the daemon on demand. If it remains unreachable, they exit non-zero with a typed
+connection error.
 
 ## Packaging
 
@@ -209,6 +214,10 @@ daemon bus name. `packaging/autostart/ticonnect.desktop` starts the daemon in
 desktop sessions without systemd. Both use `@BINDIR@`, substituted by the
 Makefile with the install `BINDIR`.
 
+`make install-user` also installs the desktop entry, icon, metainfo, the overlay
+and UI units, and the overlay and UI autostart entries. The AppImage
+`--install-user` installer writes the same user integration.
+
 ```sh
 make install-user
 systemctl --user daemon-reload
@@ -216,7 +225,7 @@ systemctl --user enable --now ticonnectd.service
 systemctl --user status ticonnectd.service
 ```
 
-Remove the installed binary, unit, and autostart entry with:
+Remove the installed user integration with:
 
 ```sh
 make uninstall-user
@@ -227,8 +236,9 @@ make uninstall-user
 Run the daemon in the foreground:
 
 ```sh
-cargo run --bin ticonnectd
+cargo run --bin ticonnect -- daemon
 ```
 
-It keeps running until `ticonnect-cli quit`, SIGTERM, SIGINT, or bus
-disconnection. No display server is required.
+The legacy `ticonnectd` bin remains as a compatibility entry point. It keeps
+running until `ticonnect quit`, SIGTERM, SIGINT, or bus disconnection. No display
+server is required.
