@@ -11,7 +11,7 @@ use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
 
 use crate::error::{Error, Result};
-use crate::model::{PeerPresentation, SettingsForm, short_id};
+use crate::model::{BlockedPeer, PeerPresentation, SettingsForm, short_id};
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
@@ -20,6 +20,7 @@ enum Command {
     GetStatus(Reply<Status>),
     ListPeers(Reply<Vec<Peer>>),
     ListCandidates(Reply<Vec<Candidate>>),
+    ListBlockedPeers(Reply<Vec<BlockedPeer>>),
     ListSettings(Reply<SettingsForm>),
     StartPairing(Reply<PairingStart>),
     PairWithPin {
@@ -32,6 +33,14 @@ enum Command {
         reply: Reply<()>,
     },
     CancelPairing(Reply<()>),
+    BlockPeer {
+        peer_id: String,
+        reply: Reply<()>,
+    },
+    UnblockPeer {
+        fingerprint: String,
+        reply: Reply<()>,
+    },
     ListMessages {
         conversation_id: String,
         limit: u32,
@@ -134,6 +143,10 @@ impl LinkHandle {
         self.request(Command::ListCandidates).await
     }
 
+    pub async fn list_blocked_peers(&self) -> Result<Vec<BlockedPeer>> {
+        self.request(Command::ListBlockedPeers).await
+    }
+
     pub async fn list_settings(&self) -> Result<SettingsForm> {
         self.request(Command::ListSettings).await
     }
@@ -158,6 +171,16 @@ impl LinkHandle {
 
     pub async fn cancel_pairing(&self) -> Result<()> {
         self.request(Command::CancelPairing).await
+    }
+
+    pub async fn block_peer(&self, peer_id: String) -> Result<()> {
+        self.request(|reply| Command::BlockPeer { peer_id, reply })
+            .await
+    }
+
+    pub async fn unblock_peer(&self, fingerprint: String) -> Result<()> {
+        self.request(|reply| Command::UnblockPeer { fingerprint, reply })
+            .await
     }
 
     pub async fn list_messages(
@@ -660,6 +683,29 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = proxy.cancel_pairing().await.map_err(bus_error);
             let _ = reply.send(result);
         }
+        Command::ListBlockedPeers(reply) => {
+            let result = match proxy.list_blocked_peers().await {
+                Ok(values) => Ok(parse_blocked_peers(&values)),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::BlockPeer { peer_id, reply } => {
+            let result = proxy
+                .forget_peer(&peer_id)
+                .await
+                .map(|_| ())
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::UnblockPeer { fingerprint, reply } => {
+            let result = proxy
+                .unblock_peer(&fingerprint)
+                .await
+                .map(|_| ())
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
         Command::ListMessages {
             conversation_id,
             limit,
@@ -825,6 +871,29 @@ fn payload_error(error: events::ParseError) -> Error {
 
 fn parse_settings(values: &HashMap<String, OwnedVariant>) -> SettingsForm {
     SettingsForm::new(events::settings_map(values))
+}
+
+fn parse_blocked_peers(values: &[HashMap<String, OwnedVariant>]) -> Vec<BlockedPeer> {
+    values
+        .iter()
+        .map(|peer| BlockedPeer {
+            fingerprint: variant_string(peer, ipc::PEER_FINGERPRINT),
+            node_id: variant_string(peer, ipc::PEER_ID),
+            display_name: variant_string(peer, ipc::PEER_DISPLAY_NAME),
+            blocked_at: peer
+                .get(ipc::BLOCKED_AT)
+                .and_then(|value| u64::try_from(value).ok())
+                .unwrap_or_default(),
+        })
+        .collect()
+}
+
+fn variant_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
+    values
+        .get(key)
+        .and_then(|value| <&str>::try_from(value).ok())
+        .unwrap_or_default()
+        .to_owned()
 }
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {

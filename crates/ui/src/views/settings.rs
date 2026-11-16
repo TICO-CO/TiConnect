@@ -5,7 +5,9 @@ use gtk::prelude::*;
 use gtk4 as gtk;
 use ticonnect_settings::Appearance;
 
-use crate::model::{Peer, PeerPolicy, PeerPolicyLabel, PeerPresentation, SettingsForm};
+use crate::model::{
+    BlockedPeer, Peer, PeerPolicy, PeerPolicyLabel, PeerPresentation, SettingsForm,
+};
 
 pub struct SettingsView {
     pub root: gtk::Box,
@@ -16,6 +18,8 @@ pub struct SettingsView {
     discovery_enabled: gtk::Switch,
     discovery_mdns: gtk::Switch,
     discovery_broadcast: gtk::Switch,
+    open_lan: gtk::Switch,
+    blocked: gtk::Box,
     read_receipts: gtk::Switch,
     dnd: gtk::Switch,
     overlay: gtk::Switch,
@@ -24,6 +28,8 @@ pub struct SettingsView {
     autostart: gtk::Switch,
     peers: gtk::Box,
     on_policy: Rc<dyn Fn(String, PeerPolicy)>,
+    on_block: Rc<dyn Fn(String)>,
+    on_unblock: Rc<dyn Fn(String)>,
 }
 
 impl SettingsView {
@@ -33,12 +39,16 @@ impl SettingsView {
         on_dnd: impl Fn(bool) + 'static,
         on_autostart: impl Fn(bool) + 'static,
         on_policy: impl Fn(String, PeerPolicy) + 'static,
+        on_block: impl Fn(String) + 'static,
+        on_unblock: impl Fn(String) + 'static,
     ) -> Self {
         let updating = Rc::new(Cell::new(false));
         let on_setting: Rc<dyn Fn(String, String)> = Rc::new(on_setting);
         let on_dnd: Rc<dyn Fn(bool)> = Rc::new(on_dnd);
         let on_autostart: Rc<dyn Fn(bool)> = Rc::new(on_autostart);
         let on_policy: Rc<dyn Fn(String, PeerPolicy)> = Rc::new(on_policy);
+        let on_block: Rc<dyn Fn(String)> = Rc::new(on_block);
+        let on_unblock: Rc<dyn Fn(String)> = Rc::new(on_unblock);
 
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         root.set_hexpand(true);
@@ -143,6 +153,28 @@ impl SettingsView {
             &discovery_broadcast,
         ));
         content.append(&discovery);
+
+        let lan_trust = section("LAN trust");
+        let open_lan = setting_switch(
+            "Open LAN mode",
+            "Automatically trust and connect to devices on this LAN",
+            "trust.open_lan",
+            &updating,
+            on_setting.clone(),
+        );
+        lan_trust.append(&row(
+            "Open LAN mode",
+            "No PIN needed. Remote desktop still requires consent and a PIN.",
+            &open_lan,
+        ));
+        let blocked_title = label(
+            "Blocked devices",
+            "Blocked devices cannot reconnect automatically",
+        );
+        lan_trust.append(&blocked_title);
+        let blocked = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        lan_trust.append(&blocked);
+        content.append(&lan_trust);
 
         let messaging = section("Messaging");
         let read_receipts = setting_switch(
@@ -264,6 +296,8 @@ impl SettingsView {
             discovery_enabled,
             discovery_mdns,
             discovery_broadcast,
+            open_lan,
+            blocked,
             read_receipts,
             dnd,
             overlay,
@@ -272,11 +306,19 @@ impl SettingsView {
             autostart,
             peers,
             on_policy,
+            on_block,
+            on_unblock,
         }
     }
 
     #[allow(deprecated)]
-    pub fn render(&self, form: &SettingsForm, peers: &[Peer], autostart_enabled: bool) {
+    pub fn render(
+        &self,
+        form: &SettingsForm,
+        peers: &[Peer],
+        blocked_peers: &[BlockedPeer],
+        autostart_enabled: bool,
+    ) {
         self.updating.set(true);
         self.display_name
             .set_text(form.get("identity.display_name").unwrap_or_default());
@@ -288,6 +330,8 @@ impl SettingsView {
             .set_active(form.bool_value("discovery.mdns", true));
         self.discovery_broadcast
             .set_active(form.bool_value("discovery.broadcast", true));
+        self.open_lan
+            .set_active(form.bool_value("trust.open_lan", true));
         self.read_receipts
             .set_active(form.bool_value("read_receipts.enabled", true));
         self.dnd.set_active(form.bool_value("dnd.enabled", false));
@@ -322,7 +366,42 @@ impl SettingsView {
                 }
             });
             row.append(&combo);
+            let block = gtk::Button::with_label("Block");
+            block.add_css_class("destructive-action");
+            block.update_property(&[gtk::accessible::Property::Label(&format!(
+                "Block {}",
+                peer.display_label()
+            ))]);
+            let on_block = self.on_block.clone();
+            let peer_id = peer.id.clone();
+            block.connect_clicked(move |_| on_block(peer_id.clone()));
+            row.append(&block);
             self.peers.append(&row);
+        }
+
+        while let Some(child) = self.blocked.first_child() {
+            self.blocked.remove(&child);
+        }
+        if blocked_peers.is_empty() {
+            self.blocked.append(&label(
+                "No blocked devices",
+                "Blocked fingerprints cannot reconnect automatically",
+            ));
+        } else {
+            for peer in blocked_peers {
+                let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+                row.append(&label(&peer.display_label(), &peer.fingerprint));
+                let unblock = gtk::Button::with_label("Unblock");
+                unblock.update_property(&[gtk::accessible::Property::Label(&format!(
+                    "Unblock {}",
+                    peer.display_label()
+                ))]);
+                let on_unblock = self.on_unblock.clone();
+                let fingerprint = peer.fingerprint.clone();
+                unblock.connect_clicked(move |_| on_unblock(fingerprint.clone()));
+                row.append(&unblock);
+                self.blocked.append(&row);
+            }
         }
         self.updating.set(false);
     }

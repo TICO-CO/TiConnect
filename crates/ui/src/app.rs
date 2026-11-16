@@ -8,8 +8,8 @@ use tokio::sync::mpsc;
 use crate::autostart;
 use crate::client::{self, DaemonEvent, Identity, LinkHandle, PairingStart, Status};
 use crate::model::{
-    Call, Candidate, CandidatePresentation, ConversationModel, Message, Peer, PeerListModel,
-    PeerPolicy, PeerPresentation, RemoteSession, SettingsForm,
+    BlockedPeer, Call, Candidate, CandidatePresentation, ConversationModel, Message, Peer,
+    PeerListModel, PeerPolicy, PeerPresentation, RemoteSession, SettingsForm,
 };
 use crate::views::call::CallView;
 use crate::views::chat::ChatView;
@@ -63,6 +63,11 @@ pub enum Msg {
     SetDnd(bool),
     SetAutostart(bool),
     SetPolicy(String, PeerPolicy),
+    BlockPeer(String),
+    UnblockPeer(String),
+    BlockedLoaded(Result<Vec<BlockedPeer>, String>),
+    BlockResult(Result<(), String>),
+    UnblockResult(Result<(), String>),
     ShowView(String),
     PrimaryInstance,
     DuplicateInstance,
@@ -102,6 +107,7 @@ pub struct App {
     identity: Option<Identity>,
     pending_peer: Option<String>,
     peers: PeerListModel,
+    blocked: Vec<BlockedPeer>,
     candidates: Vec<Candidate>,
     conversation: ConversationModel,
     settings: SettingsForm,
@@ -220,6 +226,14 @@ impl SimpleComponent for App {
             {
                 let sender = sender.clone();
                 move |peer_id, policy| sender.send_input(Msg::SetPolicy(peer_id, policy))
+            },
+            {
+                let sender = sender.clone();
+                move |peer_id| sender.send_input(Msg::BlockPeer(peer_id))
+            },
+            {
+                let sender = sender.clone();
+                move |fingerprint| sender.send_input(Msg::UnblockPeer(fingerprint))
             },
         );
         let pairing_view = PairingView::new(
@@ -427,6 +441,7 @@ impl SimpleComponent for App {
             identity: None,
             pending_peer: None,
             peers: PeerListModel::default(),
+            blocked: Vec::new(),
             candidates: Vec::new(),
             conversation: ConversationModel::default(),
             settings: SettingsForm::default(),
@@ -852,6 +867,52 @@ impl SimpleComponent for App {
                 }
                 Err(error) => self.toast(error),
             },
+            Msg::BlockedLoaded(result) => match result {
+                Ok(blocked) => {
+                    self.blocked = blocked;
+                    self.render_settings();
+                }
+                Err(error) => self.toast(error),
+            },
+            Msg::BlockPeer(peer_id) => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .block_peer(peer_id)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::BlockResult(result));
+                });
+            }
+            Msg::UnblockPeer(fingerprint) => {
+                let link = self.link.clone();
+                let sender = sender.clone();
+                relm4::spawn(async move {
+                    let result = link
+                        .unblock_peer(fingerprint)
+                        .await
+                        .map_err(|error| error.to_string());
+                    sender.send_input(Msg::UnblockResult(result));
+                });
+            }
+            Msg::BlockResult(result) => match result {
+                Ok(()) => {
+                    self.toast("Device blocked".to_owned());
+                    self.load_peers(&sender);
+                    self.load_blocked(&sender);
+                    self.load_settings(&sender);
+                }
+                Err(error) => self.toast(error),
+            },
+            Msg::UnblockResult(result) => match result {
+                Ok(()) => {
+                    self.toast("Device unblocked".to_owned());
+                    self.load_blocked(&sender);
+                    self.load_settings(&sender);
+                }
+                Err(error) => self.toast(error),
+            },
             Msg::SettingsLoaded(result) => match result {
                 Ok(settings) => {
                     self.settings = settings;
@@ -995,6 +1056,7 @@ impl App {
                 self.load_peers(sender);
                 self.load_settings(sender);
                 self.load_candidates(sender);
+                self.load_blocked(sender);
                 self.load_status(sender);
                 if let Some(peer_id) = self.pending_peer.clone() {
                     self.select_peer(&peer_id, sender);
@@ -1360,6 +1422,18 @@ impl App {
         });
     }
 
+    fn load_blocked(&self, sender: &ComponentSender<App>) {
+        let link = self.link.clone();
+        let sender = sender.clone();
+        relm4::spawn(async move {
+            let result = link
+                .list_blocked_peers()
+                .await
+                .map_err(|error| error.to_string());
+            sender.send_input(Msg::BlockedLoaded(result));
+        });
+    }
+
     fn load_settings(&self, sender: &ComponentSender<App>) {
         let link = self.link.clone();
         let sender = sender.clone();
@@ -1396,8 +1470,12 @@ impl App {
     }
 
     fn render_settings(&self) {
-        self.settings_view
-            .render(&self.settings, self.peers.peers(), self.autostart_enabled);
+        self.settings_view.render(
+            &self.settings,
+            self.peers.peers(),
+            &self.blocked,
+            self.autostart_enabled,
+        );
     }
 
     fn render_status(&mut self) {

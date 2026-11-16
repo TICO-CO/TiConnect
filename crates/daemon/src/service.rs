@@ -69,6 +69,7 @@ impl DaemonState {
     ) -> Result<Self, DaemonInitError> {
         let public = identity.public();
         let trust = Arc::new(TrustStore::load(database.clone()).await?);
+        trust.set_open_lan(settings.trust_open_lan());
         let port = settings.transport_port();
         let discovery = Arc::new(LanDiscovery::new(discovery_config(
             &settings, &public, port,
@@ -225,6 +226,7 @@ impl DaemonState {
     }
 
     pub fn replace_settings(&self, settings: Settings) {
+        self.trust.set_open_lan(settings.trust_open_lan());
         self.messaging.apply_settings(settings.clone());
         self.attachments.apply_settings(settings.clone());
         self.calls.apply_settings(settings.clone());
@@ -459,6 +461,46 @@ impl DaemonService {
             .await
             .map_err(pairing_error)?;
         Ok(true)
+    }
+
+    async fn list_blocked_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let peers = self
+            .state
+            .pairing()
+            .list_blocked_peers()
+            .await
+            .map_err(pairing_error)?;
+        Ok(peers
+            .into_iter()
+            .map(|peer| {
+                HashMap::from([
+                    (
+                        ipc::PEER_FINGERPRINT.to_owned(),
+                        string_variant(peer.fingerprint),
+                    ),
+                    (
+                        ipc::PEER_ID.to_owned(),
+                        string_variant(peer.node_id.unwrap_or_default()),
+                    ),
+                    (
+                        ipc::PEER_DISPLAY_NAME.to_owned(),
+                        string_variant(peer.display_name.unwrap_or_default()),
+                    ),
+                    (
+                        ipc::BLOCKED_AT.to_owned(),
+                        OwnedVariant::from(u64::try_from(peer.blocked_at).unwrap_or_default()),
+                    ),
+                ])
+            })
+            .collect())
+    }
+
+    async fn unblock_peer(&self, fingerprint: &str) -> Result<bool, ServiceError> {
+        self.state
+            .pairing()
+            .unblock_peer(fingerprint)
+            .await
+            .map_err(pairing_error)
     }
 
     async fn list_trusted_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {

@@ -32,6 +32,18 @@ impl Default for DiscoverySettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct TrustSettings {
+    pub open_lan: bool,
+}
+
+impl Default for TrustSettings {
+    fn default() -> Self {
+        Self { open_lan: true }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct TransportSettings {
     pub port: u16,
 }
@@ -233,6 +245,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "discovery.mdns",
     "discovery.broadcast",
     "discovery.beacon_interval_secs",
+    "trust.open_lan",
     "transport.port",
     "overlay.enabled",
     "overlay.timeout_secs",
@@ -341,6 +354,16 @@ settings_schema! {
         };
         set(&mut self, value: DiscoverySettings) -> set_discovery as active {
             active.discovery = value;
+        };
+    };
+
+    #[serde(default)]
+    trust: TrustSettings = TrustSettings::default() => {
+        get(&self) -> &TrustSettings as active {
+            &active.trust
+        };
+        set(&mut self, value: TrustSettings) -> set_trust as active {
+            active.trust = value;
         };
     };
 
@@ -505,6 +528,15 @@ impl Settings {
     pub fn set_discovery_beacon_interval_secs(&mut self, secs: u32) {
         self.changes.discovery = true;
         self.active.discovery.beacon_interval_secs = secs;
+    }
+
+    pub fn trust_open_lan(&self) -> bool {
+        self.active.trust.open_lan
+    }
+
+    pub fn set_trust_open_lan(&mut self, enabled: bool) {
+        self.changes.trust = true;
+        self.active.trust.open_lan = enabled;
     }
 
     pub fn transport_port(&self) -> u16 {
@@ -682,6 +714,7 @@ impl Settings {
             "discovery.beacon_interval_secs" => {
                 Ok(SettingValue::Integer(self.discovery_beacon_interval_secs()))
             }
+            "trust.open_lan" => Ok(SettingValue::Bool(self.trust_open_lan())),
             "transport.port" => Ok(SettingValue::Integer(u32::from(self.transport_port()))),
             "overlay.enabled" => Ok(SettingValue::Bool(self.overlay_enabled())),
             "overlay.timeout_secs" => Ok(SettingValue::Integer(self.overlay_timeout_secs())),
@@ -746,6 +779,9 @@ impl Settings {
                     });
                 }
                 self.set_discovery_beacon_interval_secs(secs);
+            }
+            "trust.open_lan" => {
+                self.set_trust_open_lan(parse_bool(key, value)?);
             }
             "transport.port" => {
                 let port = value.parse::<u16>().map_err(|_| Error::InvalidSetting {

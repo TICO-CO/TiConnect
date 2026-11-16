@@ -4,12 +4,13 @@ use rusqlite::{Connection, params};
 
 use super::StorageError;
 
-const LATEST_VERSION: i64 = 4;
+const LATEST_VERSION: i64 = 5;
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, include_str!("migrations/0001_init.sql")),
     (2, include_str!("migrations/0002_messaging.sql")),
     (3, include_str!("migrations/0003_peer_state_no_fk.sql")),
     (4, include_str!("migrations/0004_attachments_transfers.sql")),
+    (5, include_str!("migrations/0005_blocked_peers.sql")),
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), StorageError> {

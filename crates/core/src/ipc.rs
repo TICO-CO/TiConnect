@@ -27,6 +27,7 @@ pub const PEER_TRUSTED_AT: &str = "trusted_at";
 pub const PEER_LAST_SEEN: &str = "last_seen";
 pub const PEER_ADDRESS: &str = "address";
 pub const PEER_CONNECTED: &str = "connected";
+pub const BLOCKED_AT: &str = "blocked_at";
 
 pub const PAIRING_PIN: &str = "pin";
 pub const PAIRING_QR: &str = "qr";

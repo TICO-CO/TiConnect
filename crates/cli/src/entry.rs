@@ -198,8 +198,12 @@ enum PairCommand {
     WithQr { payload: String },
     /// Cancel the active pairing session.
     Cancel,
-    /// Forget a trusted peer and close its session.
+    /// Forget and block a trusted peer.
     Forget { peer_id: String },
+    /// List blocked peers.
+    Blocked,
+    /// Unblock a peer fingerprint.
+    Unblock { fingerprint: String },
 }
 
 pub async fn run<I, T>(args: I) -> Result<()>
@@ -558,7 +562,33 @@ async fn run_pair(command: PairCommand) -> Result<()> {
         }
         PairCommand::Forget { peer_id } => {
             proxy.forget_peer(&peer_id).await.context("forget peer")?;
-            println!("peer forgotten");
+            println!("peer forgotten and blocked");
+        }
+        PairCommand::Blocked => {
+            let peers = proxy
+                .list_blocked_peers()
+                .await
+                .context("list blocked peers")?;
+            if peers.is_empty() {
+                println!("no blocked peers");
+            } else {
+                for peer in peers {
+                    println!(
+                        "{} {} {} {}",
+                        peer_value(&peer, ipc::PEER_FINGERPRINT),
+                        peer_value(&peer, ipc::PEER_ID),
+                        peer_value(&peer, ipc::PEER_DISPLAY_NAME),
+                        peer_value(&peer, ipc::BLOCKED_AT),
+                    );
+                }
+            }
+        }
+        PairCommand::Unblock { fingerprint } => {
+            proxy
+                .unblock_peer(&fingerprint)
+                .await
+                .context("unblock peer")?;
+            println!("peer unblocked");
         }
     }
     Ok(())

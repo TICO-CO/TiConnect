@@ -24,6 +24,8 @@ pub trait Daemon {
     fn cancel_pairing(&self) -> zbus::Result<()>;
     fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
     fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_blocked_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn unblock_peer(&self, fingerprint: &str) -> zbus::Result<bool>;
     fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
     fn list_messages(
         &self,

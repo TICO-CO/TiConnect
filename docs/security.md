@@ -59,6 +59,28 @@ There is one fingerprint model in v1:
 Certificate validity and self-signature are checked. Pinning fails closed on
 unknown, mismatched, or malformed certificates.
 
+## Open LAN mode
+
+Open LAN mode is enabled by default. Every discovered peer is automatically
+paired and trusted using a deterministic LAN token derived from both
+fingerprints. This removes the user identity-verification step: any device on
+the same LAN can appear in the peer list and send messages or calls.
+
+Controls:
+
+- `mute` keeps the peer connected but suppresses notifications.
+- `ignore` drops inbound messages and calls silently.
+- blocking removes trust, closes the session, and adds the fingerprint to a
+  persistent blocklist so automatic pairing does not re-trust it.
+- manual pairing or `pair unblock <fingerprint>` clears a block.
+
+Remote desktop remains gated by explicit host consent and a fresh PIN even in
+Open LAN mode. `trust.open_lan` can be disabled in settings or with:
+
+```sh
+ticonnect settings set trust.open_lan false
+```
+
 ## Pairing endpoint
 
 The pairing endpoint shares the QUIC listener and port with session transport but

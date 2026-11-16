@@ -1,12 +1,14 @@
+use std::collections::{HashMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::str::FromStr;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use ticonnect_core::fingerprint::{Fingerprint, FingerprintError};
 use ticonnect_core::id::NodeId;
-use ticonnect_net::discovery::{Discovery, LanDiscovery};
+use ticonnect_net::discovery::candidate::Candidate;
+use ticonnect_net::discovery::{Discovery, DiscoveryEvent, LanDiscovery};
 use ticonnect_net::pairing::{
     EndpointError, InitiatorRequest, PIN_ATTEMPTS, PairingMode, PairingPeer, PairingSecret,
     PinError, PinPolicy, QrError, QrPayload, ResponderRequest, run_initiator, run_responder,
@@ -85,7 +87,17 @@ struct ActivePairing {
     expires_at: u64,
     connection: Option<quinn::Connection>,
     failures: u8,
+    automatic: bool,
 }
+
+#[derive(Default)]
+struct AutoPairState {
+    inflight: HashSet<String>,
+    last_attempt: HashMap<String, Instant>,
+}
+
+const AUTO_PAIR_RETRY: Duration = Duration::from_secs(15);
+const AUTO_PAIR_SCAN: Duration = Duration::from_secs(2);
 
 pub struct PairingService {
     identity: PublicIdentity,
@@ -93,6 +105,7 @@ pub struct PairingService {
     transport: Arc<Transport>,
     discovery: Arc<LanDiscovery>,
     active: Mutex<Option<ActivePairing>>,
+    auto_pair: std::sync::Mutex<AutoPairState>,
     events: broadcast::Sender<PairingEvent>,
 }
 
@@ -110,6 +123,7 @@ impl PairingService {
             transport,
             discovery,
             active: Mutex::new(None),
+            auto_pair: std::sync::Mutex::new(AutoPairState::default()),
             events,
         }
     }
@@ -144,6 +158,7 @@ impl PairingService {
             expires_at,
             connection: None,
             failures: 0,
+            automatic: false,
         });
         if let Some(previous) = previous
             && let Some(connection) = previous.connection
@@ -194,6 +209,115 @@ impl PairingService {
             PairingSecret::Pin(pin.to_owned()),
             None,
             display_name,
+            false,
+        )
+        .await
+    }
+
+    fn queue_auto_pair(self: &Arc<Self>, candidate: Candidate) {
+        if !self.trust.open_lan() {
+            return;
+        }
+        let fingerprint = match Fingerprint::from_str(candidate.fingerprint()) {
+            Ok(fingerprint) => fingerprint,
+            Err(_) => return,
+        };
+        let node_id = match NodeId::from_str(candidate.node_id()) {
+            Ok(node_id) => node_id,
+            Err(_) => return,
+        };
+        if fingerprint == self.identity.fingerprint()
+            || node_id == self.identity.node_id()
+            || self.trust.is_trusted(&fingerprint.to_hex())
+            || self.trust.is_blocked(&fingerprint.to_hex())
+        {
+            return;
+        }
+        if self.active.try_lock().is_ok_and(|active| active.is_some()) {
+            return;
+        }
+
+        let key = fingerprint.to_hex();
+        {
+            let mut state = self
+                .auto_pair
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if state.inflight.contains(&key) {
+                return;
+            }
+            if state
+                .last_attempt
+                .get(&key)
+                .is_some_and(|attempt| attempt.elapsed() < AUTO_PAIR_RETRY)
+            {
+                return;
+            }
+            state.inflight.insert(key.clone());
+            state.last_attempt.insert(key.clone(), Instant::now());
+        }
+
+        let service = self.clone();
+        tokio::spawn(async move {
+            match service.pair_open(candidate).await {
+                Ok(peer) => {
+                    tracing::info!(peer = %peer.id, "open LAN peer trusted");
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "open LAN automatic pairing failed");
+                }
+            }
+            service
+                .auto_pair
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .inflight
+                .remove(&key);
+        });
+    }
+
+    fn scan_auto_pair(self: &Arc<Self>) {
+        if !self.trust.open_lan() {
+            return;
+        }
+        for candidate in self.discovery.snapshot() {
+            self.queue_auto_pair(candidate);
+        }
+    }
+
+    async fn pair_open(&self, candidate: Candidate) -> Result<Peer, PairingServiceError> {
+        let node_id = NodeId::from_str(candidate.node_id())
+            .map_err(|error| PairingServiceError::InvalidIdentity(error.to_string()))?;
+        let fingerprint =
+            Fingerprint::from_str(candidate.fingerprint()).map_err(fingerprint_error)?;
+        if self.trust.is_blocked(&fingerprint.to_hex()) {
+            return Err(PairingServiceError::Trust(TrustError::NotFound));
+        }
+        let address = candidate
+            .addresses()
+            .next()
+            .ok_or(PairingServiceError::InvalidAddress)?
+            .parse::<IpAddr>()
+            .map_err(|_| PairingServiceError::InvalidAddress)?;
+        if candidate.port() == 0 {
+            return Err(PairingServiceError::MissingPort);
+        }
+        let expected = PairingPeer {
+            node_id,
+            fingerprint,
+            certificate_fingerprint: fingerprint,
+        };
+        let display_name =
+            (!candidate.display_name().is_empty()).then(|| candidate.display_name().to_owned());
+        let token = open_lan_token(self.identity.fingerprint(), fingerprint);
+        self.pair_as_initiator(
+            SocketAddr::new(address, candidate.port()),
+            expected,
+            PairingMode::Qr,
+            PairingSecret::Token(token),
+            Some(token),
+            display_name,
+            true,
         )
         .await
     }
@@ -216,6 +340,7 @@ impl PairingService {
             PairingSecret::Token(token),
             Some(token),
             None,
+            false,
         )
         .await
     }
@@ -228,6 +353,7 @@ impl PairingService {
         secret: PairingSecret,
         token: Option<[u8; 32]>,
         display_name: Option<String>,
+        automatic: bool,
     ) -> Result<Peer, PairingServiceError> {
         let local = self.local_peer();
         let target = DialTarget::new(address, expected.fingerprint).with_node_id(expected.node_id);
@@ -248,7 +374,9 @@ impl PairingService {
         .await;
         connection.close(0u32.into(), b"paired");
         let outcome = outcome?;
-        let peer = self.commit_peer(outcome.peer.clone(), display_name).await?;
+        let peer = self
+            .commit_peer(outcome.peer.clone(), display_name, automatic)
+            .await?;
         if self.identity.node_id() < outcome.peer.node_id
             && let Err(error) = self.transport.connect(target).await
         {
@@ -280,13 +408,36 @@ impl PairingService {
         self.trust.list().await.map_err(Into::into)
     }
 
+    pub async fn list_blocked_peers(
+        &self,
+    ) -> Result<Vec<crate::storage::BlockedPeer>, PairingServiceError> {
+        self.trust.blocked_peers().await.map_err(Into::into)
+    }
+
+    pub async fn unblock_peer(&self, fingerprint: &str) -> Result<bool, PairingServiceError> {
+        self.trust.unblock(fingerprint).await.map_err(Into::into)
+    }
+
     async fn handle_pairing_request(
         &self,
         connection: quinn::Connection,
         fingerprint: Fingerprint,
     ) {
-        let (pin, token) = {
+        let (pin, token, automatic) = {
             let mut active = self.active.lock().await;
+            if active.is_none()
+                && self.trust.open_lan()
+                && !self.trust.is_blocked(&fingerprint.to_hex())
+            {
+                *active = Some(ActivePairing {
+                    pin: PinPolicy::generate(),
+                    token: open_lan_token(self.identity.fingerprint(), fingerprint),
+                    expires_at: now_unix() + 120,
+                    connection: None,
+                    failures: 0,
+                    automatic: true,
+                });
+            }
             let Some(session) = active.as_mut() else {
                 connection.close(0u32.into(), b"no pairing session");
                 return;
@@ -297,7 +448,11 @@ impl PairingService {
                 return;
             }
             session.connection = Some(connection.clone());
-            (session.pin.value().to_owned(), session.token)
+            (
+                session.pin.value().to_owned(),
+                session.token,
+                session.automatic,
+            )
         };
 
         let result = run_responder(
@@ -316,9 +471,19 @@ impl PairingService {
             Ok(outcome) => {
                 *self.active.lock().await = None;
                 let peer = outcome.peer;
+                let display_name = self
+                    .discovery
+                    .snapshot()
+                    .into_iter()
+                    .find(|candidate| candidate.fingerprint() == peer.fingerprint.to_hex())
+                    .map(|candidate| candidate.display_name().to_owned())
+                    .filter(|name| !name.is_empty());
                 let target = DialTarget::new(connection.remote_address(), peer.fingerprint)
                     .with_node_id(peer.node_id);
-                match self.commit_peer(peer.clone(), None).await {
+                match self
+                    .commit_peer(peer.clone(), display_name, automatic)
+                    .await
+                {
                     Ok(_) => {
                         if self.identity.node_id() < peer.node_id
                             && let Err(error) = self.transport.connect(target).await
@@ -334,15 +499,23 @@ impl PairingService {
             }
             Err(error) => {
                 let mut active = self.active.lock().await;
+                let mut emit_failure = true;
                 if let Some(session) = active.as_mut() {
-                    session.connection = None;
-                    session.failures = session.failures.saturating_add(1);
-                    if session.failures >= PIN_ATTEMPTS {
+                    emit_failure = !session.automatic;
+                    if session.automatic {
                         *active = None;
+                    } else {
+                        session.connection = None;
+                        session.failures = session.failures.saturating_add(1);
+                        if session.failures >= PIN_ATTEMPTS {
+                            *active = None;
+                        }
                     }
                 }
                 drop(active);
-                let _ = self.events.send(PairingEvent::Failed(error.to_string()));
+                if emit_failure {
+                    let _ = self.events.send(PairingEvent::Failed(error.to_string()));
+                }
                 tracing::warn!(%error, "pairing failed");
             }
         }
@@ -352,6 +525,7 @@ impl PairingService {
         &self,
         peer: PairingPeer,
         display_name: Option<String>,
+        automatic: bool,
     ) -> Result<Peer, PairingServiceError> {
         let new_peer = NewPeer {
             id: peer.node_id.to_string(),
@@ -363,7 +537,12 @@ impl PairingService {
             last_seen: None,
         };
 
-        match self.trust.commit(new_peer).await {
+        let committed = if automatic {
+            self.trust.commit_auto(new_peer).await
+        } else {
+            self.trust.commit(new_peer).await
+        };
+        match committed {
             Ok(peer) => {
                 let _ = self.events.send(PairingEvent::Completed {
                     peer_id: peer.id.clone(),
@@ -399,14 +578,35 @@ impl PairingService {
     }
 }
 
+fn open_lan_token(local: Fingerprint, remote: Fingerprint) -> [u8; 32] {
+    let mut fingerprints = [local.to_hex(), remote.to_hex()];
+    fingerprints.sort();
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"ticonnect open-lan pairing v1");
+    hasher.update(fingerprints[0].as_bytes());
+    hasher.update(fingerprints[1].as_bytes());
+    *hasher.finalize().as_bytes()
+}
+
 pub fn spawn(connection: zbus::Connection, service: Arc<PairingService>) -> JoinHandle<()> {
     let transport = service.transport.clone();
     let mut transport_events = transport.subscribe();
     let mut pairing_events = service.subscribe();
+    let mut discovery_events = service.discovery.subscribe();
+    let mut auto_scan = tokio::time::interval(AUTO_PAIR_SCAN);
+    auto_scan.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
 
     tokio::spawn(async move {
         loop {
             tokio::select! {
+                event = discovery_events.recv() => {
+                    if let Ok(DiscoveryEvent::Found(candidate)) = event {
+                        service.clone().queue_auto_pair(candidate);
+                    }
+                }
+                _ = auto_scan.tick() => {
+                    service.clone().scan_auto_pair();
+                }
                 event = transport_events.recv() => {
                     match event {
                         Ok(TransportEvent::PairingRequested { fingerprint, connection: pairing_connection, .. }) => {
@@ -548,4 +748,19 @@ fn now_unix() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_secs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn open_lan_token_is_symmetric_and_peer_specific() {
+        let first = Fingerprint::from_bytes([1; 32]);
+        let second = Fingerprint::from_bytes([2; 32]);
+        let third = Fingerprint::from_bytes([3; 32]);
+
+        assert_eq!(open_lan_token(first, second), open_lan_token(second, first));
+        assert_ne!(open_lan_token(first, second), open_lan_token(first, third));
+    }
 }

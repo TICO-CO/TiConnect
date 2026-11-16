@@ -22,7 +22,7 @@ pub use error::StorageError;
 pub use messages::{InsertOutcome, MessageState, StoredMessage};
 pub use outbox::OutboxEntry;
 pub use peer_state::PeerState;
-pub use peers::{NewPeer, Peer, PeerPolicy};
+pub use peers::{BlockedPeer, NewPeer, Peer, PeerPolicy};
 pub use transfer_partials::TransferPartial;
 
 type Reply<T> = oneshot::Sender<Result<T, StorageError>>;
@@ -39,6 +39,10 @@ enum Command {
     UpdatePeerLastSeen(String, i64, Reply<bool>),
     DeletePeer(String, Reply<bool>),
     UpdatePeerPublicKey(String, [u8; 32], Reply<bool>),
+    BlockPeer(BlockedPeer, Reply<()>),
+    UnblockPeer(String, Reply<bool>),
+    ListBlockedPeers(Reply<Vec<BlockedPeer>>),
+    IsPeerBlocked(String, Reply<bool>),
     IntegrityCheck(Reply<String>),
     EnsureConversation {
         id: String,
@@ -204,6 +208,30 @@ impl DatabaseHandle {
             public_key,
             reply,
         ))?;
+        receive(receiver).await
+    }
+
+    pub async fn block_peer(&self, peer: BlockedPeer) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::BlockPeer(peer, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn unblock_peer(&self, fingerprint: &str) -> Result<bool, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::UnblockPeer(fingerprint.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_blocked_peers(&self) -> Result<Vec<BlockedPeer>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListBlockedPeers(reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn is_peer_blocked(&self, fingerprint: &str) -> Result<bool, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::IsPeerBlocked(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
@@ -526,6 +554,18 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::UpdatePeerPublicKey(id, public_key, reply) => {
             let _ = reply.send(peers::update_public_key(connection, &id, &public_key));
+        }
+        Command::BlockPeer(peer, reply) => {
+            let _ = reply.send(peers::block(connection, &peer));
+        }
+        Command::UnblockPeer(fingerprint, reply) => {
+            let _ = reply.send(peers::unblock(connection, &fingerprint));
+        }
+        Command::ListBlockedPeers(reply) => {
+            let _ = reply.send(peers::list_blocked(connection));
+        }
+        Command::IsPeerBlocked(fingerprint, reply) => {
+            let _ = reply.send(peers::is_blocked(connection, &fingerprint));
         }
         Command::EnsureConversation {
             id,

@@ -230,3 +230,68 @@ fn row_to_peer(row: &rusqlite::Row<'_>) -> rusqlite::Result<Peer> {
         last_seen: row.get(6)?,
     })
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlockedPeer {
+    pub fingerprint: String,
+    pub node_id: Option<String>,
+    pub display_name: Option<String>,
+    pub blocked_at: i64,
+}
+
+pub fn block(connection: &Connection, peer: &BlockedPeer) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT INTO blocked_peers (fingerprint, node_id, display_name, blocked_at)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(fingerprint) DO UPDATE SET
+            node_id = excluded.node_id,
+            display_name = excluded.display_name,
+            blocked_at = excluded.blocked_at",
+        params![
+            peer.fingerprint,
+            peer.node_id,
+            peer.display_name,
+            peer.blocked_at
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn unblock(connection: &Connection, fingerprint: &str) -> Result<bool, StorageError> {
+    let deleted = connection.execute(
+        "DELETE FROM blocked_peers WHERE fingerprint = ?1",
+        params![fingerprint],
+    )?;
+    Ok(deleted > 0)
+}
+
+pub fn list_blocked(connection: &Connection) -> Result<Vec<BlockedPeer>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT fingerprint, node_id, display_name, blocked_at
+         FROM blocked_peers ORDER BY blocked_at DESC, fingerprint",
+    )?;
+    let rows = statement.query_map([], row_to_blocked)?;
+    let mut peers = Vec::new();
+    for row in rows {
+        peers.push(row?);
+    }
+    Ok(peers)
+}
+
+pub fn is_blocked(connection: &Connection, fingerprint: &str) -> Result<bool, StorageError> {
+    let exists: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM blocked_peers WHERE fingerprint = ?1)",
+        params![fingerprint],
+        |row| row.get(0),
+    )?;
+    Ok(exists)
+}
+
+fn row_to_blocked(row: &rusqlite::Row<'_>) -> rusqlite::Result<BlockedPeer> {
+    Ok(BlockedPeer {
+        fingerprint: row.get(0)?,
+        node_id: row.get(1)?,
+        display_name: row.get(2)?,
+        blocked_at: row.get(3)?,
+    })
+}

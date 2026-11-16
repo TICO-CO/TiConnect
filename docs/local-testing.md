@@ -41,7 +41,6 @@ Pane commands:
 
 ```text
 ticonnect status      talk to this node's daemon
-pair                  pair the two lab nodes
 peer                  print the peer node id
 send "hello"          send to the peer
 inbox                 show messages from the peer
@@ -53,7 +52,12 @@ logs                  show the daemon log
 help-lab              list commands
 ```
 
-Manual pairing works normally:
+Open LAN mode is enabled by default, so the two nodes trust each other
+automatically and the peer list populates without pairing. Set
+`LAB_OPEN_LAN=0 make lab` to test manual pairing instead; the `pair` helper is
+still available in that mode.
+
+Manual pairing remains available:
 
 ```sh
 # node-a pane

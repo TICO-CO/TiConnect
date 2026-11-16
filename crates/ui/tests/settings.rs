@@ -33,3 +33,15 @@ fn settings_validation_rejects_out_of_range_values() {
     assert!(SettingsForm::validate_beacon_interval(0).is_err());
     assert_eq!(SettingsForm::validate_beacon_interval(5).expect("valid"), 5);
 }
+
+#[test]
+fn open_lan_defaults_on_and_parses_disabled_value() {
+    let form = SettingsForm::default();
+    assert!(form.bool_value("trust.open_lan", true));
+
+    let form = SettingsForm::new(BTreeMap::from([(
+        "trust.open_lan".to_owned(),
+        "false".to_owned(),
+    )]));
+    assert!(!form.bool_value("trust.open_lan", true));
+}

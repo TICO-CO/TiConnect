@@ -5,6 +5,7 @@ shopt -s nullglob
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="${TICONNECT_BIN:-$ROOT/target/debug/ticonnect}"
 SMOKE=0
+LAB_OPEN_LAN="${LAB_OPEN_LAN:-1}"
 
 usage() {
     cat >&2 <<'EOF'
@@ -326,6 +327,10 @@ B_ID="$(node_id b)"
 
 cli a settings set identity.display_name "Lab Node A" >/dev/null
 cli b settings set identity.display_name "Lab Node B" >/dev/null
+if [ "$LAB_OPEN_LAN" = "0" ]; then
+    cli a settings set trust.open_lan false >/dev/null
+    cli b settings set trust.open_lan false >/dev/null
+fi
 
 mkdir -p "$WORK/bin"
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
@@ -333,7 +338,14 @@ write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair
 
 if [ "$SMOKE" = "1" ]; then
-    "$WORK/bin/lab-pair" >/dev/null
+    if [ "$LAB_OPEN_LAN" = "1" ]; then
+        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
+            fail "node-a did not auto-trust node-b"
+        wait_for "cli b peers list | grep -q '$A_ID'" 300 ||
+            fail "node-b did not auto-trust node-a"
+    else
+        "$WORK/bin/lab-pair" >/dev/null
+    fi
     message_id="$(cli a send "$B_ID" "lab-smoke-$(date +%s)")"
     for _ in $(seq 1 100); do
         cli b messages "$A_ID" --limit 20 | grep -q "$message_id" && break
@@ -341,6 +353,20 @@ if [ "$SMOKE" = "1" ]; then
     done
     cli b messages "$A_ID" --limit 20 | grep -q "$message_id" ||
         fail "smoke message did not arrive"
+
+    if [ "$LAB_OPEN_LAN" = "1" ]; then
+        B_FP="$(cli a peers list | awk -v id="$B_ID" '$1 == id {print $2}')"
+        [ -n "$B_FP" ] || fail "missing peer fingerprint"
+        cli a pair forget "$B_ID" >/dev/null
+        sleep 1
+        if cli a peers list | grep -q "$B_ID"; then
+            fail "blocked peer was re-trusted"
+        fi
+        cli a pair unblock "$B_FP" >/dev/null
+        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
+            fail "unblocked peer did not re-trust"
+    fi
+
     printf 'lab smoke passed: a=%s b=%s\n' "$A_ID" "$B_ID"
     exit 0
 fi

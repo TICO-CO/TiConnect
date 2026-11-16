@@ -113,10 +113,15 @@ The NixOS module is available at `inputs.ticonnect.nixosModules.default`.
 
 ## Use
 
-Launch TiConnect from your app menu. Pair with another node, then send
-messages, files, and audio attachments, start calls, or request a remote
-desktop session. TiConnect traffic stays on your LAN and is encrypted with
-pinned TLS certificates.
+Launch TiConnect from your app menu. Open LAN mode is on by default: discovered
+devices on the same LAN connect automatically without a PIN. Send messages,
+files, and audio attachments, start calls, or request a remote desktop session.
+Remote desktop still requires host consent and a fresh PIN. TiConnect traffic
+stays on your LAN and is encrypted with pinned TLS certificates.
+
+Use peer policies to mute, ignore, or block a device. Blocked devices are kept
+in a blocklist and cannot reconnect automatically. Open LAN mode can be disabled
+with `ticonnect settings set trust.open_lan false`.
 
 ## Command line
 

@@ -319,6 +319,24 @@ impl Backoff {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct BlockedPeer {
+    pub fingerprint: String,
+    pub node_id: String,
+    pub display_name: String,
+    pub blocked_at: u64,
+}
+
+impl BlockedPeer {
+    pub fn display_label(&self) -> String {
+        if self.display_name.trim().is_empty() {
+            short_id(&self.node_id)
+        } else {
+            self.display_name.clone()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SettingsForm {
     values: BTreeMap<String, String>,
 }
