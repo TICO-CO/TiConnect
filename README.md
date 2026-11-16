@@ -82,53 +82,84 @@ sudo ldconfig
 Architecture docs are generated. After editing `docs/systems/graph/` or
 `docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
-## Run
+## Install
 
-The release artifact is a single executable, `ticonnect`, with one subcommand
-per process:
+### AppImage
+
+Download `ticonnect-<tag>-x86_64.AppImage`, then install the per-user app
+integration:
 
 ```sh
-cargo run --bin ticonnect -- daemon
-cargo run --bin ticonnect -- cli status
-cargo run --bin ticonnect -- cli status --json
-cargo run --bin ticonnect -- cli ping
-cargo run --bin ticonnect -- cli id show
-cargo run --bin ticonnect -- cli settings get dnd.enabled
-cargo run --bin ticonnect -- cli settings set dnd.enabled true
-cargo run --bin ticonnect -- cli settings list
-cargo run --bin ticonnect -- cli peers list
-cargo run --bin ticonnect -- cli discover list
-cargo run --bin ticonnect -- cli discover watch
-cargo run --bin ticonnect -- cli pair start
-cargo run --bin ticonnect -- cli pair with-pin <node-id> <pin>
-cargo run --bin ticonnect -- cli pair with-qr '<payload>'
-cargo run --bin ticonnect -- cli pair cancel
-cargo run --bin ticonnect -- cli pair forget <peer-id>
-cargo run --bin ticonnect -- cli send <peer-id> "hello"
-cargo run --bin ticonnect -- cli messages <peer-id>
-cargo run --bin ticonnect -- cli mark-read <peer-id> <message-id>
-cargo run --bin ticonnect -- cli policy set <peer-id> mute
-cargo run --bin ticonnect -- cli policy dnd on
-cargo run --bin ticonnect -- cli quit
-cargo run --bin ticonnect -- ui
-cargo run --bin ticonnect -- overlay
+chmod +x ticonnect-v0.0.5-x86_64.AppImage
+./ticonnect-v0.0.5-x86_64.AppImage --install-user
+```
+
+Launch TiConnect from the app menu. `--uninstall-user` removes the app
+integration and keeps your configuration, identity, database, and attachments.
+Use `--uninstall-user --purge` to remove those too.
+
+### Arch
+
+Install the package from the latest release with `pacman -U`. The package adds
+the app-menu entry, icon, systemd user units, and autostart entries.
+
+### Nix
+
+```sh
+nix profile install github:TICO-CO/TiConnect#ticonnect
+```
+
+The NixOS module is available at `inputs.ticonnect.nixosModules.default`.
+
+## Use
+
+Launch TiConnect from your app menu. Pair with another node, then send
+messages, files, and audio attachments, start calls, or request a remote
+desktop session. TiConnect traffic stays on your LAN and is encrypted with
+pinned TLS certificates.
+
+## Command line
+
+The same executable is the command-line client:
+
+```sh
+ticonnect status
+ticonnect id show
+ticonnect peers list
+ticonnect pair start
+ticonnect send <peer-id> "hello"
+ticonnect messages <peer-id>
+ticonnect settings list
+```
+
+`ticonnect --help` lists the user-facing surface. `ticonnect --version` prints
+the binary version.
+
+## Development / internals
+
+These entries run individual processes and are hidden from user help:
+
+```sh
+ticonnect daemon
+ticonnect overlay
+ticonnect ui
+ticonnect cli status
 ```
 
 `ticonnect daemon` serves `org.ticonnect.Daemon` on the session bus until
 shutdown. `ticonnect cli` talks to the daemon for status, identity, peers,
-discovery, pairing, messaging, policy, ping, and quit.
-`settings get`, `settings set`, and `settings list` read and write `config.toml`
-directly. `ticonnect ui` opens the GTK4 window and talks to the daemon only over
-D-Bus. `ticonnect overlay` shows corner cards for incoming messages without
-depending on the UI process. Running `ticonnect` with no subcommand opens the UI.
+discovery, pairing, messaging, policy, ping, and quit. `settings get`,
+`settings set`, and `settings list` read and write `config.toml` directly.
+`ticonnect ui` opens the GTK4 window and talks to the daemon only over D-Bus.
+`ticonnect overlay` shows corner cards for incoming messages without depending
+on the UI process. Running `ticonnect` with no subcommand opens the UI and
+starts the daemon when it is absent.
 
 ## Release
 
-Pushing a `v*` tag builds the unified Linux binary and publishes a GitHub
-release with `ticonnect-<tag>-linux-x86_64.tar.gz`,
-`ticonnect-<tag>-x86_64.AppImage`, the Manjaro/Arch package, and
-`SHA256SUMS.txt`. See `docs/install.md` for `pacman -U`, the NixOS flake
-module, and AppImage instructions.
+Pushing a `v*` tag builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the
+Arch package, and `SHA256SUMS.txt`. See `docs/install.md` for AppImage,
+`pacman -U`, and Nix instructions.
 
 ```sh
 git tag v0.0.1
@@ -137,8 +168,8 @@ git push origin v0.0.1
 
 ## UI
 
-`ticonnect-ui` is a separate process. It never reads keys, the database, or the
-network directly. Closing the window stops only the UI; the daemon keeps
+The UI runs as the internal `ticonnect ui` process. It never reads keys, the
+database, or the network directly. Closing the window stops only the UI; the daemon keeps
 receiving messages. Appearance follows the system by default; the Settings view
 can force light or dark through libadwaita's `AdwStyleManager`. `GTK_THEME` is
 not supported by libadwaita and overrides its styling.
@@ -168,9 +199,9 @@ calls a `SetSetting` D-Bus method.
 
 ## Overlay
 
-`ticonnect-ovl` is a separate always-running GTK4 process. It subscribes directly
-to `org.ticonnect.Daemon`, resolves sender names through `ListPeers`, and does not
-depend on the UI being open.
+The overlay runs as the internal `ticonnect overlay` process. It subscribes
+directly to `org.ticonnect.Daemon`, resolves sender names through `ListPeers`,
+and does not depend on the UI being open.
 
 - Wayland: uses `gtk4-layer-shell` with `Layer::Overlay`, anchored bottom-right,
   and `KeyboardMode::None`. Cards never take keyboard focus; only the card
@@ -182,7 +213,7 @@ depend on the UI being open.
   visible; additional cards queue. Cards auto-dismiss after
   `overlay.timeout_secs`, pause while hovered, and deduplicate by message id.
 - Clicking a card calls `org.ticonnect.UI.Activate("chat")`. If the UI is not
-  running, the overlay starts `ticonnect-ui` from `PATH` and retries once.
+  running, the overlay starts the current executable with `ui` and retries once.
 - Mute, ignore, and DND are enforced by the daemon: suppressed messages arrive
   with `notify=false` and produce no card or notification.
 - When `overlay.enabled` is false or no surface can initialize, the same events

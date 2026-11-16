@@ -200,11 +200,17 @@ async fn activate(connection: &zbus::Connection, view: &str) -> anyhow::Result<(
         Ok(()) => Ok(()),
         Err(first) => {
             tracing::debug!(%first, "UI is not running; trying to start it");
-            std::process::Command::new("ticonnect-ui").spawn()?;
+            ui_command().spawn()?;
             tokio::time::sleep(Duration::from_millis(350)).await;
             call_activate(connection, view).await.map_err(Into::into)
         }
     }
+}
+
+fn ui_command() -> std::process::Command {
+    let mut command = std::process::Command::new(ticonnect_runtime::main_executable());
+    command.arg("ui");
+    command
 }
 
 async fn call_activate(connection: &zbus::Connection, view: &str) -> zbus::Result<()> {
@@ -217,4 +223,19 @@ async fn call_activate(connection: &zbus::Connection, view: &str) -> zbus::Resul
     .await?;
     let _: () = proxy.call("Activate", &(view,)).await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ui_command_uses_current_executable_and_ui_argument() {
+        let command = ui_command();
+        assert_eq!(command.get_program(), ticonnect_runtime::main_executable());
+        assert_eq!(
+            command.get_args().collect::<Vec<_>>(),
+            [std::ffi::OsStr::new("ui")]
+        );
+    }
 }

@@ -16,7 +16,13 @@ export TICONNECT_LOG_LEVEL=warn
 export TICONNECT_APPIMAGE="$APPIMAGE"
 mkdir -p "$TICONNECT_CONFIG_DIR" "$TICONNECT_DATA_DIR"
 
-"$APPIMAGE" --appimage-extract-and-run --help >/dev/null
+"$APPIMAGE" --appimage-extract-and-run --version
+help="$("$APPIMAGE" --appimage-extract-and-run --help)"
+printf '%s\n' "$help" | grep -q "Launch TiConnect"
+if printf '%s\n' "$help" | grep -Eq '^[[:space:]]*(daemon|overlay|cli)\b'; then
+    echo "internal command exposed in user help" >&2
+    exit 1
+fi
 
 dbus-run-session -- bash -c '
 set -euo pipefail

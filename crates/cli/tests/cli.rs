@@ -64,6 +64,10 @@ fn ping_without_daemon_exits_non_zero() {
     let output = Command::new(env!("CARGO_BIN_EXE_ticonnect-cli"))
         .args(["ping"])
         .env_clear()
+        .env(
+            "LD_LIBRARY_PATH",
+            std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default(),
+        )
         .env("TICONNECT_CONFIG_DIR", &dir)
         .env(
             "DBUS_SESSION_BUS_ADDRESS",
@@ -82,6 +86,10 @@ fn run(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_ticonnect-cli"))
         .args(args)
         .env_clear()
+        .env(
+            "LD_LIBRARY_PATH",
+            std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default(),
+        )
         .env("TICONNECT_CONFIG_DIR", dir)
         .output()
         .expect("run cli")

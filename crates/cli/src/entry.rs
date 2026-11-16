@@ -11,11 +11,7 @@ use ticonnect_core::message::conversation_id;
 use ticonnect_settings::Settings;
 
 #[derive(Debug, Parser)]
-#[command(
-    name = "ticonnect-cli",
-    version,
-    about = "TiConnect command-line client"
-)]
+#[command(name = "ticonnect", version, about = "TiConnect command-line client")]
 struct Cli {
     #[command(subcommand)]
     command: Command,

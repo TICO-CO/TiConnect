@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+shopt -s nullglob
 
 usage() {
     echo "usage: $0 <binary> <tag> [output-dir]" >&2
@@ -33,6 +34,7 @@ mkdir -p \
     "$APPDIR/usr/bin" \
     "$APPDIR/usr/lib" \
     "$APPDIR/usr/share/applications" \
+    "$APPDIR/usr/share/metainfo" \
     "$APPDIR/usr/share/glib-2.0/schemas" \
     "$APPDIR/usr/share/icons/hicolor/scalable/apps"
 
@@ -95,14 +97,16 @@ if [ -z "$LOADERS_DIR" ] || [ ! -d "$LOADERS_DIR" ]; then
     LOADERS_DIR="/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/2.10.0/loaders"
 fi
 LOADERS_DEST="$APPDIR/usr/lib/gdk-pixbuf-2.0/2.10.0/loaders"
-if [ -d "$LOADERS_DIR" ]; then
+loaders=("$LOADERS_DIR"/*.so)
+if [ "${#loaders[@]}" -gt 0 ]; then
     mkdir -p "$LOADERS_DEST"
-    cp -L "$LOADERS_DIR"/*.so "$LOADERS_DEST/"
-    for loader in "$LOADERS_DEST"/*.so; do
+    cp -L "${loaders[@]}" "$LOADERS_DEST/"
+    installed=("$LOADERS_DEST"/*.so)
+    for loader in "${installed[@]}"; do
         copy_lib "$loader"
     done
     if command -v gdk-pixbuf-query-loaders >/dev/null 2>&1; then
-        gdk-pixbuf-query-loaders "$LOADERS_DEST"/*.so \
+        gdk-pixbuf-query-loaders "${installed[@]}" \
             | sed "s|$APPDIR|@APPDIR@|g" > "$LOADERS_DEST/loaders.cache.in"
     fi
 fi
@@ -111,10 +115,12 @@ GIO_DIR="$(pkg-config --variable=giomoduledir gio-2.0 2>/dev/null || true)"
 if [ -z "$GIO_DIR" ] || [ ! -d "$GIO_DIR" ]; then
     GIO_DIR="/usr/lib/x86_64-linux-gnu/gio/modules"
 fi
-if [ -d "$GIO_DIR" ]; then
+modules=("$GIO_DIR"/*.so)
+if [ "${#modules[@]}" -gt 0 ]; then
     mkdir -p "$APPDIR/usr/lib/gio/modules"
-    cp -L "$GIO_DIR"/*.so "$APPDIR/usr/lib/gio/modules/"
-    for module in "$APPDIR"/usr/lib/gio/modules/*.so; do
+    cp -L "${modules[@]}" "$APPDIR/usr/lib/gio/modules/"
+    installed=("$APPDIR"/usr/lib/gio/modules/*.so)
+    for module in "${installed[@]}"; do
         copy_lib "$module"
     done
     if command -v gio-querymodules >/dev/null 2>&1; then
@@ -158,19 +164,12 @@ else
     install -m644 "$ROOT/packaging/flatpak/org.ticonnect.TiConnect.svg" "$APPDIR/.DirIcon"
 fi
 
-cat > "$APPDIR/org.ticonnect.TiConnect.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=TiConnect
-Comment=LAN-only messaging, calls, and remote desktop
-Exec=ticonnect
-Icon=org.ticonnect.TiConnect
-Terminal=false
-Categories=Network;Chat;InstantMessaging;
-StartupNotify=true
-EOF
+install -m644 "$ROOT/packaging/flatpak/org.ticonnect.TiConnect.desktop" \
+    "$APPDIR/org.ticonnect.TiConnect.desktop"
 install -m644 "$APPDIR/org.ticonnect.TiConnect.desktop" \
     "$APPDIR/usr/share/applications/org.ticonnect.TiConnect.desktop"
+install -m644 "$ROOT/packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml" \
+    "$APPDIR/usr/share/metainfo/org.ticonnect.TiConnect.metainfo.xml"
 
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/sh
@@ -196,6 +195,8 @@ fi
 if [ -f "$HERE/usr/share/alsa/alsa.conf" ]; then
     export ALSA_CONFIG_PATH="$HERE/usr/share/alsa/alsa.conf"
 fi
+
+export APPDIR="${APPDIR:-$HERE}"
 
 exec "$HERE/usr/bin/ticonnect" "$@"
 EOF

@@ -9,6 +9,7 @@ private D-Bus bus and isolated config/data directories.
 tests/local/run.sh x11 all
 tests/local/run.sh weston all
 tests/local/run.sh kwin all
+tests/local/run.sh hyprland all
 ```
 
 - `x11`: current X11 session, real XTEST, real PipeWire/Pulse devices.
@@ -17,8 +18,60 @@ tests/local/run.sh kwin all
   expected.
 - `kwin`: nested KWin Wayland; validates layer-shell overlay, portal services,
   and Wayland call/attachment/session paths.
+- `hyprland`: current Hyprland session; validates layer-shell overlay, portal
+  services, and the Wayland session paths.
 
 Scenarios: `messaging`, `attachments`, `ui`, `call`, `remote`, `all`.
+
+## Interactive two-node lab
+
+Inside Zellij:
+
+```sh
+make lab
+```
+
+This adds a `ticonnect-lab-*` tab with two panes. Each pane is a separate node
+with its own private D-Bus, daemon, config, data directory, transport port, and
+daemon log. The original pane stays attached to the lab supervisor. Closing the
+lab tab, running `lab-stop` in either pane, or pressing Ctrl-C in the supervisor
+pane stops both nodes.
+
+Pane commands:
+
+```text
+ticonnect status      talk to this node's daemon
+pair                  pair the two lab nodes
+peer                  print the peer node id
+send "hello"          send to the peer
+inbox                 show messages from the peer
+ui                    start this node's UI
+stop-ui               stop this node's UI
+ovl                   start this node's overlay
+stop-ovl              stop this node's overlay
+logs                  show the daemon log
+help-lab              list commands
+```
+
+Manual pairing works normally:
+
+```sh
+# node-a pane
+ticonnect pair start
+# copy the PIN, then in node-b
+ticonnect pair with-pin <node-a-id> <pin>
+```
+
+The lab sets distinct display names and UI window titles for the two nodes.
+Both UIs can run at the same time against their separate buses. Both overlays
+anchor bottom-right and overlap, so run one `ovl` at a time for clear testing.
+
+Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
+stops. Run the automated harness check with:
+
+```sh
+make lab-smoke
+```
 
 ## What is checked
 
@@ -46,6 +99,29 @@ down on the kill switch.
 
 Run the same gate on a GNOME Wayland session and on X11 with an available
 RemoteDesktop portal backend.
+
+## Hyprland
+
+Run the checks inside a Hyprland session:
+
+```sh
+tests/local/run.sh hyprland all
+PORTAL_REQUIRE=1 tests/local/run.sh hyprland remote
+```
+
+Preflight the portal backend:
+
+```sh
+gdbus introspect --session --dest org.freedesktop.portal.Desktop \
+  --object-path /org/freedesktop/portal/desktop | grep portal.RemoteDesktop
+```
+
+Hyprland needs a portal backend exposing
+`org.freedesktop.portal.RemoteDesktop`. `xdg-desktop-portal-hyprland` support
+landed upstream in 2026; older packages may lack it. The fallback is
+`xdg-desktop-portal-luminous` with both RemoteDesktop and ScreenCast routed to
+it. The layer-shell overlay is expected to work on Hyprland. Notification and
+tray validation depends on `mako` and `waybar`.
 
 ## Requirements
 

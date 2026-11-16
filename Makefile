@@ -1,13 +1,20 @@
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
+DATADIR ?= $(PREFIX)/share
+APPLICATIONS_DIR ?= $(DATADIR)/applications
+ICON_DIR ?= $(DATADIR)/icons/hicolor/scalable/apps
+METAINFO_DIR ?= $(DATADIR)/metainfo
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
 
-.PHONY: install-user uninstall-user lan-test
+.PHONY: install-user uninstall-user check-user-surface lab lab-smoke lan-test
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
-	install -d $(SYSTEMD_USER_DIR) $(AUTOSTART_DIR)
+	install -d $(SYSTEMD_USER_DIR) $(AUTOSTART_DIR) $(APPLICATIONS_DIR) $(ICON_DIR) $(METAINFO_DIR)
+	install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.desktop $(APPLICATIONS_DIR)/org.ticonnect.TiConnect.desktop
+	install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.svg $(ICON_DIR)/org.ticonnect.TiConnect.svg
+	install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml $(METAINFO_DIR)/org.ticonnect.TiConnect.metainfo.xml
 	sed 's|@BINDIR@|$(BINDIR)|g' packaging/systemd/ticonnectd.service > $(SYSTEMD_USER_DIR)/ticonnectd.service
 	sed 's|@BINDIR@|$(BINDIR)|g' packaging/systemd/ticonnect-overlay.service > $(SYSTEMD_USER_DIR)/ticonnect-overlay.service
 	sed 's|@BINDIR@|$(BINDIR)|g' packaging/systemd/ticonnect-ui.service > $(SYSTEMD_USER_DIR)/ticonnect-ui.service
@@ -19,14 +26,32 @@ install-user: target/release/ticonnect
 target/release/ticonnect:
 	cargo build --release --bin ticonnect
 
+target/debug/ticonnect:
+	CARGO_PROFILE_DEV_DEBUG=0 cargo build --bin ticonnect
+
+lab: target/debug/ticonnect
+	tests/local/lab.sh
+
+lab-smoke: target/debug/ticonnect
+	tests/local/lab.sh --smoke
+
 uninstall-user:
 	rm -f $(BINDIR)/ticonnect
+	rm -f $(APPLICATIONS_DIR)/org.ticonnect.TiConnect.desktop
+	rm -f $(ICON_DIR)/org.ticonnect.TiConnect.svg
+	rm -f $(METAINFO_DIR)/org.ticonnect.TiConnect.metainfo.xml
 	rm -f $(SYSTEMD_USER_DIR)/ticonnectd.service
 	rm -f $(SYSTEMD_USER_DIR)/ticonnect-overlay.service
 	rm -f $(SYSTEMD_USER_DIR)/ticonnect-ui.service
 	rm -f $(AUTOSTART_DIR)/ticonnect.desktop
 	rm -f $(AUTOSTART_DIR)/ticonnect-overlay.desktop
 	rm -f $(AUTOSTART_DIR)/ticonnect-ui.desktop
+
+check-user-surface: target/release/ticonnect
+	@if target/release/ticonnect --help | grep -E '^[[:space:]]*(daemon|overlay|cli)\b'; then \
+		echo "internal command exposed in user help" >&2; \
+		exit 1; \
+	fi
 
 lan-test:
 	tests/lan/run.sh

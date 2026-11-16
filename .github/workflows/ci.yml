@@ -14,7 +14,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake xvfb
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake xvfb desktop-file-utils appstream systemd
 
       - name: Build gtk4-layer-shell
         run: |
@@ -37,6 +37,70 @@ jobs:
 
       - name: Build binaries
         run: cargo build --workspace --bins
+
+      - name: Packaging validation
+        run: |
+          desktop-file-validate packaging/flatpak/org.ticonnect.TiConnect.desktop
+          appstreamcli validate --no-net packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml
+          units="$(mktemp -d)"
+          for unit in packaging/systemd/*.service; do
+            sed 's|@BINDIR@|$PWD/target/debug|g' "$unit" > "$units/$(basename "$unit")"
+          done
+          systemd-analyze --user verify "$units"/*.service
+          target/debug/ticonnect --help
+          target/debug/ticonnect --version
+          if target/debug/ticonnect --help | grep -E '^[[:space:]]*(daemon|overlay|cli)\b'; then
+            echo "internal command exposed in user help" >&2
+            exit 1
+          fi
+
+      - name: Installer smoke
+        run: |
+          TMP_HOME="$(mktemp -d)"
+          export HOME="$TMP_HOME"
+          export XDG_CONFIG_HOME="$TMP_HOME/.config"
+          export XDG_DATA_HOME="$TMP_HOME/.local/share"
+          export TICONNECT_INSTALL_NO_SYSTEMD=1
+          target/debug/ticonnect --install-user
+          test -x "$TMP_HOME/.local/bin/ticonnect"
+          test -f "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+          test -f "$TMP_HOME/.config/systemd/user/ticonnectd.service"
+          test -f "$TMP_HOME/.config/autostart/ticonnect.desktop"
+          desktop-file-validate "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+          Xvfb :98 -screen 0 1280x720x24 >/tmp/xvfb-install.log 2>&1 &
+          export DISPLAY=:98
+          timeout 8 gtk-launch org.ticonnect.TiConnect || true
+          pkill -f "$TMP_HOME/.local/share/ticonnect/app/ticonnect" || true
+          TICONNECT_INSTALL_ASSUME_YES=1 "$TMP_HOME/.local/bin/ticonnect" --uninstall-user --purge
+          test ! -e "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+
+      - name: Build AppImage
+        run: |
+          curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          chmod +x /tmp/appimagetool
+          APPIMAGETOOL=/tmp/appimagetool APPIMAGETOOL_EXTRACT_RUN=1 \
+            scripts/package-appimage.sh target/debug/ticonnect ci dist
+
+      - name: AppImage install smoke
+        run: |
+          APP=$(ls dist/*.AppImage)
+          TMP_HOME="$(mktemp -d)"
+          export HOME="$TMP_HOME"
+          export XDG_CONFIG_HOME="$TMP_HOME/.config"
+          export XDG_DATA_HOME="$TMP_HOME/.local/share"
+          export XDG_STATE_HOME="$TMP_HOME/.local/state"
+          export TICONNECT_INSTALL_NO_SYSTEMD=1
+          APPIMAGE="$PWD/$APP" "$APP" --appimage-extract-and-run --install-user
+          test -x "$TMP_HOME/.local/bin/ticonnect"
+          desktop-file-validate "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+          "$TMP_HOME/.local/bin/ticonnect" --version
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            "$HOME/.local/bin/ticonnect" status
+            "$HOME/.local/bin/ticonnect" quit
+          '
+          TICONNECT_INSTALL_ASSUME_YES=1 "$TMP_HOME/.local/bin/ticonnect" --uninstall-user --purge
+          test ! -e "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
 
       - name: Architecture graph
         run: cargo xtask systems --check

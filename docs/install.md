@@ -1,8 +1,32 @@
 # Install
 
-## Manjaro / Arch
+## AppImage
 
-Download the prebuilt package from the latest release:
+Download `ticonnect-<tag>-x86_64.AppImage` from the latest release and install
+the per-user app integration:
+
+```sh
+chmod +x ticonnect-v0.0.5-x86_64.AppImage
+./ticonnect-v0.0.5-x86_64.AppImage --install-user
+# launch TiConnect from the app menu
+```
+
+The installer extracts the AppImage once to
+`$XDG_DATA_HOME/ticonnect/app/`, writes a wrapper to `~/.local/bin/ticonnect`,
+adds the desktop entry, icon, metainfo, systemd user units, and autostart
+entries, and enables the daemon and overlay services when a user systemd session
+is available. Autostart entries remain the fallback.
+
+Without FUSE, or on NixOS, use the extract-and-run flag:
+
+```sh
+./ticonnect-v0.0.5-x86_64.AppImage --appimage-extract-and-run --install-user
+```
+
+On NixOS, `appimage-run ./ticonnect-v0.0.5-x86_64.AppImage --install-user` also
+works.
+
+## Arch / Manjaro
 
 ```sh
 TAG=v0.0.5
@@ -13,12 +37,7 @@ sudo pacman -U "$PKG"
 
 The package installs `ticonnect` to `/usr/bin`, the app-menu entry and icon,
 systemd user units, and XDG autostart entries for the daemon and overlay. The
-daemon and overlay start at the next login. Start them now with:
-
-```sh
-systemctl --user start ticonnectd.service ticonnect-overlay.service
-ticonnect ui
-```
+daemon and overlay start at the next login.
 
 Uninstall:
 
@@ -56,48 +75,71 @@ nix profile install github:TICO-CO/TiConnect#ticonnect
 Uninstall by removing the module/input and rebuilding, or
 `nix profile remove ticonnect`.
 
-## Flatpak
+## Command line
+
+Install the app integration first when using the AppImage. Then use `ticonnect`
+directly:
+
+```sh
+ticonnect status
+ticonnect id show
+ticonnect pair start
+ticonnect send <peer-id> "hello"
+ticonnect peers list
+ticonnect settings list
+```
+
+The command line starts the daemon when it is absent. `ticonnect --help` lists
+the user-facing surface; `ticonnect --version` prints the binary version.
+
+## Uninstall and purge
+
+For an AppImage per-user install:
+
+```sh
+ticonnect --uninstall-user
+```
+
+This removes the wrapper, app payload, desktop entry, icon, metainfo, units, and
+autostart entries. It keeps `$XDG_CONFIG_HOME/ticonnect` and
+`$XDG_DATA_HOME/ticonnect`, including identity, database, and attachments.
+
+To remove all user data as well:
+
+```sh
+ticonnect --uninstall-user --purge
+```
+
+The purge asks for confirmation. In non-interactive scripts set
+`TICONNECT_INSTALL_ASSUME_YES=1`.
+
+For a source install, use `make uninstall-user` instead.
+
+## Troubleshooting
+
+```sh
+ticonnect status
+systemctl --user status ticonnectd
+journalctl --user -u ticonnectd
+```
+
+Daemon logs also go to `$XDG_STATE_HOME/ticonnect/daemon.log`, usually
+`~/.local/state/ticonnect/daemon.log`.
+
+If the app menu entry does not launch, verify `~/.local/bin` is in your session
+`PATH` and run `ticonnect` from a terminal to see the error.
+
+## Flatpak (experimental)
+
+Flatpak is kept as an experimental packaging path and is not a release gate:
 
 ```sh
 flatpak-builder --user --install --force-clean build packaging/flatpak/org.ticonnect.TiConnect.yml
 flatpak run org.ticonnect.TiConnect
 ```
 
-The manifest builds the unified `ticonnect` executable from one source
-checkout. It requests network access, the session bus, Wayland with an X11
-fallback, and read/write access only to the TiConnect config and data
-directories.
-
 Portal-backed capture and input, notifications, autostart, and the status
-notifier must be provided by the host desktop. Portals cannot be bypassed by the
-sandbox.
-
-## AppImage
-
-The release AppImage bundles GTK4, libadwaita, gtk4-layer-shell, ALSA, GLib
-schemas, and gdk-pixbuf loaders. The host still provides the kernel, glibc
-(2.39+), GPU drivers, display server, portals, and audio devices.
-
-```sh
-TAG=v0.0.5
-curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-$TAG-x86_64.AppImage"
-chmod +x "ticonnect-$TAG-x86_64.AppImage"
-"./ticonnect-$TAG-x86_64.AppImage" --help
-"./ticonnect-$TAG-x86_64.AppImage" daemon
-"./ticonnect-$TAG-x86_64.AppImage" cli status
-"./ticonnect-$TAG-x86_64.AppImage" ui
-```
-
-Without FUSE, or on NixOS, use the extract-and-run flag:
-
-```sh
-"./ticonnect-$TAG-x86_64.AppImage" --appimage-extract-and-run --help
-```
-
-On NixOS, `appimage-run ./ticonnect-v0.0.5-x86_64.AppImage` also works. On
-Manjaro install `fuse2` for direct execution, or use
-`--appimage-extract-and-run`. Pairing and firewall rules are covered in the
-README.
+notifier must be provided by the host desktop.
 
 ## From source
 
@@ -123,23 +165,11 @@ Build and install as a user:
 ```sh
 cargo build --release --bin ticonnect
 make install-user
-systemctl --user daemon-reload
-systemctl --user enable --now ticonnectd.service
 ```
 
-`make install-user` installs `ticonnect` to `$(PREFIX)/bin` and the units point
-at `ticonnect daemon`, `ticonnect overlay`, and `ticonnect ui`.
-
-The `systemd` unit starts the daemon at login. The overlay and UI units are
-optional:
-
-```sh
-systemctl --user enable --now ticonnect-overlay.service
-systemctl --user enable --now ticonnect-ui.service
-```
-
-Autostart entries under `packaging/autostart/` install to
-`~/.config/autostart/`. Set `X-GNOME-Autostart-enabled=false` to disable one.
+`make install-user` installs `ticonnect` to `$(PREFIX)/bin`, the app-menu entry,
+icon, metainfo, systemd units, and autostart entries. It does not start or
+enable services; autostart or your desktop session starts the daemon.
 
 ## Data locations
 
@@ -147,12 +177,4 @@ Autostart entries under `packaging/autostart/` install to
 - Identity: `$XDG_CONFIG_HOME/ticonnect/identity.key` (mode `0600`)
 - Data and history: `$XDG_DATA_HOME/ticonnect/ticonnect.db`
 - Attachments: `$XDG_DATA_HOME/ticonnect/attachments/`
-
-## Uninstall
-
-```sh
-make uninstall-user
-rm -rf ~/.config/ticonnect ~/.local/share/ticonnect
-sudo pacman -Rns ticonnect
-flatpak uninstall org.ticonnect.TiConnect
-```
+- Daemon log: `$XDG_STATE_HOME/ticonnect/daemon.log`

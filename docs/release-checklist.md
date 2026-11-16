@@ -7,10 +7,18 @@
 - [ ] `cargo test --workspace --all-targets` passes.
 - [ ] `cargo xtask systems --check` passes.
 - [ ] `cargo audit` clean or exceptions documented.
-- [ ] Flatpak build reproducible on a clean VM.
+- [ ] `ticonnect --help` hides `daemon`, `overlay`, and `cli`.
+- [ ] `ticonnect --version` matches the release tag.
+- [ ] AppImage `--install-user` succeeds in a clean HOME.
+- [ ] App menu launches the UI; daemon and overlay start after install.
+- [ ] `--uninstall-user` leaves config and data; `--purge` removes them after confirmation.
+- [ ] `desktop-file-validate`, `appstreamcli validate`, and `systemd-analyze` pass.
+- [ ] Flatpak build reproducible on a clean VM (experimental).
 - [ ] Arch package builds in a clean container and installs with `pacman -U`; app menu, units, and autostart files present.
 - [ ] `nix build .#ticonnect`, `nix flake check`, and the NixOS module evaluate.
-- [ ] AppImage `--help` and daemon/CLI smoke pass on a clean Ubuntu 24.04, and extract-and-run works on NixOS and Manjaro.
+- [ ] AppImage `--help`, `--version`, and daemon/CLI smoke pass on a clean Ubuntu 24.04.
+- [ ] AppImage install and extract-and-run work on NixOS and Manjaro.
+- [ ] Hyprland portal preflight is recorded for remote desktop.
 - [ ] Install, upgrade, and uninstall tested on a clean VM.
 - [ ] Two-node smoke test: pairing, messaging, file, call, remote desktop.
 - [ ] X11 and Wayland smoke tests on GNOME and KDE.

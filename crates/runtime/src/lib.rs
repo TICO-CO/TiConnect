@@ -1,9 +1,14 @@
 #![forbid(unsafe_code)]
 
+pub mod app;
 pub mod bootstrap;
 pub mod daemon;
 pub mod supervisor;
 
+pub use app::{
+    ensure_daemon, ensure_daemon_with, ensure_daemon_with_options, ensure_daemon_with_timeout,
+    log_path, main_executable,
+};
 pub use bootstrap::init;
 pub use daemon::run_daemon;
 

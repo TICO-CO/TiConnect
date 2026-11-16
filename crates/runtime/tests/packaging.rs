@@ -123,3 +123,79 @@ fn release_docs_and_flatpak_metadata_exist() {
         assert!(!read(path).is_empty(), "missing {path}");
     }
 }
+
+#[test]
+fn desktop_asset_launches_the_unified_binary() {
+    let desktop = read("packaging/flatpak/org.ticonnect.TiConnect.desktop");
+    assert!(desktop.contains("Exec=ticonnect\n"));
+    assert!(desktop.contains("TryExec=ticonnect\n"));
+    assert!(desktop.contains("StartupWMClass=org.ticonnect.UI"));
+    assert!(!desktop.contains("ticonnect ui"));
+}
+
+#[test]
+fn makefile_installs_the_app_menu_surface() {
+    let makefile = read("Makefile");
+    for path in [
+        "packaging/flatpak/org.ticonnect.TiConnect.desktop",
+        "packaging/flatpak/org.ticonnect.TiConnect.svg",
+        "packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml",
+    ] {
+        assert!(makefile.contains(path), "missing {path}");
+    }
+    let uninstall = makefile
+        .split("uninstall-user:")
+        .nth(1)
+        .expect("uninstall target");
+    assert!(uninstall.contains("org.ticonnect.TiConnect.desktop"));
+}
+
+#[test]
+fn appimage_installs_metainfo_and_desktop_asset() {
+    let script = read("scripts/package-appimage.sh");
+    assert!(script.contains("usr/share/metainfo"));
+    assert!(script.contains("org.ticonnect.TiConnect.metainfo.xml"));
+    assert!(script.contains("org.ticonnect.TiConnect.desktop"));
+    assert!(script.contains("export APPDIR="));
+}
+
+#[test]
+fn release_does_not_publish_the_internal_tarball() {
+    let workflow = read(".github/workflows/release.yml");
+    assert!(workflow.contains("Drop internal tarball"));
+    let artifact = workflow
+        .split("uses: actions/upload-artifact")
+        .nth(1)
+        .expect("artifact upload");
+    assert!(artifact.contains("dist/*.AppImage"));
+    assert!(artifact.contains("dist/*.pkg.tar.zst"));
+    assert!(!artifact.contains("dist/ticonnect-*"));
+}
+
+#[test]
+fn unified_help_hides_internal_commands() {
+    let source = read("crates/ticonnect/src/lib.rs");
+    let help = source
+        .split("pub const HELP: &str = ")
+        .nth(1)
+        .and_then(|rest| rest.split(";\n").next())
+        .expect("help constant");
+    let words: Vec<&str> = help
+        .split_whitespace()
+        .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()))
+        .collect();
+    for hidden in ["daemon", "overlay", "cli"] {
+        assert!(!words.contains(&hidden), "help mentions {hidden}");
+    }
+}
+
+#[test]
+fn interactive_lab_is_wired_and_documented() {
+    let makefile = read("Makefile");
+    assert!(makefile.contains("tests/local/lab.sh"));
+    assert!(makefile.contains("lab-smoke"));
+    let docs = read("docs/local-testing.md");
+    assert!(docs.contains("make lab"));
+    assert!(docs.contains("make lab-smoke"));
+    assert!(!read("tests/local/lab.sh").is_empty());
+}

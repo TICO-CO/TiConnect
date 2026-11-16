@@ -114,6 +114,11 @@ start_session() {
             for _ in $(seq 1 100); do [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] && break; sleep 0.05; done
             [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || fail "wayland socket missing"
             ;;
+        hyprland)
+            [ -n "${WAYLAND_DISPLAY:-}" ] || fail "WAYLAND_DISPLAY is not set; run inside Hyprland"
+            export GDK_BACKEND=wayland
+            export XDG_CURRENT_DESKTOP=Hyprland
+            ;;
         kwin)
             command -v kwin_wayland >/dev/null || fail "kwin_wayland missing"
             kwin_wayland --virtual --socket wayland-ticonnect --no-lockscreen --no-global-shortcuts \
@@ -125,7 +130,7 @@ start_session() {
             [ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ] || fail "wayland socket missing"
             ;;
         *)
-            fail "unknown session $SESSION (use x11, weston, kwin)"
+            fail "unknown session $SESSION (use x11, weston, kwin, hyprland)"
             ;;
     esac
 }

@@ -24,7 +24,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin
+          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin desktop-file-utils appstream systemd jq
 
       - name: Build gtk4-layer-shell
         run: |
@@ -47,6 +47,25 @@ jobs:
           tar -czf "dist/ticonnect-${TAG}-linux-x86_64.tar.gz" -C target/release ticonnect
           ls -lh dist/
 
+      - name: Validate user surface
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          WORKSPACE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="ticonnect") | .version')"
+          [ "$TAG_VERSION" = "$WORKSPACE_VERSION" ]
+          target/release/ticonnect --version
+          target/release/ticonnect --help
+          desktop-file-validate packaging/flatpak/org.ticonnect.TiConnect.desktop
+          appstreamcli validate --no-net packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml
+          units="$(mktemp -d)"
+          for unit in packaging/systemd/*.service; do
+            sed 's|@BINDIR@|$PWD/target/release|g' "$unit" > "$units/$(basename "$unit")"
+          done
+          systemd-analyze --user verify "$units"/*.service
+          if target/release/ticonnect --help | grep -E '^[[:space:]]*(daemon|overlay|cli)\b'; then
+            echo "internal command exposed in user help" >&2
+            exit 1
+          fi
+
       - name: Download appimagetool
         run: |
           curl -fsSL -o /tmp/appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
@@ -60,6 +79,28 @@ jobs:
 
       - name: Validate AppImage
         run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
+
+      - name: AppImage install smoke
+        run: |
+          APP=$(ls dist/*.AppImage)
+          TMP_HOME="$(mktemp -d)"
+          export HOME="$TMP_HOME"
+          export XDG_CONFIG_HOME="$TMP_HOME/.config"
+          export XDG_DATA_HOME="$TMP_HOME/.local/share"
+          export XDG_STATE_HOME="$TMP_HOME/.local/state"
+          export TICONNECT_INSTALL_NO_SYSTEMD=1
+          APPIMAGE="$PWD/$APP" "$APP" --appimage-extract-and-run --install-user
+          test -x "$TMP_HOME/.local/bin/ticonnect"
+          test -f "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+          desktop-file-validate "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
+          "$TMP_HOME/.local/bin/ticonnect" --version
+          dbus-run-session -- bash -c '
+            set -euo pipefail
+            "$HOME/.local/bin/ticonnect" status
+            "$HOME/.local/bin/ticonnect" quit
+          '
+          TICONNECT_INSTALL_ASSUME_YES=1 "$TMP_HOME/.local/bin/ticonnect" --uninstall-user --purge
+          test ! -e "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
 
       - name: Build and validate Arch package
         env:
@@ -84,10 +125,15 @@ jobs:
               test -f /usr/lib/systemd/user/ticonnectd.service
             '
 
+      - name: Drop internal tarball
+        run: rm -f dist/*.tar.gz
+
       - uses: actions/upload-artifact@v4
         with:
           name: ticonnect-${{ github.ref_name }}-linux
-          path: dist/ticonnect-*
+          path: |
+            dist/*.AppImage
+            dist/*.pkg.tar.zst
           if-no-files-found: error
 
   release:
@@ -102,11 +148,12 @@ jobs:
 
       - name: Checksums
         run: |
-          (cd dist && sha256sum ticonnect-* > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          (cd dist && sha256sum *.AppImage *.pkg.tar.zst > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/ticonnect-*
+            dist/*.AppImage
+            dist/*.pkg.tar.zst
             dist/SHA256SUMS.txt
           generate_release_notes: true

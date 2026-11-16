@@ -7,6 +7,7 @@ build_deps = [
   { from = "ticonnect-daemon", to = "ticonnect-net" },
   { from = "ticonnect-daemon", to = "ticonnect-media" },
   { from = "ticonnect-daemon", to = "ticonnect-desktop" },
+  { from = "ticonnect-runtime", to = "ticonnect-core" },
   { from = "ticonnect-runtime", to = "ticonnect-daemon" },
   { from = "ticonnect-runtime", to = "ticonnect-logging" },
   { from = "ticonnect-runtime", to = "ticonnect-settings" },

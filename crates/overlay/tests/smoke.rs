@@ -9,6 +9,10 @@ fn overlay_binary_exits_successfully() {
 
     let output = Command::new(env!("CARGO_BIN_EXE_ticonnect-ovl"))
         .env_clear()
+        .env(
+            "LD_LIBRARY_PATH",
+            std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default(),
+        )
         .env("TICONNECT_CONFIG_DIR", &dir)
         .output()
         .expect("run overlay binary");

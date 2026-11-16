@@ -24,6 +24,7 @@ flowchart LR
   p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_runtime["ticonnect-runtime"]
   p_ticonnect_overlay["ticonnect-overlay"] --> p_ticonnect_settings["ticonnect-settings"]
+  p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_core["ticonnect-core"]
   p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_daemon["ticonnect-daemon"]
   p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_logging["ticonnect-logging"]
   p_ticonnect_runtime["ticonnect-runtime"] --> p_ticonnect_settings["ticonnect-settings"]
@@ -52,6 +53,7 @@ flowchart LR
 | `ticonnect-overlay` | `ticonnect-core` |
 | `ticonnect-overlay` | `ticonnect-runtime` |
 | `ticonnect-overlay` | `ticonnect-settings` |
+| `ticonnect-runtime` | `ticonnect-core` |
 | `ticonnect-runtime` | `ticonnect-daemon` |
 | `ticonnect-runtime` | `ticonnect-logging` |
 | `ticonnect-runtime` | `ticonnect-settings` |

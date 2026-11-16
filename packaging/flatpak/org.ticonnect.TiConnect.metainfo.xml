@@ -5,6 +5,10 @@
   <summary>LAN-only messaging, calls, and remote desktop</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
+  <url type="homepage">https://github.com/TICO-CO/TiConnect</url>
+  <developer id="org.ticonnect">
+    <name>TiConnect contributors</name>
+  </developer>
   <description>
     <p>TiConnect is a background-first daemon for secure LAN messaging, file and audio attachments, voice calls, and consensual remote desktop sessions.</p>
     <p>All traffic is encrypted with pinned TLS certificates. Nothing is reachable before pairing.</p>

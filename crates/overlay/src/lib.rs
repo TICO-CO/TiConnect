@@ -31,6 +31,10 @@ pub fn run() -> anyhow::Result<()> {
         return Ok(());
     }
 
+    if let Err(error) = ticonnect_runtime::ensure_daemon() {
+        tracing::warn!(%error, "daemon is not available; overlay will keep reconnecting");
+    }
+
     let (event_tx, event_rx) = mpsc::unbounded_channel();
     let (command_tx, command_rx) = mpsc::unbounded_channel();
     let (ui_tx, ui_rx) = mpsc::unbounded_channel();

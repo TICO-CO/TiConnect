@@ -64,6 +64,7 @@ pub enum Msg {
     SetAutostart(bool),
     SetPolicy(String, PeerPolicy),
     ShowView(String),
+    PrimaryInstance,
     DuplicateInstance,
     QuitUi,
     Escape,
@@ -132,7 +133,7 @@ impl SimpleComponent for App {
     fn init_root() -> Self::Root {
         adw::ApplicationWindow::builder()
             .application(&relm4::main_application())
-            .title("TiConnect")
+            .title(window_title())
             .default_width(1040)
             .default_height(720)
             .build()
@@ -244,7 +245,7 @@ impl SimpleComponent for App {
         banner.set_revealed(false);
 
         let header = adw::HeaderBar::new();
-        let title = adw::WindowTitle::new("TiConnect", "LAN messenger");
+        let title = adw::WindowTitle::new(&window_title(), "LAN messenger");
         header.set_title_widget(Some(&title));
 
         let header_status = gtk::Label::new(Some("Connecting..."));
@@ -363,6 +364,9 @@ impl SimpleComponent for App {
                 match event {
                     ActivationEvent::Show(view) => {
                         activation_msgs.send_input(Msg::ShowView(view));
+                    }
+                    ActivationEvent::Primary => {
+                        activation_msgs.send_input(Msg::PrimaryInstance);
                     }
                     ActivationEvent::Duplicate => {
                         activation_msgs.send_input(Msg::DuplicateInstance);
@@ -799,6 +803,7 @@ impl SimpleComponent for App {
                 });
             }
             Msg::ShowView(view) => self.show_view(&view, &sender),
+            Msg::PrimaryInstance => self.window.present(),
             Msg::DuplicateInstance | Msg::QuitUi => {
                 relm4::main_application().quit();
             }
@@ -1433,6 +1438,7 @@ fn apply_appearance(appearance: Appearance) {
 
 #[derive(Debug, Clone)]
 enum ActivationEvent {
+    Primary,
     Show(String),
     Duplicate,
 }
@@ -1470,6 +1476,7 @@ async fn serve_activation(sender: mpsc::UnboundedSender<ActivationEvent>) -> zbu
 
     match registered {
         Ok(_connection) => {
+            let _ = sender.send(ActivationEvent::Primary);
             std::future::pending::<()>().await;
             Ok(())
         }
@@ -1486,8 +1493,23 @@ async fn serve_activation(sender: mpsc::UnboundedSender<ActivationEvent>) -> zbu
             let _ = sender.send(ActivationEvent::Duplicate);
             Ok(())
         }
-        Err(error) => Err(error),
+        Err(error) => {
+            let _ = sender.send(ActivationEvent::Primary);
+            Err(error)
+        }
     }
+}
+
+fn window_title() -> String {
+    window_title_from(std::env::var("TICONNECT_UI_TITLE").ok().as_deref())
+}
+
+fn window_title_from(label: Option<&str>) -> String {
+    label
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .unwrap_or("TiConnect")
+        .to_owned()
 }
 
 pub fn run() -> anyhow::Result<()> {
@@ -1522,4 +1544,19 @@ pub fn run() -> anyhow::Result<()> {
 
     app.run::<App>(());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::window_title_from;
+
+    #[test]
+    fn window_title_defaults_and_accepts_lab_label() {
+        assert_eq!(window_title_from(None), "TiConnect");
+        assert_eq!(window_title_from(Some("   ")), "TiConnect");
+        assert_eq!(
+            window_title_from(Some("TiConnect · Lab Node A")),
+            "TiConnect · Lab Node A"
+        );
+    }
 }

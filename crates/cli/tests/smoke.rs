@@ -10,6 +10,10 @@ fn cli_help_exits_successfully() {
     let output = Command::new(env!("CARGO_BIN_EXE_ticonnect-cli"))
         .arg("--help")
         .env_clear()
+        .env(
+            "LD_LIBRARY_PATH",
+            std::env::var_os("LD_LIBRARY_PATH").unwrap_or_default(),
+        )
         .env("TICONNECT_CONFIG_DIR", &dir)
         .output()
         .expect("run cli binary");
