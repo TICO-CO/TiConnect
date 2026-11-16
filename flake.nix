@@ -61,6 +61,25 @@
         };
       });
 
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          nativeBuildInputs = [
+            pkgs.cmake
+            pkgs.pkg-config
+          ];
+
+          buildInputs = [
+            pkgs.alsa-lib
+            pkgs.gdk-pixbuf
+            pkgs.gtk4
+            pkgs.gtk4-layer-shell
+            pkgs.libadwaita
+            pkgs.sqlite
+            pkgs.wayland
+          ];
+        };
+      });
+
       nixosModules.default =
         { pkgs, ... }:
         {

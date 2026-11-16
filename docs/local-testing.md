@@ -81,6 +81,15 @@ stops. Run the automated harness check with:
 make lab-smoke
 ```
 
+On Nix, `nix develop` supplies the ALSA, GTK, and libadwaita development
+outputs together with `pkg-config`, while keeping the Rust toolchain selected
+by `rust-toolchain.toml`:
+
+```sh
+nix develop
+make lab
+```
+
 On Nix hosts that mix a host Rust toolchain with Nix GTK libraries, the link
 step can report unresolved `GLIBC_2.43` math symbols from `graphene`. `make
 lab` and `make lab-smoke` detect `NIX_LD` and pass
