@@ -65,7 +65,7 @@ assert_mode node-a /data/config/identity.key 600
 assert_mode node-a /data/config/identity.toml 600
 assert_mode node-a /data/config/config.toml 600
 assert_mode node-a /data/data/ticonnect.db 600
-assert_eq "$(sqlite_query node-a 'SELECT MAX(version) FROM schema_version;')" "5" \
+assert_eq "$(sqlite_query node-a 'SELECT MAX(version) FROM schema_version;')" "6" \
     "schema version"
 
 log "checking graceful shutdown and restart"
