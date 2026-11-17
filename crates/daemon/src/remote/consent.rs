@@ -54,7 +54,7 @@ mod tests {
     fn session() -> RemoteSession {
         RemoteSession {
             id: RemoteSessionId::generate(),
-            peer_id: "peer".to_owned(),
+            user_id: "user".to_owned(),
             fingerprint: "fingerprint".to_owned(),
             role: RemoteRole::Host,
             state: RemoteState::Requested,

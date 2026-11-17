@@ -22,4 +22,6 @@ ticonnect-settings.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
 tracing.workspace = true
 x11rb.workspace = true
+serde_json.workspace = true
+webkit6 = "0.6"
 zbus.workspace = true

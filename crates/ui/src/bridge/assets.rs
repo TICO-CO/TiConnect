@@ -8,7 +8,9 @@ use include_dir::{Dir, include_dir};
 static ASSETS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets");
 
 pub const CSP: &str = "default-src 'self'; connect-src 'self' ws://127.0.0.1:*; \
-img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; \
+img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com; \
+style-src 'self' 'unsafe-inline'; script-src 'self'; \
+frame-src https://www.youtube-nocookie.com https://www.youtube.com; \
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 pub fn index() -> Response {

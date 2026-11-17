@@ -24,9 +24,9 @@ pub fn status_json(version: &str, status: &HashMap<String, OwnedVariant>) -> Val
 
 pub fn status_human(version: &str, status: &HashMap<String, OwnedVariant>) -> String {
     format!(
-        "version: {version}\nuptime_seconds: {}\npeer_count: {}\noutbox_depth: {}\ntransport_state: {}\nactive_sessions: {}\n",
+        "version: {version}\nuptime_seconds: {}\nuser_count: {}\noutbox_depth: {}\ntransport_state: {}\nactive_sessions: {}\n",
         status_value(status, ipc::STATUS_UPTIME_SECONDS),
-        status_value(status, ipc::STATUS_PEER_COUNT),
+        status_value(status, ipc::STATUS_USER_COUNT),
         status_value(status, ipc::STATUS_OUTBOX_DEPTH),
         status_value(status, ipc::STATUS_TRANSPORT_STATE),
         status_value(status, ipc::STATUS_ACTIVE_SESSIONS),
@@ -84,7 +84,7 @@ mod tests {
         let status = fixture();
         assert_eq!(
             status_human("0.1.0", &status),
-            "version: 0.1.0\nuptime_seconds: 7\npeer_count: 0\noutbox_depth: 0\ntransport_state: offline\nactive_sessions: 0\n"
+            "version: 0.1.0\nuptime_seconds: 7\nuser_count: 0\noutbox_depth: 0\ntransport_state: offline\nactive_sessions: 0\n"
         );
     }
 
@@ -93,7 +93,7 @@ mod tests {
         let json = status_json("0.1.0", &fixture());
         assert_eq!(json["version"], "0.1.0");
         assert_eq!(json["uptime_seconds"], 7);
-        assert_eq!(json["peer_count"], 0);
+        assert_eq!(json["user_count"], 0);
         assert_eq!(json["outbox_depth"], 0);
         assert_eq!(json["transport_state"], "offline");
     }
@@ -105,7 +105,7 @@ mod tests {
 
         assert_eq!(parsed["version"], "0.1.0");
         assert_eq!(parsed["uptime_seconds"], 7);
-        assert_eq!(parsed["peer_count"], 0);
+        assert_eq!(parsed["user_count"], 0);
         assert_eq!(parsed["outbox_depth"], 0);
         assert_eq!(parsed["transport_state"], "offline");
     }
@@ -116,7 +116,7 @@ mod tests {
                 ipc::STATUS_UPTIME_SECONDS.to_owned(),
                 OwnedVariant::from(7_u64),
             ),
-            (ipc::STATUS_PEER_COUNT.to_owned(), OwnedVariant::from(0_u32)),
+            (ipc::STATUS_USER_COUNT.to_owned(), OwnedVariant::from(0_u32)),
             (
                 ipc::STATUS_OUTBOX_DEPTH.to_owned(),
                 OwnedVariant::from(0_u32),

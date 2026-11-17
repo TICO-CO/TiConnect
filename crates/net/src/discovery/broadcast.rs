@@ -9,10 +9,10 @@ use tokio::net::UdpSocket;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use super::candidate::{Candidate, CandidateSource};
+use super::candidate::{Candidate, CandidateSource, UserPlatform};
 use super::{
     DiscoveryConfig, DiscoveryError, MAX_ADDRESS_LENGTH, MAX_DISPLAY_NAME, MAX_PACKET_SIZE,
-    PROTOCOL_VERSION, Sink,
+    MAX_PLATFORM_FIELD, PROTOCOL_VERSION, Sink,
 };
 
 const MAGIC: &[u8; 8] = b"TICONNCT";
@@ -26,6 +26,7 @@ pub struct Beacon {
     pub port: u16,
     pub address: String,
     pub display_name: String,
+    pub platform: UserPlatform,
 }
 
 impl Beacon {
@@ -44,7 +45,13 @@ impl Beacon {
             port,
             address: address.into(),
             display_name: display_name.into(),
+            platform: UserPlatform::default(),
         }
+    }
+
+    pub fn with_platform(mut self, platform: UserPlatform) -> Self {
+        self.platform = platform;
+        self
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, DiscoveryError> {
@@ -69,6 +76,13 @@ impl Beacon {
                 "display name is too long".to_owned(),
             ));
         }
+        for value in platform_values(&self.platform) {
+            if value.len() > MAX_PLATFORM_FIELD {
+                return Err(DiscoveryError::InvalidRecord(
+                    "platform field is too long".to_owned(),
+                ));
+            }
+        }
 
         let mut bytes =
             Vec::with_capacity(HEADER_LEN + self.address.len() + self.display_name.len());
@@ -83,6 +97,11 @@ impl Beacon {
         let display_name = self.display_name.as_bytes();
         bytes.push(u8::try_from(display_name.len()).unwrap_or(u8::MAX));
         bytes.extend_from_slice(display_name);
+        for value in platform_values(&self.platform) {
+            let value = value.as_bytes();
+            bytes.push(u8::try_from(value.len()).unwrap_or(u8::MAX));
+            bytes.extend_from_slice(value);
+        }
         Ok(bytes)
     }
 
@@ -127,6 +146,12 @@ impl Beacon {
             ));
         }
         let display_name = read_string(bytes, &mut cursor, display_name_length)?;
+        let platform = UserPlatform {
+            os: read_platform_string(bytes, &mut cursor)?,
+            desktop: read_platform_string(bytes, &mut cursor)?,
+            display_server: read_platform_string(bytes, &mut cursor)?,
+            app_version: read_platform_string(bytes, &mut cursor)?,
+        };
         if cursor != bytes.len() {
             return Err(DiscoveryError::InvalidRecord(
                 "beacon has trailing bytes".to_owned(),
@@ -140,8 +165,28 @@ impl Beacon {
             port,
             address,
             display_name,
+            platform,
         })
     }
+}
+
+fn platform_values(platform: &UserPlatform) -> [&str; 4] {
+    [
+        &platform.os,
+        &platform.desktop,
+        &platform.display_server,
+        &platform.app_version,
+    ]
+}
+
+fn read_platform_string(bytes: &[u8], cursor: &mut usize) -> Result<String, DiscoveryError> {
+    let length = usize::from(read_array::<1>(bytes, cursor)?[0]);
+    if length > MAX_PLATFORM_FIELD {
+        return Err(DiscoveryError::InvalidRecord(
+            "platform field is too long".to_owned(),
+        ));
+    }
+    read_string(bytes, cursor, length)
 }
 
 pub(crate) fn spawn(
@@ -222,7 +267,8 @@ async fn send_beacons(
             config.transport_port,
             target.local.to_string(),
             config.display_name.clone(),
-        );
+        )
+        .with_platform(config.platform.clone());
         let bytes = match beacon.encode() {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -253,16 +299,19 @@ fn receive_beacon(bytes: &[u8], source: SocketAddr, sink: &Sink) {
         addresses.insert(source.ip().to_string());
     }
 
-    sink.offer(Candidate::new(
-        beacon.node_id,
-        beacon.fingerprint,
-        beacon.display_name,
-        addresses,
-        beacon.port,
-        beacon.protocol_version,
-        CandidateSource::Broadcast,
-        std::time::Instant::now(),
-    ));
+    sink.offer(
+        Candidate::new(
+            beacon.node_id,
+            beacon.fingerprint,
+            beacon.display_name,
+            addresses,
+            beacon.port,
+            beacon.protocol_version,
+            CandidateSource::Broadcast,
+            std::time::Instant::now(),
+        )
+        .with_platform(beacon.platform),
+    );
 }
 
 #[derive(Debug, Clone, Copy)]

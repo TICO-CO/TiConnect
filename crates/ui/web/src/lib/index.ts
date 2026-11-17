@@ -5,5 +5,19 @@ export type { BridgeFailure } from './bridge-failures';
 export { BridgeFailures } from './bridge-failures';
 export type { Result } from './result';
 export { attempt, attemptAsync } from './result';
-export type { Bootstrap, Identity, RpcError, RpcResponse, Status, WebSocketEvent } from './types';
+export type {
+    Bootstrap,
+    ConversationSummary,
+    Identity,
+    Message,
+    RpcError,
+    RpcResponse,
+    Status,
+    User,
+    UserDetails,
+    UserPolicy,
+    WatchParty,
+    WebSocketEvent,
+} from './types';
 export { BridgeMessages } from './types';
+export { firstVideoId, parseVideoId } from './youtube';

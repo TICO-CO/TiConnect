@@ -61,7 +61,7 @@ Media library. No capture, network, storage, or UI. Remote desktop coordinates f
 - `INV-RD-1` — Remote desktop requires per-session consent, a visible indicator, and a working kill switch. Test: planned: crates/daemon/tests/remote.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 

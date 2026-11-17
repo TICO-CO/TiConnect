@@ -66,7 +66,7 @@ Konkhmer Sleokchher is display only, weight 400. Istok Web carries UI and data a
 | Body secondary | Istok Web | `--step-xs` | 400 |
 | Button | Istok Web | `--step-xs` sentence case | 700 |
 | Data label | Istok Web | 12px, tabular | 400/700 |
-| PIN-free numerals | Istok Web | 12–23px tabular | 700 |
+| Tabular numerals | Istok Web | 12–23px tabular | 700 |
 
 Never request synthetic bold. Controls are sentence case; uppercase only for section and data labels.
 
@@ -83,6 +83,9 @@ Window 1440 × 900, full-bleed. Minimum 1024 × 720.
 | Profile header | 60px back row + identity block | Back arrow returns to conversation |
 | Composer | auto | Rounded card, 20px margin |
 | Requests | 360px cards | Top-right, stacked, in-app or desktop overlay |
+| Call view | fluid right pane | Replaces the conversation; monogram stage, timer, controls |
+| Sharing host | 720px preview + 300px card | Monitor preview and session controls |
+| Sharing viewer | fluid canvas | Shared desktop with floating controls |
 | Player | 480px | Bottom-right, above message toasts |
 | Message toasts | 420px | Bottom-right, max three |
 
@@ -139,6 +142,25 @@ Floating cards, top-right, 360px, `--radius-l`, `--shadow-soft`. No user details
 
 Desktop context when the window is closed uses the same cards top-right over `--backdrop`. In-app cards never dim the chat.
 
+## Calls
+
+Dedicated right-pane view replacing the conversation. Rail and top bar stay.
+
+- Header: monogram, name, presence, call status, tabular timer.
+- Stage: large monogram in quiet concentric rings, name, timer, connection line.
+- Controls: Mute, Output, End call. End call uses the error outline. Active mute uses the accent.
+- States: ringing, active, muted, reconnecting, ended. Reconnecting uses the warning dot; ended uses a system line and Call back.
+- No video surface in v1.
+
+## Sharing
+
+Host and viewer both use the right pane; the rail stays visible. Consent is the full grant; no PIN is shown or entered.
+
+- Host: 16:9 monitor preview, viewer identity, input permission, session log, Stop sharing. The indicator stays visible while sharing.
+- Viewer: shared desktop canvas on `--backdrop`, live indicator, quality readout, pointer/keyboard/fullscreen controls, End session.
+- Host states: starting, active, reconnecting, ended. Viewer states: waiting for consent, reconnecting, session ended, input unavailable.
+- Capture and input start only after the host accepts. End session is a hard kill switch.
+
 ## YouTube
 
 - Link message: thumbnail block, title, channel, duration, “Playing in overlay”, queue count, Watch party action.
@@ -178,7 +200,7 @@ Bottom-right, max three, stack above the video player. Call, remote, and party r
 
 Never in this system:
 
-- “Peer”, “pair”, “PIN”, “SPAKE2”, “trusted”, “pinned”, “Open LAN”.
+- “User”, “pair”, “PIN”, “SPAKE2”, “trusted”, “pinned”, “Open LAN”.
 - IP, MAC, OS, display server, or fingerprint outside the profile pane.
 - Call or remote cards inside the message stream.
 - PIN slots or pairing dialogs.
@@ -193,8 +215,8 @@ Never in this system:
 
 | Page | Artboards |
 |---|---|
-| Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `04 — Watch party` |
-| Overlays | `05 — In-app requests`, `06 — In-app active`, `07 — Desktop requests`, `08 — YouTube player`, `09 — Message toasts` |
+| Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `03b — Settings · user`, `04 — Watch party`, `05 — Voice call`, `05b — Call states`, `06 — Sharing · host`, `06b — Sharing states`, `07 — Sharing · viewer` |
+| Overlays | `05 — In-app requests`, `06 — In-app active`, `07 — Desktop requests`, `08 — YouTube player`, `09 — Message toasts`, `10 — Desktop active`, `11 — Desktop active · states` |
 | Components | Masters and every state |
 
 Paper MCP has no linked instances; local copies must follow the Components page.
@@ -209,6 +231,8 @@ Paper MCP has no linked instances; local copies must follow the Components page.
 - [ ] Requests top-right; player and toasts bottom-right
 - [ ] YouTube dismiss and ignore states present
 - [ ] Watch party shared control and sync states present
+- [ ] Call and sharing screens include reconnecting, ended, and muted/error states
+- [ ] Sharing never shows a PIN; accepting is the full consent
 - [ ] All component states exist
 - [ ] Radii, spacing, type, and color come from tokens
 - [ ] Contrast and focus verified

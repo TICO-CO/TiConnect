@@ -3,7 +3,7 @@ use std::sync::RwLock;
 use std::time::{Duration, Instant};
 
 use ticonnect_core::ipc;
-use ticonnect_net::discovery::candidate::Candidate;
+use ticonnect_net::discovery::candidate::{Candidate, UserPlatform};
 use ticonnect_net::discovery::{Discovery, DiscoveryConfig, LanDiscovery};
 use ticonnect_settings::{SettingValue, Settings};
 use zbus::interface;
@@ -13,15 +13,16 @@ use zbus::{DBusError, OwnedVariant, Str};
 use std::sync::Arc;
 
 use crate::attachments::{AttachmentService, AttachmentsError, TransferEvent, TransferSnapshot};
+use crate::auto_trust::TrustService;
 use crate::calls::{CallEvent, CallService};
 use crate::identity::PublicIdentity;
 use crate::messaging::{MessagingEvent, MessagingService};
-use crate::pairing_service::{PairingService, StartPairingResponse};
 use crate::profile::ProfileService;
 use crate::remote::{RemoteEventMessage, RemoteService, RemoteSnapshot};
 use crate::runtime::Shutdown;
-use crate::storage::{DatabaseHandle, Peer, PeerPolicy, StorageError, StoredMessage};
+use crate::storage::{DatabaseHandle, StorageError, StoredMessage, User, UserPolicy};
 use crate::trust::TrustStore;
+use crate::watch_party::{WatchPartyEvent, WatchPartyService, WatchPartySnapshot};
 use ticonnect_net::transport::Transport;
 
 #[derive(Debug, DBusError)]
@@ -42,12 +43,13 @@ pub struct DaemonState {
     discovery: Arc<LanDiscovery>,
     trust: Arc<TrustStore>,
     transport: Arc<Transport>,
-    pairing: Arc<PairingService>,
+    auto_trust: Arc<TrustService>,
     profile: Arc<ProfileService>,
     messaging: Arc<MessagingService>,
     attachments: Arc<AttachmentService>,
     calls: Arc<CallService>,
     remote: Arc<RemoteService>,
+    watch_party: Arc<WatchPartyService>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -74,7 +76,6 @@ impl DaemonState {
     ) -> Result<Self, DaemonInitError> {
         let public = identity.public();
         let trust = Arc::new(TrustStore::load(database.clone()).await?);
-        trust.set_open_lan(settings.trust_open_lan());
         let port = settings.transport_port();
         let transport = Arc::new(
             Transport::bind(ticonnect_net::transport::TransportConfig {
@@ -103,7 +104,7 @@ impl DaemonState {
             port,
             profile.avatar_hash(),
         )));
-        let pairing = Arc::new(PairingService::new(
+        let auto_trust = Arc::new(TrustService::new(
             public.clone(),
             trust.clone(),
             transport.clone(),
@@ -140,6 +141,7 @@ impl DaemonState {
             settings.clone(),
             Arc::new(crate::remote::DesktopRemoteHost::default()),
         ));
+        let watch_party = Arc::new(WatchPartyService::new(public.node_id(), transport.clone()));
         Ok(Self::new(
             shutdown,
             public,
@@ -148,12 +150,13 @@ impl DaemonState {
             discovery,
             trust,
             transport,
-            pairing,
+            auto_trust,
             profile,
             messaging,
             attachments,
             calls,
             remote,
+            watch_party,
         ))
     }
 
@@ -166,12 +169,13 @@ impl DaemonState {
         discovery: Arc<LanDiscovery>,
         trust: Arc<TrustStore>,
         transport: Arc<Transport>,
-        pairing: Arc<PairingService>,
+        auto_trust: Arc<TrustService>,
         profile: Arc<ProfileService>,
         messaging: Arc<MessagingService>,
         attachments: Arc<AttachmentService>,
         calls: Arc<CallService>,
         remote: Arc<RemoteService>,
+        watch_party: Arc<WatchPartyService>,
     ) -> Self {
         Self {
             started_at: Instant::now(),
@@ -182,12 +186,13 @@ impl DaemonState {
             discovery,
             trust,
             transport,
-            pairing,
+            auto_trust,
             profile,
             messaging,
             attachments,
             calls,
             remote,
+            watch_party,
         }
     }
 
@@ -215,8 +220,8 @@ impl DaemonState {
         &self.transport
     }
 
-    pub fn pairing(&self) -> &Arc<PairingService> {
-        &self.pairing
+    pub fn auto_trust(&self) -> &Arc<TrustService> {
+        &self.auto_trust
     }
 
     pub fn profile(&self) -> &Arc<ProfileService> {
@@ -239,6 +244,10 @@ impl DaemonState {
         &self.remote
     }
 
+    pub fn watch_party(&self) -> &Arc<WatchPartyService> {
+        &self.watch_party
+    }
+
     pub fn settings(&self) -> Settings {
         self.settings
             .read()
@@ -247,7 +256,6 @@ impl DaemonState {
     }
 
     pub fn replace_settings(&self, settings: Settings) {
-        self.trust.set_open_lan(settings.trust_open_lan());
         self.profile
             .set_display_name(settings.identity_display_name().to_owned());
         self.messaging.apply_settings(settings.clone());
@@ -284,10 +292,10 @@ impl DaemonService {
     }
 
     async fn status(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
-        let peer_count = self
+        let user_count = self
             .state
             .database()
-            .count_peers()
+            .count_users()
             .await
             .map_err(database_error)?;
         let outbox_depth = self
@@ -310,8 +318,8 @@ impl DaemonService {
             OwnedVariant::from(self.state.started_at.elapsed().as_secs()),
         );
         status.insert(
-            ipc::STATUS_PEER_COUNT.to_owned(),
-            OwnedVariant::from(peer_count),
+            ipc::STATUS_USER_COUNT.to_owned(),
+            OwnedVariant::from(user_count),
         );
         status.insert(
             ipc::STATUS_OUTBOX_DEPTH.to_owned(),
@@ -380,7 +388,7 @@ impl DaemonService {
         let profile = self
             .state
             .database()
-            .get_peer_profile(fingerprint)
+            .get_user_profile(fingerprint)
             .await
             .map_err(database_error)?
             .ok_or_else(|| ServiceError::NotFound(format!("avatar {fingerprint}")))?;
@@ -423,10 +431,10 @@ impl DaemonService {
             .collect())
     }
 
-    async fn set_typing(&self, peer_id: &str, typing: bool) -> Result<(), ServiceError> {
+    async fn set_typing(&self, user_id: &str, typing: bool) -> Result<(), ServiceError> {
         self.state
             .messaging()
-            .set_typing(peer_id, typing)
+            .set_typing(user_id, typing)
             .await
             .map_err(|error| ServiceError::Failed(error.to_string()))
     }
@@ -455,20 +463,82 @@ impl DaemonService {
             .map_err(|error| ServiceError::Failed(error.to_string()))
     }
 
-    async fn list_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
-        let peers = self
+    async fn list_users(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let users = self
             .state
             .database()
-            .list_peers()
+            .list_users()
             .await
             .map_err(database_error)?;
-        Ok(peers
+        Ok(users
             .into_iter()
-            .map(|peer| {
-                let connected = peer_is_connected(&self.state, &peer.id);
-                peer_variant(peer, connected)
+            .map(|user| {
+                let connected = user_is_connected(&self.state, &user.id);
+                user_variant(user, connected)
             })
             .collect())
+    }
+
+    async fn get_user(&self, user_id: &str) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let user = self
+            .state
+            .database()
+            .get_user(user_id)
+            .await
+            .map_err(database_error)?
+            .ok_or_else(|| ServiceError::NotFound(format!("user {user_id}")))?;
+        let connected = user_is_connected(&self.state, &user.id);
+        let fingerprint = user.fingerprint.clone();
+        let mut values = user_variant(user, connected);
+        if let Some(candidate) = self
+            .state
+            .discovery()
+            .snapshot()
+            .into_iter()
+            .find(|candidate| candidate.fingerprint() == fingerprint)
+        {
+            let addresses = candidate.addresses_display();
+            values.insert(
+                ipc::USER_ADDRESSES.to_owned(),
+                string_variant(addresses.clone()),
+            );
+            values.insert(
+                ipc::USER_PORT.to_owned(),
+                OwnedVariant::from(u32::from(candidate.port())),
+            );
+            values.insert(
+                ipc::USER_SOURCE.to_owned(),
+                string_variant(candidate.source().as_str().to_owned()),
+            );
+            let platform = candidate.platform();
+            values.insert(ipc::USER_OS.to_owned(), string_variant(platform.os.clone()));
+            values.insert(
+                ipc::USER_DESKTOP.to_owned(),
+                string_variant(platform.desktop.clone()),
+            );
+            values.insert(
+                ipc::USER_DISPLAY_SERVER.to_owned(),
+                string_variant(platform.display_server.clone()),
+            );
+            values.insert(
+                ipc::USER_APP_VERSION.to_owned(),
+                string_variant(platform.app_version.clone()),
+            );
+            let mac = candidate
+                .addresses()
+                .find_map(mac_for_address)
+                .unwrap_or_default();
+            values.insert(ipc::USER_MAC.to_owned(), string_variant(mac));
+        }
+        if let Ok(node_id) = user_id.parse::<ticonnect_core::id::NodeId>()
+            && let Some(session) = self.state.transport().session_by_node_id(node_id)
+        {
+            values.insert(
+                ipc::USER_ADDRESS.to_owned(),
+                string_variant(session.user().address.to_string()),
+            );
+        }
+        Ok(values)
     }
 
     async fn list_candidates(&self) -> Vec<HashMap<String, OwnedVariant>> {
@@ -514,109 +584,60 @@ impl DaemonService {
         ])
     }
 
-    async fn start_pairing(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
-        let started = self
+    async fn forget_user(&self, user_id: &str) -> Result<bool, ServiceError> {
+        self.state
+            .auto_trust()
+            .forget_user(user_id)
+            .await
+            .map_err(trust_service_error)?;
+        Ok(true)
+    }
+
+    async fn list_blocked_users(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let users = self
             .state
-            .pairing()
-            .start_pairing()
+            .auto_trust()
+            .list_blocked_users()
             .await
-            .map_err(pairing_error)?;
-        Ok(start_pairing_variant(&started))
-    }
-
-    async fn pair_with_pin(&self, node_id: &str, pin: &str) -> Result<bool, ServiceError> {
-        self.state
-            .pairing()
-            .pair_with_pin(node_id, pin)
-            .await
-            .map_err(pairing_error)?;
-        Ok(true)
-    }
-
-    async fn pair_with_qr(&self, payload: &str) -> Result<bool, ServiceError> {
-        self.state
-            .pairing()
-            .pair_with_qr(payload)
-            .await
-            .map_err(pairing_error)?;
-        Ok(true)
-    }
-
-    async fn cancel_pairing(&self) -> Result<(), ServiceError> {
-        self.state.pairing().cancel_pairing().await;
-        Ok(())
-    }
-
-    async fn forget_peer(&self, peer_id: &str) -> Result<bool, ServiceError> {
-        self.state
-            .pairing()
-            .forget_peer(peer_id)
-            .await
-            .map_err(pairing_error)?;
-        Ok(true)
-    }
-
-    async fn list_blocked_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
-        let peers = self
-            .state
-            .pairing()
-            .list_blocked_peers()
-            .await
-            .map_err(pairing_error)?;
-        Ok(peers
+            .map_err(trust_service_error)?;
+        Ok(users
             .into_iter()
-            .map(|peer| {
+            .map(|user| {
                 HashMap::from([
                     (
-                        ipc::PEER_FINGERPRINT.to_owned(),
-                        string_variant(peer.fingerprint),
+                        ipc::USER_FINGERPRINT.to_owned(),
+                        string_variant(user.fingerprint),
                     ),
                     (
-                        ipc::PEER_ID.to_owned(),
-                        string_variant(peer.node_id.unwrap_or_default()),
+                        ipc::USER_ID.to_owned(),
+                        string_variant(user.node_id.unwrap_or_default()),
                     ),
                     (
-                        ipc::PEER_DISPLAY_NAME.to_owned(),
-                        string_variant(peer.display_name.unwrap_or_default()),
+                        ipc::USER_DISPLAY_NAME.to_owned(),
+                        string_variant(user.display_name.unwrap_or_default()),
                     ),
                     (
                         ipc::BLOCKED_AT.to_owned(),
-                        OwnedVariant::from(u64::try_from(peer.blocked_at).unwrap_or_default()),
+                        OwnedVariant::from(u64::try_from(user.blocked_at).unwrap_or_default()),
                     ),
                 ])
             })
             .collect())
     }
 
-    async fn unblock_peer(&self, fingerprint: &str) -> Result<bool, ServiceError> {
+    async fn unblock_user(&self, fingerprint: &str) -> Result<bool, ServiceError> {
         self.state
-            .pairing()
-            .unblock_peer(fingerprint)
+            .auto_trust()
+            .unblock_user(fingerprint)
             .await
-            .map_err(pairing_error)
+            .map_err(trust_service_error)
     }
 
-    async fn list_trusted_peers(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
-        let peers = self
-            .state
-            .pairing()
-            .list_trusted_peers()
-            .await
-            .map_err(pairing_error)?;
-        Ok(peers
-            .into_iter()
-            .map(|peer| {
-                let connected = peer_is_connected(&self.state, &peer.id);
-                peer_variant(peer, connected)
-            })
-            .collect())
-    }
-
-    async fn send_message(&self, peer_id: &str, body: &str) -> Result<String, ServiceError> {
+    async fn send_message(&self, user_id: &str, body: &str) -> Result<String, ServiceError> {
         let message_id = self
             .state
             .messaging()
-            .send_message(peer_id, body)
+            .send_message(user_id, body)
             .await
             .map_err(messaging_error)?;
         Ok(message_id.to_string())
@@ -684,22 +705,22 @@ impl DaemonService {
         Ok(state.as_str().to_owned())
     }
 
-    async fn set_peer_policy(&self, peer_id: &str, policy: &str) -> Result<(), ServiceError> {
+    async fn set_user_policy(&self, user_id: &str, policy: &str) -> Result<(), ServiceError> {
         let policy = policy
-            .parse::<PeerPolicy>()
+            .parse::<UserPolicy>()
             .map_err(|error| ServiceError::Failed(error.to_string()))?;
         self.state
             .messaging()
-            .set_peer_policy(peer_id, policy)
+            .set_user_policy(user_id, policy)
             .await
             .map_err(messaging_error)
     }
 
-    async fn start_call(&self, peer_id: &str) -> Result<String, ServiceError> {
+    async fn start_call(&self, user_id: &str) -> Result<String, ServiceError> {
         let call = self
             .state
             .calls()
-            .start_call(peer_id)
+            .start_call(user_id)
             .await
             .map_err(call_error)?;
         Ok(call.id.to_string())
@@ -762,14 +783,75 @@ impl DaemonService {
             .map_or_else(HashMap::new, |call| call_variant(&call))
     }
 
+    async fn start_watch_party(
+        &self,
+        user_id: &str,
+        video_id: &str,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let snapshot = self
+            .state
+            .watch_party()
+            .start(user_id, video_id)
+            .await
+            .map_err(watch_party_error)?;
+        Ok(watch_party_variant(&snapshot))
+    }
+
+    async fn accept_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .watch_party()
+            .accept(party_id)
+            .await
+            .map_err(watch_party_error)?;
+        Ok(())
+    }
+
+    async fn decline_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .watch_party()
+            .decline(party_id)
+            .await
+            .map_err(watch_party_error)
+    }
+
+    async fn publish_watch_party(
+        &self,
+        party_id: &str,
+        position_ms: u64,
+        playing: bool,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let snapshot = self
+            .state
+            .watch_party()
+            .publish(party_id, position_ms, playing)
+            .await
+            .map_err(watch_party_error)?;
+        Ok(watch_party_variant(&snapshot))
+    }
+
+    async fn end_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .watch_party()
+            .end(party_id)
+            .await
+            .map_err(watch_party_error)
+    }
+
+    async fn get_watch_party(&self) -> HashMap<String, OwnedVariant> {
+        self.state
+            .watch_party()
+            .snapshot()
+            .map_or_else(HashMap::new, |snapshot| watch_party_variant(&snapshot))
+    }
+
     async fn request_remote_session(
         &self,
-        peer_id: &str,
+        user_id: &str,
     ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
         let snapshot = self
             .state
             .remote()
-            .request_session(peer_id)
+            .request_session(user_id)
             .await
             .map_err(remote_error)?;
         Ok(remote_variant(&snapshot))
@@ -809,7 +891,7 @@ impl DaemonService {
 
     async fn send_attachment(
         &self,
-        peer_id: &str,
+        user_id: &str,
         path: &str,
         mime: &str,
     ) -> Result<String, ServiceError> {
@@ -827,7 +909,7 @@ impl DaemonService {
         let message_id = self
             .state
             .messaging()
-            .send_attachment(peer_id, &attachment)
+            .send_attachment(user_id, &attachment)
             .await
             .map_err(messaging_error)?;
         Ok(message_id.to_string())
@@ -916,31 +998,15 @@ impl DaemonService {
     pub async fn candidate_lost(emitter: SignalEmitter<'_>, fingerprint: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    pub async fn pairing_started(
+    pub async fn user_connected(
         emitter: SignalEmitter<'_>,
-        pairing: HashMap<String, OwnedVariant>,
+        user: HashMap<String, OwnedVariant>,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    pub async fn pairing_completed(
+    pub async fn user_disconnected(
         emitter: SignalEmitter<'_>,
-        peer_id: &str,
-        fingerprint: &str,
-    ) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    pub async fn pairing_failed(emitter: SignalEmitter<'_>, reason: &str) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    pub async fn peer_connected(
-        emitter: SignalEmitter<'_>,
-        peer: HashMap<String, OwnedVariant>,
-    ) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    pub async fn peer_disconnected(
-        emitter: SignalEmitter<'_>,
-        peer: HashMap<String, OwnedVariant>,
+        user: HashMap<String, OwnedVariant>,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -959,18 +1025,18 @@ impl DaemonService {
     #[zbus(signal)]
     pub async fn conversation_changed(
         emitter: SignalEmitter<'_>,
-        peer_id: &str,
+        user_id: &str,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub async fn typing_changed(
         emitter: SignalEmitter<'_>,
-        peer_id: &str,
+        user_id: &str,
         typing: bool,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    pub async fn peer_profile_changed(
+    pub async fn user_profile_changed(
         emitter: SignalEmitter<'_>,
         fingerprint: &str,
     ) -> zbus::Result<()>;
@@ -981,15 +1047,34 @@ impl DaemonService {
     #[zbus(signal)]
     pub async fn sync_completed(
         emitter: SignalEmitter<'_>,
-        peer_id: &str,
+        user_id: &str,
         count: u32,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     pub async fn policy_changed(
         emitter: SignalEmitter<'_>,
-        peer_id: &str,
+        user_id: &str,
         policy: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn watch_party_requested(
+        emitter: SignalEmitter<'_>,
+        party: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn watch_party_changed(
+        emitter: SignalEmitter<'_>,
+        party: HashMap<String, OwnedVariant>,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn watch_party_ended(
+        emitter: SignalEmitter<'_>,
+        party_id: &str,
+        reason: &str,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -1064,32 +1149,32 @@ pub(crate) async fn emit_messaging_event(
     let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
     match event {
         MessagingEvent::MessageReceived {
-            peer_id,
+            user_id,
             message,
             notify,
         } => {
             DaemonService::conversation_changed(
                 SignalEmitter::new(connection, ipc::DAEMON_PATH)?,
-                &peer_id,
+                &user_id,
             )
             .await?;
             DaemonService::message_received(
                 emitter,
-                stored_message_variant_with(peer_id, message, notify),
+                stored_message_variant_with(user_id, message, notify),
             )
             .await
         }
         MessagingEvent::MessageStateChanged { message_id, state } => {
             DaemonService::message_state_changed(emitter, &message_id, state.as_str()).await
         }
-        MessagingEvent::SyncCompleted { peer_id, count } => {
-            DaemonService::sync_completed(emitter, &peer_id, count).await
+        MessagingEvent::SyncCompleted { user_id, count } => {
+            DaemonService::sync_completed(emitter, &user_id, count).await
         }
-        MessagingEvent::PolicyChanged { peer_id, policy } => {
-            DaemonService::policy_changed(emitter, &peer_id, policy.as_str()).await
+        MessagingEvent::PolicyChanged { user_id, policy } => {
+            DaemonService::policy_changed(emitter, &user_id, policy.as_str()).await
         }
-        MessagingEvent::TypingChanged { peer_id, typing } => {
-            DaemonService::typing_changed(emitter, &peer_id, typing).await
+        MessagingEvent::TypingChanged { user_id, typing } => {
+            DaemonService::typing_changed(emitter, &user_id, typing).await
         }
     }
 }
@@ -1099,7 +1184,7 @@ fn stored_message_variant(message: StoredMessage) -> HashMap<String, OwnedVarian
 }
 
 fn stored_message_variant_with(
-    peer_id: String,
+    user_id: String,
     message: StoredMessage,
     notify: bool,
 ) -> HashMap<String, OwnedVariant> {
@@ -1113,7 +1198,7 @@ fn stored_message_variant_with(
             ipc::MESSAGE_CONVERSATION_ID.to_owned(),
             string_variant(record.conversation_id),
         ),
-        (ipc::MESSAGE_PEER_ID.to_owned(), string_variant(peer_id)),
+        (ipc::MESSAGE_USER_ID.to_owned(), string_variant(user_id)),
         (
             ipc::MESSAGE_SENDER_ID.to_owned(),
             string_variant(record.sender_id),
@@ -1188,44 +1273,53 @@ fn string_variant(value: String) -> OwnedVariant {
     OwnedVariant::from(Str::from(value))
 }
 
-fn peer_variant(peer: Peer, connected: bool) -> HashMap<String, OwnedVariant> {
+fn user_variant(user: User, connected: bool) -> HashMap<String, OwnedVariant> {
     HashMap::from([
-        (ipc::PEER_ID.to_owned(), string_variant(peer.id)),
+        (ipc::USER_ID.to_owned(), string_variant(user.id)),
         (
-            ipc::PEER_FINGERPRINT.to_owned(),
-            string_variant(peer.fingerprint),
+            ipc::USER_FINGERPRINT.to_owned(),
+            string_variant(user.fingerprint),
         ),
         (
-            ipc::PEER_DISPLAY_NAME.to_owned(),
-            string_variant(peer.display_name.unwrap_or_default()),
+            ipc::USER_DISPLAY_NAME.to_owned(),
+            string_variant(user.display_name.unwrap_or_default()),
         ),
         (
-            ipc::PEER_AVATAR_HASH.to_owned(),
+            ipc::USER_AVATAR_HASH.to_owned(),
             string_variant(String::new()),
         ),
         (
-            ipc::PEER_POLICY.to_owned(),
-            string_variant(peer.policy.as_str().to_owned()),
+            ipc::USER_POLICY.to_owned(),
+            string_variant(user.policy.as_str().to_owned()),
         ),
         (
-            ipc::PEER_TRUSTED_AT.to_owned(),
-            OwnedVariant::from(u64::try_from(peer.trusted_at).unwrap_or_default()),
+            ipc::USER_TRUSTED_AT.to_owned(),
+            OwnedVariant::from(u64::try_from(user.trusted_at).unwrap_or_default()),
         ),
         (
-            ipc::PEER_LAST_SEEN.to_owned(),
+            ipc::USER_LAST_SEEN.to_owned(),
             OwnedVariant::from(
-                u64::try_from(peer.last_seen.unwrap_or_default()).unwrap_or_default(),
+                u64::try_from(user.last_seen.unwrap_or_default()).unwrap_or_default(),
             ),
         ),
         (
-            ipc::PEER_CONNECTED.to_owned(),
+            ipc::USER_CONNECTED.to_owned(),
             OwnedVariant::from(connected),
         ),
     ])
 }
 
-fn peer_is_connected(state: &DaemonState, peer_id: &str) -> bool {
-    peer_id
+fn mac_for_address(address: &str) -> Option<String> {
+    let contents = std::fs::read_to_string("/proc/net/arp").ok()?;
+    contents.lines().skip(1).find_map(|line| {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        (fields.len() >= 4 && fields[0] == address && fields[3] != "00:00:00:00:00:00")
+            .then(|| fields[3].to_owned())
+    })
+}
+
+fn user_is_connected(state: &DaemonState, user_id: &str) -> bool {
+    user_id
         .parse::<ticonnect_core::id::NodeId>()
         .ok()
         .and_then(|node_id| state.transport().session_by_node_id(node_id))
@@ -1282,8 +1376,8 @@ fn conversation_summary_variant(
             string_variant(summary.conversation_id),
         ),
         (
-            ipc::CONVERSATION_PEER_ID.to_owned(),
-            string_variant(summary.peer_id),
+            ipc::CONVERSATION_USER_ID.to_owned(),
+            string_variant(summary.user_id),
         ),
         (
             ipc::CONVERSATION_LAST_MESSAGE_ID.to_owned(),
@@ -1310,6 +1404,31 @@ fn conversation_summary_variant(
     ])
 }
 
+fn local_platform() -> UserPlatform {
+    UserPlatform {
+        os: std::fs::read_to_string("/etc/os-release")
+            .ok()
+            .and_then(|contents| {
+                contents.lines().find_map(|line| {
+                    line.strip_prefix("PRETTY_NAME=")
+                        .map(|value| value.trim_matches('"').to_owned())
+                })
+            })
+            .unwrap_or_default(),
+        desktop: std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
+        display_server: std::env::var("XDG_SESSION_TYPE")
+            .ok()
+            .filter(|value| !value.is_empty())
+            .or_else(|| {
+                std::env::var_os("WAYLAND_DISPLAY")
+                    .map(|_| "wayland".to_owned())
+                    .or_else(|| std::env::var_os("DISPLAY").map(|_| "x11".to_owned()))
+            })
+            .unwrap_or_default(),
+        app_version: ipc::VERSION.to_owned(),
+    }
+}
+
 pub fn discovery_config(
     settings: &Settings,
     identity: &PublicIdentity,
@@ -1322,6 +1441,7 @@ pub fn discovery_config(
         identity.fingerprint().to_hex(),
     );
     config.avatar_hash = avatar_hash;
+    config.platform = local_platform();
     config.enabled = settings.discovery_enabled();
     config.mdns = settings.discovery_mdns();
     config.broadcast = settings.discovery_broadcast();
@@ -1331,37 +1451,12 @@ pub fn discovery_config(
     config
 }
 
-fn start_pairing_variant(started: &StartPairingResponse) -> HashMap<String, OwnedVariant> {
-    HashMap::from([
-        (
-            ipc::PAIRING_PIN.to_owned(),
-            string_variant(started.pin.clone()),
-        ),
-        (
-            ipc::PAIRING_QR.to_owned(),
-            string_variant(started.qr.clone()),
-        ),
-        (
-            ipc::PAIRING_EXPIRES_AT.to_owned(),
-            OwnedVariant::from(started.expires_at),
-        ),
-        (
-            ipc::PAIRING_NODE_ID.to_owned(),
-            string_variant(started.node_id.clone()),
-        ),
-        (
-            ipc::PAIRING_PORT.to_owned(),
-            OwnedVariant::from(u32::from(started.port)),
-        ),
-    ])
-}
-
 pub(crate) async fn emit_profile_event(
     connection: &zbus::Connection,
     fingerprint: &str,
 ) -> zbus::Result<()> {
     let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
-    DaemonService::peer_profile_changed(emitter, fingerprint).await
+    DaemonService::user_profile_changed(emitter, fingerprint).await
 }
 
 pub(crate) async fn emit_self_profile_event(connection: &zbus::Connection) -> zbus::Result<()> {
@@ -1384,6 +1479,69 @@ pub(crate) async fn emit_transfer_event(
             DaemonService::transfer_failed(emitter, &hash, &reason).await
         }
     }
+}
+
+pub(crate) async fn emit_watch_party_event(
+    connection: &zbus::Connection,
+    event: WatchPartyEvent,
+) -> zbus::Result<()> {
+    let emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+    match event {
+        WatchPartyEvent::Requested(snapshot) => {
+            DaemonService::watch_party_requested(emitter, watch_party_variant(&snapshot)).await
+        }
+        WatchPartyEvent::Changed(snapshot) => {
+            DaemonService::watch_party_changed(emitter, watch_party_variant(&snapshot)).await
+        }
+        WatchPartyEvent::Ended { party_id, reason } => {
+            DaemonService::watch_party_ended(emitter, &party_id, &reason).await
+        }
+    }
+}
+
+fn watch_party_variant(snapshot: &WatchPartySnapshot) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::WATCH_PARTY_ID.to_owned(),
+            string_variant(snapshot.party_id.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_USER_ID.to_owned(),
+            string_variant(snapshot.user_id.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_VIDEO_ID.to_owned(),
+            string_variant(snapshot.video_id.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_ROLE.to_owned(),
+            string_variant(snapshot.role.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_STATE.to_owned(),
+            string_variant(snapshot.state.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_POSITION_MS.to_owned(),
+            OwnedVariant::from(snapshot.position_ms),
+        ),
+        (
+            ipc::WATCH_PARTY_PLAYING.to_owned(),
+            OwnedVariant::from(snapshot.playing),
+        ),
+        (
+            ipc::WATCH_PARTY_REVISION.to_owned(),
+            OwnedVariant::from(snapshot.revision),
+        ),
+        (
+            ipc::WATCH_PARTY_ACTOR.to_owned(),
+            string_variant(snapshot.actor.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_UPDATED_AT.to_owned(),
+            OwnedVariant::from(snapshot.updated_at),
+        ),
+    ])
 }
 
 pub(crate) async fn emit_remote_event(
@@ -1415,8 +1573,8 @@ fn remote_variant(snapshot: &RemoteSnapshot) -> HashMap<String, OwnedVariant> {
             string_variant(snapshot.session_id.clone()),
         ),
         (
-            ipc::REMOTE_PEER_ID.to_owned(),
-            string_variant(snapshot.peer_id.clone()),
+            ipc::REMOTE_USER_ID.to_owned(),
+            string_variant(snapshot.user_id.clone()),
         ),
         (
             ipc::REMOTE_FINGERPRINT.to_owned(),
@@ -1473,8 +1631,8 @@ fn call_variant(call: &crate::calls::state::CallInfo) -> HashMap<String, OwnedVa
     HashMap::from([
         (ipc::CALL_ID.to_owned(), string_variant(call.id.to_string())),
         (
-            ipc::CALL_PEER_ID.to_owned(),
-            string_variant(call.peer_id.clone()),
+            ipc::CALL_USER_ID.to_owned(),
+            string_variant(call.user_id.clone()),
         ),
         (
             ipc::CALL_DIRECTION.to_owned(),
@@ -1519,8 +1677,8 @@ fn transfer_variant(snapshot: &TransferSnapshot) -> HashMap<String, OwnedVariant
             string_variant(snapshot.hash.clone()),
         ),
         (
-            ipc::TRANSFER_PEER_ID.to_owned(),
-            string_variant(snapshot.peer_id.clone()),
+            ipc::TRANSFER_USER_ID.to_owned(),
+            string_variant(snapshot.user_id.clone()),
         ),
         (
             ipc::TRANSFER_NAME.to_owned(),
@@ -1555,8 +1713,12 @@ fn messaging_error(error: crate::messaging::MessagingError) -> ServiceError {
     ServiceError::Failed(error.to_string())
 }
 
-fn pairing_error(error: crate::pairing_service::PairingServiceError) -> ServiceError {
-    tracing::warn!(%error, "pairing request failed");
+fn watch_party_error(error: crate::watch_party::WatchPartyError) -> ServiceError {
+    ServiceError::Failed(error.to_string())
+}
+
+fn trust_service_error(error: crate::auto_trust::TrustServiceError) -> ServiceError {
+    tracing::warn!(%error, "auto_trust request failed");
     ServiceError::Failed(error.to_string())
 }
 
@@ -1591,7 +1753,7 @@ mod tests {
 
         assert!(status.contains_key(ipc::STATUS_UPTIME_SECONDS));
         assert_eq!(
-            u32::try_from(&status[ipc::STATUS_PEER_COUNT]).expect("peer count"),
+            u32::try_from(&status[ipc::STATUS_USER_COUNT]).expect("user count"),
             0
         );
         assert_eq!(
@@ -1665,7 +1827,7 @@ mod tests {
             .await
             .expect("transport"),
         );
-        let pairing = Arc::new(PairingService::new(
+        let auto_trust = Arc::new(TrustService::new(
             public.clone(),
             trust.clone(),
             transport.clone(),
@@ -1714,6 +1876,7 @@ mod tests {
             )
             .expect("profile"),
         );
+        let watch_party = Arc::new(WatchPartyService::new(public.node_id(), transport.clone()));
         let state = Arc::new(DaemonState::new(
             Arc::new(Shutdown::new()),
             public,
@@ -1722,12 +1885,13 @@ mod tests {
             discovery,
             trust,
             transport,
-            pairing,
+            auto_trust,
             profile,
             messaging,
             attachments,
             calls,
             remote,
+            watch_party,
         ));
         (DaemonService::new(state), dir)
     }

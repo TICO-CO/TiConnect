@@ -18,15 +18,15 @@ pair_with_pin
 log "checking connected transport state"
 assert_eq "$(status_value node-a transport_state)" "online" "transport state"
 assert_eq "$(status_value node-a active_sessions)" "1" "active sessions"
-assert_contains "$(dbus_call node-a ListPeers)" "'connected': <true>" "peer connected"
+assert_contains "$(dbus_call node-a ListUsers)" "'connected': <true>" "user connected"
 monitor_start node-a transport-signals
 monitor_start node-b transport-signals
 
 log "checking reconnect and outbox retry after network loss"
 network_disconnect node-b
 wait_for 90 session_idle node-a || fail "node-a kept a session after network loss"
-monitor_expect node-a transport-signals "PeerDisconnected"
-assert_contains "$(dbus_call node-a ListPeers)" "'connected': <false>" "peer disconnected"
+monitor_expect node-a transport-signals "UserDisconnected"
+assert_contains "$(dbus_call node-a ListUsers)" "'connected': <false>" "user disconnected"
 
 TOKEN_NET="$(unique_token net)"
 MSG_NET="$(cli node-a send "$B_ID" "$TOKEN_NET")"
@@ -38,21 +38,21 @@ network_connect node-b
 wait_for 60 candidate_visible node-a "$B_ID" || fail "node-b was not rediscovered"
 wait_for 90 session_online node-a || fail "node-a did not reconnect"
 wait_for 90 session_online node-b || fail "node-b did not reconnect"
-monitor_expect node-a transport-signals "PeerConnected"
+monitor_expect node-a transport-signals "UserConnected"
 wait_for 60 outbox_empty node-a || fail "outbox did not drain after reconnect"
 wait_for 60 message_body_is node-b "$A_ID" "$MSG_NET" "$TOKEN_NET" \
     || fail "node-b did not receive the queued message"
 
 log "checking forget closes the session and blocks reconnect"
 monitor_start node-a forget-signals
-forget_peer node-a "$B_ID"
+forget_user node-a "$B_ID"
 wait_for 30 session_idle node-a || fail "node-a kept a session after forget"
-monitor_expect node-a forget-signals "PeerDisconnected"
-assert_eq "$(cli node-a peers list)" "no peers" "forgotten peer"
-peer_known node-b "$A_ID" || fail "node-b lost its trust row unexpectedly"
+monitor_expect node-a forget-signals "UserDisconnected"
+assert_eq "$(cli node-a users list)" "no users" "forgotten user"
+user_known node-b "$A_ID" || fail "node-b lost its trust row unexpectedly"
 sleep 16
-assert_eq "$(session_count node-a)" "0" "forgotten peer reconnected"
-assert_eq "$(session_count node-b)" "0" "forgotten peer session stayed open"
+assert_eq "$(session_count node-a)" "0" "forgotten user reconnected"
+assert_eq "$(session_count node-b)" "0" "forgotten user session stayed open"
 pair_with_pin
 
 log "checking custom transport port and restart requirement"

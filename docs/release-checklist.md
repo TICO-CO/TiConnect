@@ -23,7 +23,7 @@
 - [ ] AppImage install and extract-and-run work on NixOS and Manjaro.
 - [ ] Hyprland portal preflight is recorded for remote desktop.
 - [ ] Install, upgrade, and uninstall tested on a clean VM.
-- [ ] Two-node smoke test: pairing, messaging, file, call, remote desktop.
+- [ ] Two-node smoke test: automatic trust, messaging, file, call, remote desktop.
 - [ ] X11 and Wayland smoke tests on GNOME and KDE.
 - [ ] 24-hour soak test with stable memory and database integrity.
 - [ ] Release notes written.

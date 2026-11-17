@@ -13,12 +13,12 @@ Create and store Ed25519 identity, derive fingerprints and node IDs, bind certif
 
 ## Boundary
 
-Owns identity key material and trust decisions. Uses storage for peer rows. Never exposes private keys over IPC or logs.
+Owns identity key material and trust decisions. Uses storage for user rows. Never exposes private keys over IPC or logs.
 
 ## Owned state
 
 - identity.key
-- trusted peer table
+- trusted user table
 
 ## Components
 
@@ -31,7 +31,7 @@ Owns identity key material and trust decisions. Uses storage for peer rows. Neve
 | `ID.node-id` | Node id | `module` | `crates/core/src/id.rs` |  | docs/systems/06-identity-trust.md#components | crates/core/tests/ids.rs |
 | `ID.permissions` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
 | `ID.revoke` | Revocation | `module` | `crates/daemon/src/trust.rs` |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
-| `ID.trust-store` | Trust store | `module` | `crates/daemon/src/trust.rs` | trusted peer table | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
+| `ID.trust-store` | Trust store | `module` | `crates/daemon/src/trust.rs` | trusted user table | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
 
 ## Interfaces
 
@@ -53,16 +53,15 @@ Owns identity key material and trust decisions. Uses storage for peer rows. Neve
 | `ID.trust-store` | `calls` | `sync` | `ID.fingerprint` | lookup fingerprint |  |  |
 | `ID.cert-binding` | `calls` | `sync` | `ID.fingerprint` | bind certificate |  |  |
 | `ID.revoke` | `calls` | `sync` | `ID.trust-store` | remove trust |  |  |
-| `ID.trust-store` | `calls` | `sync` | `DB.peers` | trusted peer rows |  |  |
+| `ID.trust-store` | `calls` | `sync` | `DB.users` | trusted user rows |  |  |
 | `ID.key-load` | `config-read` | `sync` | `CFG.file-store` | config directory |  |  |
 | `ID.key-load` | `owns` | `sync` | `ID.key-store` | identity key ownership |  |  |
 | `DISC.supervisor` | `calls` | `sync` | `ID.fingerprint` | advertise fingerprint |  |  |
-| `PAIR.commit` | `calls` | `sync` | `ID.trust-store` | commit trusted peer | PAIR.confirm |  |
-| `PAIR.qr` | `calls` | `sync` | `ID.fingerprint` | QR fingerprint |  |  |
+| `TRUST.commit` | `calls` | `sync` | `ID.trust-store` | commit trusted user | TRUST.confirm |  |
 | `TX.verifier` | `calls` | `sync` | `ID.trust-store` | pinned trust lookup | ID.trust-store |  |
 | `TX.tls-cert` | `calls` | `sync` | `ID.cert-binding` | certificate binding | ID.cert-binding |  |
 | `ID.key-load` | `owns` | `sync` | `ID.meta-store` | identity metadata ownership |  |  |
-| `PAIR.dbus` | `calls` | `sync` | `ID.trust-store` | commit and forget peers | ID.trust-store |  |
+| `TRUST.dbus` | `calls` | `sync` | `ID.trust-store` | commit and forget users | ID.trust-store |  |
 
 ## Invariants
 

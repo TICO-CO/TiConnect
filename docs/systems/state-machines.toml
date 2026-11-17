@@ -1,39 +1,16 @@
 [[machines]]
-id = "pairing"
-owner = "PAIR.spake2"
-doc = "09-pairing.md"
-states = [
-  { name = "idle", description = "No pairing session." },
-  { name = "waiting", description = "PIN or QR exchanged, waiting for SPAKE2 messages." },
-  { name = "confirming", description = "Transcript confirmation in progress." },
-  { name = "trusted", description = "Peer committed to the trust store." },
-  { name = "failed", description = "Confirmation failed or attempts exhausted." },
-  { name = "expired", description = "Pairing token or timeout expired." },
-]
-transitions = [
-  { from = "idle", event = "start", to = "waiting", action = "allocate session and token" },
-  { from = "waiting", event = "message", to = "confirming", guard = "valid frame" },
-  { from = "confirming", event = "confirm", to = "trusted", guard = "confirmation matches", action = "commit trust" },
-  { from = "confirming", event = "mismatch", to = "failed", action = "increment attempts" },
-  { from = "waiting", event = "timeout", to = "expired" },
-  { from = "waiting", event = "cancel", to = "idle" },
-  { from = "confirming", event = "cancel", to = "idle" },
-  { from = "failed", event = "retry", to = "waiting", guard = "attempts remaining" },
-]
-
-[[machines]]
 id = "outbox"
 owner = "MSG.outbox"
 doc = "12-messaging.md"
 states = [
-  { name = "queued", description = "Record is waiting for a peer session." },
+  { name = "queued", description = "Record is waiting for a user session." },
   { name = "sending", description = "Record is being written to a QUIC stream." },
   { name = "sent", description = "Transport acknowledged the frame." },
   { name = "failed", description = "Terminal send failure." },
   { name = "expired", description = "TTL elapsed before delivery." },
 ]
 transitions = [
-  { from = "queued", event = "peer_connected", to = "sending", guard = "trusted peer and gap sync complete" },
+  { from = "queued", event = "user_connected", to = "sending", guard = "trusted user and gap sync complete" },
   { from = "sending", event = "ack", to = "sent" },
   { from = "sending", event = "error", to = "queued", guard = "retry budget remains", action = "backoff" },
   { from = "queued", event = "ttl_elapsed", to = "expired" },
@@ -78,8 +55,8 @@ states = [
   { name = "ended", description = "Terminal call state." },
 ]
 transitions = [
-  { from = "idle", event = "start", to = "ringing", guard = "peer trusted and policy allows" },
-  { from = "idle", event = "incoming", to = "ringing", guard = "peer trusted and policy allows" },
+  { from = "idle", event = "start", to = "ringing", guard = "user trusted and policy allows" },
+  { from = "idle", event = "incoming", to = "ringing", guard = "user trusted and policy allows" },
   { from = "ringing", event = "accept", to = "in_call", action = "start audio devices" },
   { from = "ringing", event = "decline", to = "ended" },
   { from = "ringing", event = "timeout", to = "ended" },
@@ -95,18 +72,15 @@ doc = "19-remote-desktop.md"
 states = [
   { name = "idle", description = "No remote session." },
   { name = "requested", description = "Viewer asked for a session." },
-  { name = "consented", description = "Host granted consent and PIN." },
   { name = "active", description = "Capture and input are active." },
   { name = "ending", description = "Teardown in progress." },
   { name = "ended", description = "Terminal session state." },
-  { name = "denied", description = "Consent denied or PIN failed." },
+  { name = "denied", description = "Consent denied." },
 ]
 transitions = [
-  { from = "idle", event = "request", to = "requested", guard = "peer trusted" },
-  { from = "requested", event = "consent", to = "consented", action = "generate PIN" },
+  { from = "idle", event = "request", to = "requested", guard = "user trusted" },
+  { from = "requested", event = "consent", to = "active", action = "open portal and start framing" },
   { from = "requested", event = "deny", to = "denied" },
-  { from = "consented", event = "pin_ok", to = "active", action = "open portal and start framing" },
-  { from = "consented", event = "pin_fail", to = "denied", guard = "attempts remaining" },
   { from = "active", event = "kill_switch", to = "ending" },
   { from = "active", event = "disconnect", to = "ending" },
   { from = "active", event = "hangup", to = "ending" },

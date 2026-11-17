@@ -53,10 +53,10 @@ are enough to demo calls.
 - [x] States: `idle`, `ringing`, `in-call`, `ended`.
 - [x] Events: `start`, `incoming`, `accept`, `decline`, `hangup`, `timeout`,
   `error`.
-- [x] Only one active call per peer and one active call per node.
+- [x] Only one active call per user and one active call per node.
 - [x] Incoming call has a configurable timeout (default 30 s).
-- [x] Reject calls from untrusted peers before any media setup.
-- [x] Reject calls from `ignore` peers; `mute` still rings per config.
+- [x] Reject calls from untrusted users before any media setup.
+- [x] Reject calls from `ignore` users; `mute` still rings per config.
 - [x] DND suppresses ringtone but still reports the call.
 - [x] Emit state changes as D-Bus signals.
 - [x] Clean up audio devices and ringtone on every terminal transition.
@@ -87,7 +87,7 @@ are enough to demo calls.
 
 ## D-Bus additions
 
-- [x] `StartCall(s peer_id) -> s call_id`.
+- [x] `StartCall(s user_id) -> s call_id`.
 - [x] `AcceptCall(s call_id)`.
 - [x] `DeclineCall(s call_id)`.
 - [x] `HangupCall(s call_id)`.
@@ -97,7 +97,7 @@ are enough to demo calls.
 
 ## UI
 
-- [x] Call view with peer name, state, duration, mute, and hangup.
+- [x] Call view with user name, state, duration, mute, and hangup.
 - [x] Incoming call prompt with accept and decline.
 - [x] Device selection in settings.
 - [x] Show call errors clearly.
@@ -111,16 +111,16 @@ are enough to demo calls.
 - [x] Jitter buffer reorders packets and conceals loss.
 - [x] Two-node loopback call with synthetic audio; verify frames flow.
 - [x] Call timeout, decline, and hangup paths.
-- [x] Untrusted peer call is rejected.
+- [x] Untrusted user call is rejected.
 - [x] Device unplug simulation does not panic.
 - [ ] Manual: real call on X11 and Wayland, GNOME and KDE.
 
 ## Security
 
-- [x] Calls only between trusted, pinned peers.
+- [x] Calls only between trusted, pinned users.
 - [x] Media flows only over the authenticated QUIC session.
 - [x] No microphone access before call acceptance.
-- [x] No call metadata in logs beyond state and peer id.
+- [x] No call metadata in logs beyond state and user id.
 - [x] Bounded packet and buffer sizes to prevent abuse.
 - [x] Reject unexpected datagrams outside an active call.
 

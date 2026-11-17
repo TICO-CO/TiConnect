@@ -15,7 +15,7 @@ use ticonnect_net::discovery::{Discovery, DiscoveryEvent, LanDiscovery};
 use ticonnect_net::transport::{DialTarget, Transport, TransportEvent};
 use tokio::sync::broadcast;
 
-use crate::storage::{DatabaseHandle, PeerProfile};
+use crate::storage::{DatabaseHandle, UserProfile};
 
 const SELF_AVATAR: &str = "self.png";
 const PROFILE_DIR: &str = "profile";
@@ -44,7 +44,7 @@ impl SelfProfile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfileEvent {
     SelfUpdated,
-    PeerUpdated { fingerprint: String },
+    UserUpdated { fingerprint: String },
 }
 
 pub struct ProfileService {
@@ -263,7 +263,7 @@ impl ProfileService {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_millis() as i64);
         let fingerprint = fingerprint.to_hex();
-        let stored = PeerProfile {
+        let stored = UserProfile {
             fingerprint: fingerprint.clone(),
             node_id: Some(record.node_id.clone()),
             display_name: record.display_name.clone(),
@@ -272,8 +272,8 @@ impl ProfileService {
             avatar: record.avatar,
             updated_at: now,
         };
-        if self.database.upsert_peer_profile(stored).await.is_ok() {
-            let _ = self.events.send(ProfileEvent::PeerUpdated { fingerprint });
+        if self.database.upsert_user_profile(stored).await.is_ok() {
+            let _ = self.events.send(ProfileEvent::UserUpdated { fingerprint });
         }
     }
 
@@ -304,7 +304,7 @@ impl ProfileService {
             let fingerprint = candidate.fingerprint().to_owned();
             let cached = self
                 .database
-                .get_peer_profile(&fingerprint)
+                .get_user_profile(&fingerprint)
                 .await
                 .ok()
                 .flatten();
@@ -402,7 +402,7 @@ pub fn spawn(
                             let service = profile.clone();
                             tokio::spawn(async move { service.serve(connection).await; });
                         }
-                        Ok(TransportEvent::PeerConnected(_)) => {
+                        Ok(TransportEvent::UserConnected(_)) => {
                             let service = profile.clone();
                             let candidates = discovery.snapshot();
                             tokio::spawn(async move { service.refresh_known(candidates).await; });
@@ -412,7 +412,7 @@ pub fn spawn(
                 }
                 event = profile_events.recv() => {
                     match event {
-                        Ok(ProfileEvent::PeerUpdated { fingerprint }) => {
+                        Ok(ProfileEvent::UserUpdated { fingerprint }) => {
                             if let Err(error) = crate::service::emit_profile_event(&connection, &fingerprint).await {
                                 tracing::debug!(%error, "failed to emit profile signal");
                             }
@@ -540,7 +540,7 @@ mod tests {
             .await;
 
         let stored = local_db
-            .get_peer_profile(&remote_fp.to_hex())
+            .get_user_profile(&remote_fp.to_hex())
             .await
             .expect("profile")
             .expect("stored profile");

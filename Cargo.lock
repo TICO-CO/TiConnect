@@ -3593,11 +3593,13 @@ dependencies = [
  "gtk4",
  "gtk4-layer-shell",
  "notify-rust",
+ "serde_json",
  "ticonnect-core",
  "ticonnect-runtime",
  "ticonnect-settings",
  "tokio",
  "tracing",
+ "webkit6",
  "x11rb",
  "zbus 6.2.1",
 ]

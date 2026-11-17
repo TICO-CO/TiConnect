@@ -52,7 +52,7 @@ Pure encoding and decoding contracts. No sockets, storage, or daemon state.
 
 | From | Kind | Mode | To | Contract | Gate | Limit |
 |---|---|---|---|---|---|---|
-| `PAIR.endpoint` | `calls` | `sync` | `WIRE.envelope` | pairing frame envelope |  |  |
+| `TRUST.endpoint` | `calls` | `sync` | `WIRE.envelope` | trust frame envelope |  |  |
 | `TX.streams` | `calls` | `sync` | `WIRE.envelope` | stream frames |  |  |
 | `TX.datagrams` | `calls` | `sync` | `WIRE.envelope` | datagram frames |  |  |
 | `WIRE.envelope` | `calls` | `sync` | `WIRE.limits` | frame limits |  |  |
@@ -77,7 +77,7 @@ Pure encoding and decoding contracts. No sockets, storage, or daemon state.
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
 - `INV-TLS-1` — Certificate pinning fails closed on unknown or mismatched fingerprints. Test: planned: crates/net/tests/tls.rs
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 

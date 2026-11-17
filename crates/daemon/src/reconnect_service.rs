@@ -42,7 +42,7 @@ pub fn spawn(
                     }
                 }
                 event = transport_events.recv() => {
-                    if matches!(event, Ok(TransportEvent::PeerDisconnected(_))) {
+                    if matches!(event, Ok(TransportEvent::UserDisconnected(_))) {
                         reconnect_all(transport.clone(), discovery.clone(), trust.clone(), inflight.clone());
                     }
                     if matches!(event, Err(tokio::sync::broadcast::error::RecvError::Closed)) {
@@ -92,14 +92,14 @@ fn reconnect(
     }
     if target
         .node_id
-        .is_some_and(|peer| transport.local_node_id() > peer)
+        .is_some_and(|user| transport.local_node_id() > user)
     {
         return;
     }
     if transport
         .sessions()
         .iter()
-        .any(|session| session.peer().fingerprint == fingerprint)
+        .any(|session| session.user().fingerprint == fingerprint)
     {
         return;
     }
@@ -113,9 +113,9 @@ fn reconnect(
 
     tokio::spawn(async move {
         match transport.connect_with_retry(target).await {
-            Ok(_) => tracing::debug!(%fingerprint, "reconnected to trusted peer"),
+            Ok(_) => tracing::debug!(%fingerprint, "reconnected to trusted user"),
             Err(error) => {
-                tracing::debug!(%error, %fingerprint, "trusted peer reconnect failed");
+                tracing::debug!(%error, %fingerprint, "trusted user reconnect failed");
             }
         }
         inflight

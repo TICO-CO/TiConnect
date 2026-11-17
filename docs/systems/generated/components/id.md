@@ -20,11 +20,10 @@ flowchart LR
   end
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
-    n_db_peers["DB.peers<br/>DB"]
+    n_db_users["DB.users<br/>DB"]
     n_disc_supervisor["DISC.supervisor<br/>DISC"]
-    n_pair_commit["PAIR.commit<br/>PAIR"]
-    n_pair_dbus["PAIR.dbus<br/>PAIR"]
-    n_pair_qr["PAIR.qr<br/>PAIR"]
+    n_trust_commit["TRUST.commit<br/>TRUST"]
+    n_trust_dbus["TRUST.dbus<br/>TRUST"]
     n_tx_tls_cert["TX.tls-cert<br/>TX"]
     n_tx_verifier["TX.verifier<br/>TX"]
   end
@@ -36,18 +35,17 @@ flowchart LR
   n_id_trust_store -->|calls / sync: lookup fingerprint| n_id_fingerprint
   n_id_cert_binding -->|calls / sync: bind certificate| n_id_fingerprint
   n_id_revoke -->|calls / sync: remove trust| n_id_trust_store
-  n_id_trust_store -->|calls / sync: trusted peer rows| n_db_peers
+  n_id_trust_store -->|calls / sync: trusted user rows| n_db_users
   n_id_key_load -.->|config-read / sync: config directory| n_cfg_file_store
   n_id_key_load -->|owns / sync: identity key ownership| n_id_key_store
   n_disc_supervisor -->|calls / sync: advertise fingerprint| n_id_fingerprint
-  n_pair_commit -->|calls / sync gate:PAIR.confirm: commit trusted peer| n_id_trust_store
-  n_pair_qr -->|calls / sync: QR fingerprint| n_id_fingerprint
+  n_trust_commit -->|calls / sync gate:TRUST.confirm: commit trusted user| n_id_trust_store
   n_tx_verifier -->|calls / sync gate:ID.trust-store: pinned trust lookup| n_id_trust_store
   n_tx_tls_cert -->|calls / sync gate:ID.cert-binding: certificate binding| n_id_cert_binding
   n_id_key_load -->|owns / sync: identity metadata ownership| n_id_meta_store
-  n_pair_dbus -->|calls / sync gate:ID.trust-store: commit and forget peers| n_id_trust_store
+  n_trust_dbus -->|calls / sync gate:ID.trust-store: commit and forget users| n_id_trust_store
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_db_peers, n_disc_supervisor, n_pair_commit, n_pair_dbus, n_pair_qr, n_tx_tls_cert, n_tx_verifier external;
+  class n_cfg_file_store, n_db_users, n_disc_supervisor, n_trust_commit, n_trust_dbus, n_tx_tls_cert, n_tx_verifier external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -60,13 +58,12 @@ flowchart LR
 | `ID.trust-store` | calls | sync | `ID.fingerprint` | lookup fingerprint |  |  | 5 |
 | `ID.cert-binding` | calls | sync | `ID.fingerprint` | bind certificate |  |  | 5 |
 | `ID.revoke` | calls | sync | `ID.trust-store` | remove trust |  |  | 5 |
-| `ID.trust-store` | calls | sync | `DB.peers` | trusted peer rows |  |  | 5 |
+| `ID.trust-store` | calls | sync | `DB.users` | trusted user rows |  |  | 5 |
 | `ID.key-load` | config-read | sync | `CFG.file-store` | config directory |  |  | 3 |
 | `ID.key-load` | owns | sync | `ID.key-store` | identity key ownership |  |  | 3 |
 | `DISC.supervisor` | calls | sync | `ID.fingerprint` | advertise fingerprint |  |  | 4 |
-| `PAIR.commit` | calls | sync | `ID.trust-store` | commit trusted peer | PAIR.confirm |  | 5 |
-| `PAIR.qr` | calls | sync | `ID.fingerprint` | QR fingerprint |  |  | 5 |
+| `TRUST.commit` | calls | sync | `ID.trust-store` | commit trusted user | TRUST.confirm |  | 5 |
 | `TX.verifier` | calls | sync | `ID.trust-store` | pinned trust lookup | ID.trust-store |  | 5 |
 | `TX.tls-cert` | calls | sync | `ID.cert-binding` | certificate binding | ID.cert-binding |  | 5 |
 | `ID.key-load` | owns | sync | `ID.meta-store` | identity metadata ownership |  |  | 3 |
-| `PAIR.dbus` | calls | sync | `ID.trust-store` | commit and forget peers | ID.trust-store |  | 5 |
+| `TRUST.dbus` | calls | sync | `ID.trust-store` | commit and forget users | ID.trust-store |  | 5 |

@@ -71,7 +71,7 @@ Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline.
 - `INV-LIMIT-1` — Every queue, buffer, and frame decoder is bounded or declares its drop policy. Test: planned: design review plus fuzz tests
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 

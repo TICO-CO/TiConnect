@@ -13,9 +13,6 @@ pub enum Error {
 
     #[error("autostart error: {0}")]
     Autostart(String),
-
-    #[error("pairing error: {0}")]
-    Pairing(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

@@ -80,7 +80,7 @@ requires it, and justify it when used.
   `apiKey`; and `value`/`err` in the Result tuple.
 - Wire-format fields from the daemon protocol keep their exact names, including
   `snake_case` fields such as `node_id`, `display_name`, `transport_state`, and
-  `peer_count`. Do not translate them at the transport boundary.
+  `user_count`. Do not translate them at the transport boundary.
 
 ## 5. Airtight TypeScript
 

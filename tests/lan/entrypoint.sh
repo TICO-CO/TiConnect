@@ -26,7 +26,6 @@ if [ ! -f "$config_dir/config.toml" ]; then
     set_setting read_receipts.enabled "${LAN_TEST_READ_RECEIPTS_ENABLED:-}"
     set_setting dnd.enabled "${LAN_TEST_DND_ENABLED:-}"
     set_setting outbox.ttl_days "${LAN_TEST_OUTBOX_TTL_DAYS:-}"
-    set_setting trust.open_lan "${LAN_TEST_TRUST_OPEN_LAN:-}"
 fi
 
 rm -f "$bus_path"

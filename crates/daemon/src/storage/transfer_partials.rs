@@ -5,7 +5,7 @@ use super::StorageError;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferPartial {
     pub hash: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub size: u64,
     pub bytes_received: u64,
     pub temp_path: String,
@@ -16,14 +16,14 @@ pub struct TransferPartial {
 pub fn upsert(connection: &Connection, partial: &TransferPartial) -> Result<(), StorageError> {
     connection.execute(
         "INSERT INTO transfer_partials
-             (hash, peer_id, size, bytes_received, temp_path, ranges, updated_at)
+             (hash, user_id, size, bytes_received, temp_path, ranges, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-         ON CONFLICT(hash) DO UPDATE SET peer_id = excluded.peer_id, size = excluded.size,
+         ON CONFLICT(hash) DO UPDATE SET user_id = excluded.user_id, size = excluded.size,
              bytes_received = excluded.bytes_received, temp_path = excluded.temp_path,
              ranges = excluded.ranges, updated_at = excluded.updated_at",
         params![
             partial.hash,
-            partial.peer_id,
+            partial.user_id,
             i64::try_from(partial.size)
                 .map_err(|_| StorageError::InvalidData("attachment size overflow".to_owned()))?,
             i64::try_from(partial.bytes_received).map_err(|_| {
@@ -40,7 +40,7 @@ pub fn upsert(connection: &Connection, partial: &TransferPartial) -> Result<(), 
 pub fn get(connection: &Connection, hash: &str) -> Result<Option<TransferPartial>, StorageError> {
     connection
         .query_row(
-            "SELECT hash, peer_id, size, bytes_received, temp_path, ranges, updated_at
+            "SELECT hash, user_id, size, bytes_received, temp_path, ranges, updated_at
              FROM transfer_partials WHERE hash = ?1",
             params![hash],
             row_to_partial,
@@ -51,7 +51,7 @@ pub fn get(connection: &Connection, hash: &str) -> Result<Option<TransferPartial
 
 pub fn list(connection: &Connection) -> Result<Vec<TransferPartial>, StorageError> {
     let mut statement = connection.prepare(
-        "SELECT hash, peer_id, size, bytes_received, temp_path, ranges, updated_at
+        "SELECT hash, user_id, size, bytes_received, temp_path, ranges, updated_at
          FROM transfer_partials ORDER BY updated_at",
     )?;
     let rows = statement.query_map([], row_to_partial)?;
@@ -74,7 +74,7 @@ fn row_to_partial(row: &rusqlite::Row<'_>) -> rusqlite::Result<TransferPartial> 
     let bytes_received: i64 = row.get(3)?;
     Ok(TransferPartial {
         hash: row.get(0)?,
-        peer_id: row.get(1)?,
+        user_id: row.get(1)?,
         size: u64::try_from(size).map_err(to_sql_error)?,
         bytes_received: u64::try_from(bytes_received).map_err(to_sql_error)?,
         temp_path: row.get(4)?,

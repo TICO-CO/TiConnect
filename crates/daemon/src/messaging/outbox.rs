@@ -9,17 +9,17 @@ use crate::storage::MessageState;
 
 const BACKOFF_BASE: Duration = Duration::from_secs(1);
 
-pub async fn flush_peer(service: &MessagingService, peer_id: &str) {
-    if !service.is_sync_ready(peer_id) {
+pub async fn flush_user(service: &MessagingService, user_id: &str) {
+    if !service.is_sync_ready(user_id) {
         return;
     }
-    let Ok(peer_node) = peer_id.parse::<NodeId>() else {
+    let Ok(user_node) = user_id.parse::<NodeId>() else {
         return;
     };
-    let Some(session) = service.transport().session_by_node_id(peer_node) else {
+    let Some(session) = service.transport().session_by_node_id(user_node) else {
         return;
     };
-    let entries = match service.database().due_outbox(peer_id, now_unix_ms()).await {
+    let entries = match service.database().due_outbox(user_id, now_unix_ms()).await {
         Ok(entries) => entries,
         Err(error) => {
             tracing::warn!(%error, "failed to read outbox");

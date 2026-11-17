@@ -39,7 +39,7 @@ async fn resumes_partial_attachment_without_receiving_the_prefix_again() {
         .database()
         .upsert_transfer_partial(TransferPartial {
             hash: hash.to_hex(),
-            peer_id: first.node_id().to_string(),
+            user_id: first.node_id().to_string(),
             size: bytes.len() as u64,
             bytes_received: prefix as u64,
             temp_path: partial.display().to_string(),

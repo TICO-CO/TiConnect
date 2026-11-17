@@ -302,7 +302,7 @@ async fn handle_socket(state: Arc<BridgeState>, socket: WebSocket) {
 
 #[derive(Deserialize)]
 struct UploadQuery {
-    peer_id: String,
+    user_id: String,
     #[serde(default)]
     name: Option<String>,
 }
@@ -322,7 +322,7 @@ async fn upload_attachment(
     }
     let result = state
         .link
-        .send_attachment(query.peer_id, path.to_string_lossy().into_owned())
+        .send_attachment(query.user_id, path.to_string_lossy().into_owned())
         .await;
     let _ = tokio::fs::remove_file(&path).await;
     match result {

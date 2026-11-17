@@ -3,7 +3,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
-use ticonnect_core::ipc::events::{self, Message, Peer};
+use ticonnect_core::ipc::events::{self, Call, Message, RemoteSession, User, WatchParty};
 use ticonnect_settings::Settings;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -14,14 +14,32 @@ const RECONNECT_MAX_MS: u64 = 10_000;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Command {
     Activate(String),
+    AcceptCall(String),
+    DeclineCall(String),
+    DenyRemoteSession(String),
+    AcceptWatchParty(String),
+    DeclineWatchParty(String),
+    PublishWatchParty {
+        party_id: String,
+        position_ms: u64,
+        playing: bool,
+    },
+    EndWatchParty(String),
 }
 
 #[derive(Debug, Clone)]
 pub enum Event {
     Settings { enabled: bool, timeout_secs: u64 },
-    Peers(Vec<Peer>),
-    Peer(Peer),
+    Users(Vec<User>),
+    User(User),
     Message(Message),
+    IncomingCall(Call),
+    RemoteSessionRequested(RemoteSession),
+    CallEnded(String),
+    RemoteSessionEnded(String),
+    WatchPartyRequested(WatchParty),
+    WatchPartyChanged(WatchParty),
+    WatchPartyEnded(String),
     Disconnected(String),
 }
 
@@ -49,10 +67,10 @@ async fn run(events: UnboundedSender<Event>, mut commands: UnboundedReceiver<Com
                 backoff = RECONNECT_MIN_MS;
                 let settings = load_settings().await;
                 let _ = events.send(settings);
-                if let Ok(values) = proxy.list_peers().await
-                    && let Ok(peers) = events::parse_peers(&values)
+                if let Ok(values) = proxy.list_users().await
+                    && let Ok(users) = events::parse_users(&values)
                 {
-                    let _ = events.send(Event::Peers(peers));
+                    let _ = events.send(Event::Users(users));
                 }
 
                 let (lost_tx, mut lost_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -134,9 +152,16 @@ async fn listen(
 ) -> zbus::Result<()> {
     let proxy = DaemonProxy::new(&connection).await?;
     let mut messages = proxy.receive_message_received().await?;
-    let mut connected = proxy.receive_peer_connected().await?;
-    let mut disconnected = proxy.receive_peer_disconnected().await?;
+    let mut connected = proxy.receive_user_connected().await?;
+    let mut disconnected = proxy.receive_user_disconnected().await?;
     let mut settings_changed = proxy.receive_settings_changed().await?;
+    let mut incoming_call = proxy.receive_incoming_call().await?;
+    let mut remote_requested = proxy.receive_remote_session_requested().await?;
+    let mut call_ended = proxy.receive_call_ended().await?;
+    let mut remote_ended = proxy.receive_remote_session_ended().await?;
+    let mut watch_party_requested = proxy.receive_watch_party_requested().await?;
+    let mut watch_party_changed = proxy.receive_watch_party_changed().await?;
+    let mut watch_party_ended = proxy.receive_watch_party_ended().await?;
 
     let dbus = zbus::fdo::DBusProxy::new(&connection).await?;
     let mut owner_changed = dbus.receive_name_owner_changed().await?;
@@ -153,16 +178,59 @@ async fn listen(
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(Event::Peer(peer));
+                if let Ok(user) = events::parse_user(&args.user) {
+                    let _ = events.send(Event::User(user));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(Event::Peer(peer));
+                if let Ok(user) = events::parse_user(&args.user) {
+                    let _ = events.send(Event::User(user));
                 }
+            }
+            signal = incoming_call.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(call) = events::parse_call(&args.call) {
+                    let _ = events.send(Event::IncomingCall(call));
+                }
+            }
+            signal = remote_requested.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(session) = events::parse_remote_session(&args.session) {
+                    let _ = events.send(Event::RemoteSessionRequested(session));
+                }
+            }
+            signal = watch_party_requested.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(party) = events::parse_watch_party(&args.party) {
+                    let _ = events.send(Event::WatchPartyRequested(party));
+                }
+            }
+            signal = watch_party_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(party) = events::parse_watch_party(&args.party) {
+                    let _ = events.send(Event::WatchPartyChanged(party));
+                }
+            }
+            signal = watch_party_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(Event::WatchPartyEnded(args.party_id.to_owned()));
+            }
+            signal = call_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(Event::CallEnded(args.call_id.to_owned()));
+            }
+            signal = remote_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(Event::RemoteSessionEnded(args.session_id.to_owned()));
             }
             signal = settings_changed.next() => {
                 let Some(signal) = signal else { break };
@@ -190,6 +258,68 @@ async fn handle_command(connection: &zbus::Connection, command: Command) {
         Command::Activate(view) => {
             if let Err(error) = activate(connection, &view).await {
                 tracing::warn!(%error, "failed to activate UI");
+            }
+        }
+        Command::AcceptCall(call_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.accept_call(&call_id).await
+            {
+                tracing::warn!(%error, "failed to accept call");
+            }
+        }
+        Command::DeclineCall(call_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.decline_call(&call_id).await
+            {
+                tracing::warn!(%error, "failed to decline call");
+            }
+        }
+        Command::DenyRemoteSession(session_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.deny_remote_session(&session_id).await
+            {
+                tracing::warn!(%error, "failed to deny remote session");
+            }
+        }
+        Command::AcceptWatchParty(party_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.accept_watch_party(&party_id).await
+            {
+                tracing::warn!(%error, "failed to accept watch party");
+            }
+        }
+        Command::DeclineWatchParty(party_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.decline_watch_party(&party_id).await
+            {
+                tracing::warn!(%error, "failed to decline watch party");
+            }
+        }
+        Command::PublishWatchParty {
+            party_id,
+            position_ms,
+            playing,
+        } => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy
+                    .publish_watch_party(&party_id, position_ms, playing)
+                    .await
+            {
+                tracing::warn!(%error, "failed to publish watch party state");
+            }
+        }
+        Command::EndWatchParty(party_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.end_watch_party(&party_id).await
+            {
+                tracing::warn!(%error, "failed to end watch party");
             }
         }
     }

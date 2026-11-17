@@ -31,53 +31,53 @@ Daemon-only. Stores no configuration. Repositories expose typed operations. Netw
 | `DB.migrations` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | schema version | docs/systems/07-storage.md#components | crates/daemon/tests/migrations.rs |
 | `DB.open` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | database connection | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.outbox` | Outbox repository | `module` | `crates/daemon/src/storage/outbox.rs` | outbox table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/outbox.rs |
-| `DB.peer-state` | Peer state repository | `module` | `crates/daemon/src/storage/peer_state.rs` | peer_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peer_state.rs |
-| `DB.peers` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | peers table | docs/systems/07-storage.md#components | crates/daemon/tests/peers.rs |
 | `DB.transfer-partials` | Transfer partials repository | `module` | `crates/daemon/src/storage/transfers.rs` | transfer partials table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/transfers.rs |
 | `DB.tx` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | active transaction | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
+| `DB.user-state` | User state repository | `module` | `crates/daemon/src/storage/user_state.rs` | user_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/user_state.rs |
+| `DB.users` | Users repository | `module` | `crates/daemon/src/storage/users.rs` | users table | docs/systems/07-storage.md#components | crates/daemon/tests/users.rs |
 
 ## Interfaces
 
 - SQLite
 - migrations
-- peers repo
+- users repo
 - messages repo
 - outbox repo
 - attachments repo
-- peer_state repo
+- user_state repo
 - transfer partials repo
 
 ## Relations
 
 | From | Kind | Mode | To | Contract | Gate | Limit |
 |---|---|---|---|---|---|---|
-| `ID.trust-store` | `calls` | `sync` | `DB.peers` | trusted peer rows |  |  |
+| `ID.trust-store` | `calls` | `sync` | `DB.users` | trusted user rows |  |  |
 | `DB.open` | `calls` | `sync` | `DB.migrations` | migrate on open |  |  |
 | `DB.migrations` | `calls` | `sync` | `DB.tx` | migration transaction |  |  |
-| `DB.peers` | `calls` | `sync` | `DB.tx` | peer transaction |  |  |
+| `DB.users` | `calls` | `sync` | `DB.tx` | user transaction |  |  |
 | `DB.conversations` | `calls` | `sync` | `DB.tx` | conversation transaction |  |  |
 | `DB.messages` | `calls` | `sync` | `DB.tx` | message transaction |  |  |
 | `DB.outbox` | `calls` | `sync` | `DB.tx` | outbox transaction |  |  |
 | `DB.attachments` | `calls` | `sync` | `DB.tx` | attachment transaction |  |  |
-| `DB.peer-state` | `calls` | `sync` | `DB.tx` | peer state transaction |  |  |
+| `DB.user-state` | `calls` | `sync` | `DB.tx` | user state transaction |  |  |
 | `DB.transfer-partials` | `calls` | `sync` | `DB.tx` | transfer transaction |  |  |
 | `DB.integrity` | `calls` | `sync` | `DB.open` | integrity check |  |  |
 | `DB.migrations` | `owns` | `sync` | `DB.schema-store` | schema version ownership |  |  |
-| `DB.peers` | `owns` | `sync` | `DB.peers-store` | peers ownership |  |  |
+| `DB.users` | `owns` | `sync` | `DB.users-store` | users ownership |  |  |
 | `DB.conversations` | `owns` | `sync` | `DB.conversations-store` | conversations ownership |  |  |
 | `DB.messages` | `owns` | `sync` | `DB.messages-store` | messages ownership |  |  |
 | `DB.outbox` | `owns` | `sync` | `DB.outbox-store` | outbox ownership |  |  |
 | `DB.attachments` | `owns` | `sync` | `DB.attachments-store` | attachments ownership |  |  |
-| `DB.peer-state` | `owns` | `sync` | `DB.peer-state-store` | peer state ownership |  |  |
+| `DB.user-state` | `owns` | `sync` | `DB.user-state-store` | user state ownership |  |  |
 | `DB.transfer-partials` | `owns` | `sync` | `DB.transfer-partials-store` | transfer partials ownership |  |  |
 | `MSG.ingest` | `calls` | `sync` | `DB.messages` | insert message |  |  |
 | `MSG.history` | `calls` | `sync` | `DB.messages` | list messages |  |  |
 | `MSG.outbox` | `calls` | `sync` | `DB.outbox` | queue outbound record |  |  |
-| `MSG.sync-planner` | `calls` | `sync` | `DB.peer-state` | read peer state |  |  |
+| `MSG.sync-planner` | `calls` | `sync` | `DB.user-state` | read user state |  |  |
 | `MSG.sync-executor` | `calls` | `sync` | `DB.messages` | insert synced records |  |  |
 | `MSG.state` | `calls` | `sync` | `DB.messages` | read message state |  |  |
-| `MSG.ingest` | `calls` | `sync` | `DB.peer-state` | update last_recv_seq |  |  |
-| `POL.store` | `calls` | `sync` | `DB.peers` | peer policy rows |  |  |
+| `MSG.ingest` | `calls` | `sync` | `DB.user-state` | update last_recv_seq |  |  |
+| `POL.store` | `calls` | `sync` | `DB.users` | user policy rows |  |  |
 | `ATT.resume` | `calls` | `sync` | `DB.transfer-partials` | partial transfer state |  |  |
 | `ATT.recv-verify` | `calls` | `sync` | `DB.attachments` | attachment metadata |  |  |
 

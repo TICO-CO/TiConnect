@@ -127,7 +127,7 @@ wait_for 20 setting_bool_is node-a read_receipts.enabled true \
 
 log "checking policy and DND"
 cli node-b policy set "$A_ID" mute >/dev/null
-wait_for 20 peer_policy_is node-b "$A_ID" mute || fail "mute policy did not apply"
+wait_for 20 user_policy_is node-b "$A_ID" mute || fail "mute policy did not apply"
 monitor_expect node-b messaging-signals "PolicyChanged"
 TOKEN_MUTE="$(unique_token mute)"
 MSG_MUTE="$(cli node-a send "$B_ID" "$TOKEN_MUTE")"
@@ -142,7 +142,7 @@ wait_for 30 message_state_is node-a "$B_ID" "$MSG_MUTE" read \
     || fail "mute policy suppressed the read receipt"
 
 cli node-b policy set "$A_ID" ignore >/dev/null
-wait_for 20 peer_policy_is node-b "$A_ID" ignore || fail "ignore policy did not apply"
+wait_for 20 user_policy_is node-b "$A_ID" ignore || fail "ignore policy did not apply"
 BEFORE_COUNT="$(message_count node-b "$A_ID")"
 TOKEN_IGNORE="$(unique_token ignore)"
 MSG_IGNORE="$(cli node-a send "$B_ID" "$TOKEN_IGNORE")"
@@ -161,7 +161,7 @@ assert_eq "$(message_state node-a "$B_ID" "$MSG_IGNORE")" "sent" \
     "ignore policy sent a read receipt"
 
 cli node-b policy set "$A_ID" accept >/dev/null
-wait_for 20 peer_policy_is node-b "$A_ID" accept || fail "accept policy did not apply"
+wait_for 20 user_policy_is node-b "$A_ID" accept || fail "accept policy did not apply"
 TOKEN_ACCEPT="$(unique_token accept)"
 MSG_ACCEPT="$(cli node-a send "$B_ID" "$TOKEN_ACCEPT")"
 wait_for 30 message_state_is node-a "$B_ID" "$MSG_ACCEPT" delivered \
@@ -169,15 +169,15 @@ wait_for 30 message_state_is node-a "$B_ID" "$MSG_ACCEPT" delivered \
 monitor_line_contains node-b messaging-signals "$TOKEN_ACCEPT" "'notify': <true>"
 cli_expect_fail node-b policy set "$A_ID" block
 assert_contains "$LAST_OUTPUT" "invalid" "invalid policy error"
-assert_eq "$(peer_policy node-b "$A_ID")" "accept" "invalid policy changed state"
+assert_eq "$(user_policy node-b "$A_ID")" "accept" "invalid policy changed state"
 
 cli node-b policy set "$A_ID" mute >/dev/null
-wait_for 20 peer_policy_is node-b "$A_ID" mute || fail "mute policy did not persist"
+wait_for 20 user_policy_is node-b "$A_ID" mute || fail "mute policy did not persist"
 restart_node node-b
 wait_for 90 session_online node-b || fail "node-b did not reconnect after policy restart"
-assert_eq "$(peer_policy node-b "$A_ID")" "mute" "policy did not survive restart"
+assert_eq "$(user_policy node-b "$A_ID")" "mute" "policy did not survive restart"
 cli node-b policy set "$A_ID" accept >/dev/null
-wait_for 20 peer_policy_is node-b "$A_ID" accept || fail "accept policy did not restore"
+wait_for 20 user_policy_is node-b "$A_ID" accept || fail "accept policy did not restore"
 monitor_start node-b messaging-signals
 
 cli node-b policy dnd on >/dev/null

@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Own remote session state, consent, PIN, session scope, capture coordination, input coordination, indicator, kill switch, and teardown.
+Own remote session state, consent, session scope, capture coordination, input coordination, indicator, kill switch, and teardown.
 
 ## Boundary
 
@@ -26,8 +26,8 @@ Daemon service. Uses desktop, video, transport, policy, and IPC. Indicator must 
 | ID | Name | Kind | Owner | State | Contract | Test |
 |---|---|---|---|---|---|---|
 | `RD.capture` | Capture coordinator | `module` | `crates/daemon/src/remote/session.rs` | capture handles | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
-| `RD.consent` | Consent | `module` | `crates/daemon/src/remote/consent.rs` | consent grant | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
-| `RD.indicator` | Indicator and kill switch | `module` | `crates/daemon/src/remote/consent.rs` | indicator state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
+| `RD.consent` | Consent | `module` | `crates/daemon/src/remote/mod.rs` | consent grant | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
+| `RD.indicator` | Indicator and kill switch | `module` | `crates/daemon/src/remote/mod.rs` | indicator state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.input` | Input coordinator | `module` | `crates/daemon/src/remote/session.rs` | input handles | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.registry` | Session registry | `module` | `crates/daemon/src/remote/mod.rs` | remote session registry | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.state` | Remote session state | `module` | `crates/daemon/src/remote/state.rs` | remote session state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
@@ -37,7 +37,6 @@ Daemon service. Uses desktop, video, transport, policy, and IPC. Indicator must 
 ## Interfaces
 
 - consent flow
-- session PIN
 - RemoteSessionRequested signal
 - RemoteSessionStarted signal
 - RemoteSessionEnded signal
@@ -73,12 +72,12 @@ Daemon service. Uses desktop, video, transport, policy, and IPC. Indicator must 
 - `INV-RD-1` — Remote desktop requires per-session consent, a visible indicator, and a working kill switch. Test: planned: crates/daemon/tests/remote.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 
 - consent required per session
-- one trusted peer per session
+- one trusted user per session
 - kill switch tears down immediately
 - no capture or input after end
 
@@ -86,4 +85,3 @@ Daemon service. Uses desktop, video, transport, policy, and IPC. Indicator must 
 
 - indicator process ownership
 - session timeout default
-- PIN reuse policy

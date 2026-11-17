@@ -12,11 +12,11 @@ Stages 1–11 are implemented in automation. Manual systemd/logout, two-machine
 LAN, X11/Wayland, notification, audio-device, portal, and accessibility checks
 remain release gates. This includes workspace, settings, logging, typed errors,
 the architecture graph, the D-Bus daemon and CLI, systemd/autostart packaging,
-Ed25519 identity, SQLite storage, mDNS and broadcast discovery, SPAKE2 pairing,
+Ed25519 identity, SQLite storage, mDNS and broadcast discovery, automatic LAN trust,
 pinned QUIC/TLS transport, signed messaging with sync/receipts/policy, the GTK4
 window, overlay and notification fallback, resumable BLAKE3 attachments, Opus
-voice calls with daemon ringtone and jitter buffer, and PIN-gated consent-based
-remote desktop with portal capture, H.264, input injection, indicator, and kill
+voice calls with daemon ringtone and jitter buffer, and consent-based remote
+desktop with portal capture, H.264, input injection, indicator, and kill
 switch. Stage 12 adds Flatpak metadata, hardened units, benchmarks, release
 documentation, the AppImage user installer, and the unified launcher.
 
@@ -61,7 +61,7 @@ make lan-test
 `tests/local/run.sh` runs local X11, Weston Wayland, KWin Wayland, and Hyprland
 integration tests. See `docs/local-testing.md`. `make lan-test` runs the
 two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
-(`control`, `discovery`, `pairing`, `transport`, `messaging`, `offline-sync`,
+(`control`, `discovery`, `trust`, `transport`, `messaging`, `offline-sync`,
 `security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
@@ -116,12 +116,12 @@ The NixOS module is available at `inputs.ticonnect.nixosModules.default`.
 Launch TiConnect from your app menu. Open LAN mode is on by default: discovered
 devices on the same LAN connect automatically without a PIN. Send messages,
 files, and audio attachments, start calls, or request a remote desktop session.
-Remote desktop still requires host consent and a fresh PIN. TiConnect traffic
+Remote desktop still requires explicit host consent. TiConnect traffic
 stays on your LAN and is encrypted with pinned TLS certificates.
 
-Use peer policies to mute, ignore, or block a device. Blocked devices are kept
+Use user policies to mute, ignore, or block a device. Blocked devices are kept
 in a blocklist and cannot reconnect automatically. Open LAN mode can be disabled
-with `ticonnect settings set trust.open_lan false`.
+with the user blocklist (`ticonnect users forget <user-id>`).
 
 ## Command line
 
@@ -131,13 +131,12 @@ The same executable is the command-line client:
 ticonnect status
 ticonnect version
 ticonnect id show
-ticonnect peers list
-ticonnect pair start
-ticonnect send <peer-id> "hello"
-ticonnect send-file <peer-id> <path>
+ticonnect users list
+ticonnect send <user-id> "hello"
+ticonnect send-file <user-id> <path>
 ticonnect download <hash> <destination>
 ticonnect transfer status <hash>
-ticonnect messages <peer-id>
+ticonnect messages <user-id>
 ticonnect settings list
 ```
 
@@ -158,8 +157,8 @@ ticonnect cli status
 ```
 
 `ticonnect daemon` serves `org.ticonnect.Daemon` on the session bus until
-shutdown. `ticonnect <command>` talks to the daemon for status, identity, peers,
-discovery, pairing, messaging, policy, ping, and quit. The hidden
+shutdown. `ticonnect <command>` talks to the daemon for status, identity, users,
+discovery, trust, messaging, policy, ping, and quit. The hidden
 `ticonnect cli <command>` alias reaches the same client. `settings get`,
 `settings set`, and `settings list` read and write `config.toml` directly.
 `ticonnect ui` opens the GTK4 window and talks to the daemon only over D-Bus.
@@ -198,7 +197,7 @@ in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded i
 the binary.
 
 The UI owns `org.ticonnect.UI` on the session bus and exposes
-`Activate(s view)`. Views are `peers`, `chat`, `settings`, and `pairing`; an
+`Activate(s view)`. Views are `users`, `chat`, `settings`, and `trust`; an
 empty value means `chat`. `Activate("chat:<node-id>")` opens one conversation;
 the tray and overlay use it for notification clicks. The tray uses
 `Activate("chat")`. Starting a second UI forwards activation to the running
@@ -216,8 +215,8 @@ Keyboard shortcuts:
 | `Enter` | Send message |
 | `Shift+Enter` | Insert a newline |
 | `Ctrl+,` | Settings |
-| `Ctrl+N` | Pair a device |
-| `Ctrl+1` | Peers |
+| `Ctrl+N` | Open users |
+| `Ctrl+1` | Users |
 | `Ctrl+2` | Conversation |
 | `Ctrl+Q` | Quit the UI |
 | `Escape` | Close a dialog |
@@ -230,15 +229,15 @@ calls a `SetSetting` D-Bus method.
 ## Overlay
 
 The overlay runs as the internal `ticonnect overlay` process. It subscribes
-directly to `org.ticonnect.Daemon`, resolves sender names through `ListPeers`,
+directly to `org.ticonnect.Daemon`, resolves sender names through `ListUsers`,
 and does not depend on the UI being open.
 
-- Wayland: uses `gtk4-layer-shell` with `Layer::Overlay`, anchored bottom-right,
+- Wayland: uses `gtk4-layer-shell` with `Layer::Overlay`, anchored top-right,
   and `KeyboardMode::None`. Cards never take keyboard focus; only the card
   surface accepts pointer input.
 - Wayland without layer-shell support: falls back to system notifications.
 - X11: uses an undecorated, always-on-top, skip-taskbar window positioned at the
-  bottom-right of the first monitor. Window flags use EWMH through `x11rb`.
+  top-right of the first monitor. Window flags use EWMH through `x11rb`.
 - Message cards show sender, preview, and local time. Up to three cards are
   visible; additional cards queue. Cards auto-dismiss after
   `overlay.timeout_secs`, pause while hovered, and deduplicate by message id.
@@ -282,7 +281,7 @@ Settings keys:
 | `discovery.mdns` | bool | `true` | Advertise and browse `_ticonnect._udp.local.` |
 | `discovery.broadcast` | bool | `true` | UDP broadcast fallback |
 | `discovery.beacon_interval_secs` | integer | `5` | Valid range `1..=3600` |
-| `transport.port` | integer | `45871` | UDP port for QUIC session and pairing; valid range `1..=65535`; restart required |
+| `transport.port` | integer | `45871` | UDP port for QUIC session and trust; valid range `1..=65535`; restart required |
 | `overlay.enabled` | bool | `true` | Show corner cards; false uses system notifications |
 | `overlay.timeout_secs` | integer | `5` | Card auto-dismiss timeout; valid range `1..=60` |
 | `read_receipts.enabled` | bool | `true` | Send delivered and read receipts |
@@ -293,8 +292,6 @@ Settings keys:
 | `calls.input_device` | string | empty | Optional input device name |
 | `calls.output_device` | string | empty | Optional output device name |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
-| `remote.pin_attempts` | integer | `3` | Valid range `1..=10` |
-| `remote.pin_ttl_secs` | integer | `300` | Valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
 | `video.fps` | integer | `30` | Valid range `5..=60` |
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
@@ -312,11 +309,11 @@ Settings keys:
 - Profile photo: `$XDG_DATA_HOME/ticonnect/profile/self.png`, mode `0600`.
   The UI center-crops and resizes the chosen image to a 192x192 PNG before
   handing it to the daemon. The daemon advertises the BLAKE3 hash over mDNS.
-- Peers discover the profile over the `ticonnect-profile/1` ALPN. The profile
+- Users discover the profile over the `ticonnect-profile/1` ALPN. The profile
   payload is signed with the identity key and verified against the pinned TLS
   certificate and advertised avatar hash. Profile data is public LAN data and
   never implies trust.
-- Cached peer profiles live in the `peer_profiles` table; `GetAvatar(fingerprint)`
+- Cached user profiles live in the `user_profiles` table; `GetAvatar(fingerprint)`
   returns the cached PNG or the local photo for the local fingerprint.
 - The config directory is mode `0700`. A key with any group or other permission
   bit is rejected at startup.
@@ -326,7 +323,7 @@ Settings keys:
   If the key exists but `identity.toml` is missing, startup fails rather than
   silently changing the node ID.
 - Key rotation and key backup/export are out of scope for v1. Losing the key
-  makes this node untrusted to existing peers.
+  makes this node untrusted to existing users.
 
 ## Data storage
 
@@ -335,8 +332,8 @@ Settings keys:
 - SQLite uses WAL mode and foreign keys.
 - Schema version is stored in `schema_version` and migrations run on every open.
   Migration failure refuses startup.
-- Stage 3 creates `peers`, `conversations`, `messages`, `outbox`, `attachments`,
-  and `peer_state`. Stage 6 adds `peers.public_key` and `messages.state`. Stage 9
+- Stage 3 creates `users`, `conversations`, `messages`, `outbox`, `attachments`,
+  and `user_state`. Stage 6 adds `users.public_key` and `messages.state`. Stage 9
   adds attachment names and message attachment metadata plus
   `transfer_partials` for resumable transfers.
 - Configuration lives only in `config.toml`; SQLite stores no configuration.
@@ -389,22 +386,22 @@ Settings keys:
   daemon continues headless.
 
 D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
-`GetMessageState`, `SetPeerPolicy`, and `SetDnd`. Signals are `MessageReceived`,
+`GetMessageState`, `SetUserPolicy`, and `SetDnd`. Signals are `MessageReceived`,
 `MessageStateChanged`, `SyncCompleted`, and `PolicyChanged`.
 
 ## Attachments
 
 - Files are hashed with BLAKE3 and stored under
   `$XDG_DATA_HOME/ticonnect/attachments/<first2>/<hash>`; identical content
-  dedupes across messages and peers.
+  dedupes across messages and users.
 - Messages carry name, size, MIME, and hash. Transfers use a dedicated QUIC
   bidirectional stream, 64 KiB chunks, persisted missing ranges, and a final
   hash check before publication.
-- `ticonnect send-file <peer> <path> [--mime TYPE]` sends an attachment.
+- `ticonnect send-file <user> <path> [--mime TYPE]` sends an attachment.
 - `ticonnect download <hash> <destination>` saves it.
 - `ticonnect transfer status <hash>` and `ticonnect transfer cancel <hash>`
   inspect or cancel a transfer.
-- Inbound `ignore` peers are dropped before transfer; `mute` stores silently.
+- Inbound `ignore` users are dropped before transfer; `mute` stores silently.
 
 ## Voice calls
 
@@ -420,9 +417,10 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 
 ## Remote desktop
 
-- A viewer requests a session from a trusted online peer. The host shows the
-  viewer fingerprint and a fresh PIN, then consents. The viewer enters the PIN.
-- Sessions are scoped to one peer and require per-session consent. A visible
+- A viewer requests a session from a trusted online user. The host reviews the
+  viewer fingerprint and consents. The viewer submits the host-generated
+  session PIN.
+- Sessions are scoped to one user and require per-session consent. A visible
   indicator stays on while active, and `EndRemoteSession` is a hard kill switch.
 - Capture uses the XDG RemoteDesktop portal and PipeWire fd; input uses libei
   when available and X11 XTEST otherwise. H.264 encodes at 1080p in software.
@@ -430,30 +428,25 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
   `EndRemoteSession`, `GetRemoteSession`; signals `RemoteSessionRequested`,
   `RemoteSessionStarted`, `RemoteSessionEnded`, `RemoteIndicatorChanged`.
 
-## Pairing and transport
+## Automatic trust and transport
 
-- Pairing uses SPAKE2 over the `ticonnect-pair/1` ALPN. Session transport uses
-  `ticonnect/1` on the same UDP port.
-- `ticonnect pair start` prints a six-digit PIN, a QR payload, and the
-  expiry time. PINs and QR tokens expire after 120 seconds. A pairing session
-  allows three PIN failures.
-- `ticonnect pair with-pin <node-id> <pin>` uses a discovery candidate.
-  `ticonnect pair with-qr '<payload>'` uses the address and port in the QR
-  payload and does not require discovery.
+- Automatic trust uses SPAKE2 over the `ticonnect-trust/1` ALPN. Session transport
+  uses `ticonnect/1` on the same UDP port.
+- Discovery candidates are trusted automatically with a LAN token derived from
+  both fingerprints. There is no manual pairing PIN or QR flow.
 - The self-signed TLS certificate reuses the Ed25519 identity key. The identity
   fingerprint and certificate fingerprint are the same BLAKE3 value. Certificates
-  are pinned to the trusted peer table.
-- `ticonnect pair forget <peer-id>` removes trust, deletes local history
+  are pinned to the user table.
+- `ticonnect users forget <user-id>` removes trust, deletes local history
   and queued outbox rows, and closes the active session. Sequence high-water
-  marks are retained so re-pairing continues sequence numbers instead of
-  reusing them. Trusted peers are reconnected automatically when rediscovered.
-- Unpaired peers can reach only the pairing ALPN. Session ALPN connections are
-  rejected before handler dispatch unless the certificate fingerprint is trusted.
+  marks are retained so re-trust continues sequence numbers instead of
+  reusing them. Trusted users are reconnected automatically when rediscovered.
+- Blocked users are rejected before the trust ALPN exchange.
 
 ## Discovery
 
 - Discovery advertises this node over mDNS service type `_ticonnect._udp.local.`
-  and browses for peers on the LAN.
+  and browses for users on the LAN.
 - TXT keys are `v` (protocol version), `id` (node id), `fp` (fingerprint),
   `name` (display name), and `port` (configured QUIC transport port).
 - UDP broadcast is the IPv4 fallback. Beacons use port `45870` and are sent to
@@ -461,7 +454,7 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 - Candidates expire after three beacon intervals. Stopping discovery or losing a
   candidate emits `CandidateLost`.
 - Discovery data is untrusted input. Candidates are hints only and never imply
-  pairing, trust, or authentication. Candidate caps, packet size limits, field
+  trust, trust, or authentication. Candidate caps, packet size limits, field
   validation, self-filtering, and protocol version checks are always enforced.
 - A malformed packet is dropped and counted. mDNS failure does not prevent the
   broadcast backend from running, and disabling mDNS leaves broadcast fallback.

@@ -5,7 +5,7 @@ use tokio::time::timeout;
 use super::session;
 use super::{
     DialTarget, RECONNECT_ATTEMPTS, RECONNECT_BASE_DELAY, Session, Transport, TransportError,
-    peer_certificate,
+    user_certificate,
 };
 use crate::tls::ClientAlpn;
 
@@ -48,11 +48,11 @@ pub(crate) async fn connect_with_retry(
         .unwrap_or_else(|| TransportError::Handshake("transport retry did not run".to_owned())))
 }
 
-pub(crate) async fn connect_pairing(
+pub(crate) async fn connect_trust(
     transport: &Transport,
     target: DialTarget,
 ) -> Result<quinn::Connection, TransportError> {
-    let result = open_connection(transport, &target, ClientAlpn::Pairing).await;
+    let result = open_connection(transport, &target, ClientAlpn::Trust).await;
     if result.is_err() {
         transport.note_failure();
     }
@@ -64,7 +64,7 @@ pub(crate) async fn connect_profile(
     target: DialTarget,
 ) -> Result<(quinn::Connection, [u8; 32]), TransportError> {
     let connection = open_connection(transport, &target, ClientAlpn::Profile).await?;
-    let (certificate_fingerprint, public_key) = peer_certificate(&connection)?;
+    let (certificate_fingerprint, public_key) = user_certificate(&connection)?;
     if certificate_fingerprint != target.fingerprint {
         connection.close(0u32.into(), b"profile identity mismatch");
         return Err(TransportError::IdentityMismatch);
@@ -72,13 +72,13 @@ pub(crate) async fn connect_profile(
     Ok((connection, public_key))
 }
 
-pub(crate) async fn connect_pairing_with_retry(
+pub(crate) async fn connect_trust_with_retry(
     transport: &Transport,
     target: DialTarget,
 ) -> Result<quinn::Connection, TransportError> {
     let mut last_error = None;
     for attempt in 0..RECONNECT_ATTEMPTS {
-        match open_connection(transport, &target, ClientAlpn::Pairing).await {
+        match open_connection(transport, &target, ClientAlpn::Trust).await {
             Ok(connection) => return Ok(connection),
             Err(error) => {
                 transport.note_failure();
@@ -95,7 +95,7 @@ pub(crate) async fn connect_pairing_with_retry(
     }
 
     Err(last_error
-        .unwrap_or_else(|| TransportError::Handshake("pairing retry did not run".to_owned())))
+        .unwrap_or_else(|| TransportError::Handshake("trust retry did not run".to_owned())))
 }
 
 async fn open_connection(
@@ -119,12 +119,12 @@ async fn connect_once(
     target: DialTarget,
 ) -> Result<Session, TransportError> {
     let connection = open_connection(transport, &target, ClientAlpn::Session).await?;
-    let (certificate_fingerprint, public_key) = peer_certificate(&connection)?;
+    let (certificate_fingerprint, public_key) = user_certificate(&connection)?;
     if certificate_fingerprint != target.fingerprint {
         return Err(TransportError::IdentityMismatch);
     }
 
-    let peer = session::client_handshake(
+    let user = session::client_handshake(
         &connection,
         transport.node_id(),
         transport.expected_fingerprint(),
@@ -133,14 +133,14 @@ async fn connect_once(
         public_key,
     )
     .await?;
-    let session = Session::new(connection.clone(), peer.clone());
+    let session = Session::new(connection.clone(), user.clone());
     transport.register(session.clone());
 
     let disconnect_transport = transport.clone();
-    let disconnect_peer = peer;
+    let disconnect_user = user;
     tokio::spawn(async move {
         connection.closed().await;
-        disconnect_transport.unregister(connection.stable_id(), &disconnect_peer);
+        disconnect_transport.unregister(connection.stable_id(), &disconnect_user);
     });
 
     Ok(session)

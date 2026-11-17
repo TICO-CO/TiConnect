@@ -1,7 +1,7 @@
 use serde::Serialize;
 use ticonnect_core::ipc::events::{
-    Call, Candidate, DaemonEvent, Message, MessageState, PairingStart, Peer, PeerPolicy,
-    RemoteSession,
+    Call, Candidate, DaemonEvent, Message, MessageState, RemoteSession, User, UserPolicy,
+    WatchParty,
 };
 
 use crate::activation::ActivationEvent;
@@ -15,14 +15,14 @@ pub enum WsEvent {
     Activate {
         view: String,
         #[serde(skip_serializing_if = "Option::is_none")]
-        peer_id: Option<String>,
+        user_id: Option<String>,
     },
     Connected,
     Disconnected {
         reason: String,
     },
-    Peers {
-        peers: Vec<Peer>,
+    Users {
+        users: Vec<User>,
     },
     Candidates {
         candidates: Vec<Candidate>,
@@ -38,41 +38,31 @@ pub enum WsEvent {
         state: MessageState,
     },
     ConversationChanged {
-        peer_id: String,
+        user_id: String,
     },
     TypingChanged {
-        peer_id: String,
+        user_id: String,
         typing: bool,
     },
-    PeerProfileChanged {
+    UserProfileChanged {
         fingerprint: String,
     },
     SelfProfileChanged,
-    PeerConnected {
-        peer: Peer,
+    UserConnected {
+        user: User,
     },
-    PeerDisconnected {
-        peer: Peer,
-    },
-    PairingStarted {
-        pairing: PairingStart,
-    },
-    PairingCompleted {
-        peer_id: String,
-        fingerprint: String,
-    },
-    PairingFailed {
-        reason: String,
+    UserDisconnected {
+        user: User,
     },
     PolicyChanged {
-        peer_id: String,
-        policy: PeerPolicy,
+        user_id: String,
+        policy: UserPolicy,
     },
     SettingsChanged {
         key: String,
     },
     SyncCompleted {
-        peer_id: String,
+        user_id: String,
         count: u32,
     },
     TransferProgress {
@@ -112,6 +102,16 @@ pub enum WsEvent {
         session_id: String,
         visible: bool,
     },
+    WatchPartyRequested {
+        party: WatchParty,
+    },
+    WatchPartyChanged {
+        party: WatchParty,
+    },
+    WatchPartyEnded {
+        party_id: String,
+        reason: String,
+    },
     Error {
         code: String,
         message: String,
@@ -125,8 +125,8 @@ impl WsEvent {
             DaemonEvent::Disconnected(reason) => Self::Disconnected {
                 reason: reason.clone(),
             },
-            DaemonEvent::Peers(peers) => Self::Peers {
-                peers: peers.clone(),
+            DaemonEvent::Users(users) => Self::Users {
+                users: users.clone(),
             },
             DaemonEvent::Candidates(candidates) => Self::Candidates {
                 candidates: candidates.clone(),
@@ -141,39 +141,26 @@ impl WsEvent {
                 message_id: message_id.clone(),
                 state: *state,
             },
-            DaemonEvent::ConversationChanged { peer_id } => Self::ConversationChanged {
-                peer_id: peer_id.clone(),
+            DaemonEvent::ConversationChanged { user_id } => Self::ConversationChanged {
+                user_id: user_id.clone(),
             },
-            DaemonEvent::TypingChanged { peer_id, typing } => Self::TypingChanged {
-                peer_id: peer_id.clone(),
+            DaemonEvent::TypingChanged { user_id, typing } => Self::TypingChanged {
+                user_id: user_id.clone(),
                 typing: *typing,
             },
-            DaemonEvent::PeerProfileChanged { fingerprint } => Self::PeerProfileChanged {
+            DaemonEvent::UserProfileChanged { fingerprint } => Self::UserProfileChanged {
                 fingerprint: fingerprint.clone(),
             },
             DaemonEvent::SelfProfileChanged => Self::SelfProfileChanged,
-            DaemonEvent::PeerConnected(peer) => Self::PeerConnected { peer: peer.clone() },
-            DaemonEvent::PeerDisconnected(peer) => Self::PeerDisconnected { peer: peer.clone() },
-            DaemonEvent::PairingStarted(pairing) => Self::PairingStarted {
-                pairing: pairing.clone(),
-            },
-            DaemonEvent::PairingCompleted {
-                peer_id,
-                fingerprint,
-            } => Self::PairingCompleted {
-                peer_id: peer_id.clone(),
-                fingerprint: fingerprint.clone(),
-            },
-            DaemonEvent::PairingFailed(reason) => Self::PairingFailed {
-                reason: reason.clone(),
-            },
-            DaemonEvent::PolicyChanged { peer_id, policy } => Self::PolicyChanged {
-                peer_id: peer_id.clone(),
+            DaemonEvent::UserConnected(user) => Self::UserConnected { user: user.clone() },
+            DaemonEvent::UserDisconnected(user) => Self::UserDisconnected { user: user.clone() },
+            DaemonEvent::PolicyChanged { user_id, policy } => Self::PolicyChanged {
+                user_id: user_id.clone(),
                 policy: *policy,
             },
             DaemonEvent::SettingsChanged(key) => Self::SettingsChanged { key: key.clone() },
-            DaemonEvent::SyncCompleted { peer_id, count } => Self::SyncCompleted {
-                peer_id: peer_id.clone(),
+            DaemonEvent::SyncCompleted { user_id, count } => Self::SyncCompleted {
+                user_id: user_id.clone(),
                 count: *count,
             },
             DaemonEvent::TransferProgress { hash, bytes, total } => Self::TransferProgress {
@@ -212,6 +199,16 @@ impl WsEvent {
                 session_id: session_id.clone(),
                 visible: *visible,
             },
+            DaemonEvent::WatchPartyRequested(party) => Self::WatchPartyRequested {
+                party: party.clone(),
+            },
+            DaemonEvent::WatchPartyChanged(party) => Self::WatchPartyChanged {
+                party: party.clone(),
+            },
+            DaemonEvent::WatchPartyEnded { party_id, reason } => Self::WatchPartyEnded {
+                party_id: party_id.clone(),
+                reason: reason.clone(),
+            },
         }
     }
 
@@ -221,11 +218,11 @@ impl WsEvent {
             ActivationEvent::Duplicate => Self::Duplicate,
             ActivationEvent::Show(view) => Self::Activate {
                 view: view.clone(),
-                peer_id: None,
+                user_id: None,
             },
-            ActivationEvent::ShowPeer(peer_id) => Self::Activate {
+            ActivationEvent::ShowUser(user_id) => Self::Activate {
                 view: "chat".to_owned(),
-                peer_id: Some(peer_id.clone()),
+                user_id: Some(user_id.clone()),
             },
         }
     }

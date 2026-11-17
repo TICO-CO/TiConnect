@@ -30,7 +30,7 @@ async fn attachment_and_partial_metadata_round_trip() {
 
     let partial = TransferPartial {
         hash: attachment.hash.clone(),
-        peer_id: "peer".to_owned(),
+        user_id: "user".to_owned(),
         size: 42,
         bytes_received: 10,
         temp_path: "/tmp/a.part".to_owned(),
@@ -87,7 +87,7 @@ async fn two_nodes_transfer_and_verify_attachment() {
     use ticonnect_core::attachment::AttachmentHash;
     use ticonnect_daemon::attachments::AttachmentService;
     use ticonnect_daemon::identity::Identity;
-    use ticonnect_daemon::storage::NewPeer;
+    use ticonnect_daemon::storage::NewUser;
     use ticonnect_daemon::trust::TrustStore;
     use ticonnect_net::transfer::transfer_frame_from_wire;
     use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
@@ -147,20 +147,20 @@ async fn two_nodes_transfer_and_verify_attachment() {
 
     let sender = node("sender").await;
     let receiver = node("receiver").await;
-    for (owner, peer) in [(&sender, &receiver), (&receiver, &sender)] {
+    for (owner, user) in [(&sender, &receiver), (&receiver, &sender)] {
         owner
             .trust
-            .commit(NewPeer {
-                id: peer.identity.node_id().to_string(),
-                fingerprint: peer.identity.fingerprint().to_hex(),
+            .commit(NewUser {
+                id: user.identity.node_id().to_string(),
+                fingerprint: user.identity.fingerprint().to_hex(),
                 public_key: None,
-                display_name: Some("Peer".to_owned()),
-                policy: ticonnect_daemon::storage::PeerPolicy::Accept,
+                display_name: Some("User".to_owned()),
+                policy: ticonnect_daemon::storage::UserPolicy::Accept,
                 trusted_at: 0,
                 last_seen: None,
             })
             .await
-            .expect("trust peer");
+            .expect("trust user");
     }
     let address = sender.transport.local_addr().expect("addr");
     receiver
@@ -201,7 +201,7 @@ async fn two_nodes_transfer_and_verify_attachment() {
             .expect("request");
         let request = transfer_frame_from_wire(&frame).expect("transfer frame");
         sender_service
-            .serve_attachment(session.peer().clone(), send, recv, request)
+            .serve_attachment(session.user().clone(), send, recv, request)
             .await
             .expect("serve");
     });

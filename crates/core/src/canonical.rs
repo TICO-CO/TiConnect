@@ -214,13 +214,13 @@ mod tests {
         let second = sample();
 
         assert_eq!(first, second);
-        assert_eq!(first.len(), 64);
+        assert_eq!(first.len(), 62);
     }
 
     #[test]
     fn round_trip_preserves_fields() {
         let bytes = sample();
-        let mut decoder = Decoder::new("pairing", &bytes).expect("decoder");
+        let mut decoder = Decoder::new("trust", &bytes).expect("decoder");
 
         assert_eq!(decoder.u16().expect("version"), 1);
         assert_eq!(decoder.u8().expect("mode"), 2);
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn rejects_truncated_and_trailing_bytes() {
         let bytes = sample();
-        let mut truncated = Decoder::new("pairing", &bytes[..bytes.len() - 1]).expect("decoder");
+        let mut truncated = Decoder::new("trust", &bytes[..bytes.len() - 1]).expect("decoder");
         truncated.u16().expect("version");
         truncated.u8().expect("mode");
         truncated.bytes().expect("token");
@@ -251,7 +251,7 @@ mod tests {
 
         let mut extended = bytes;
         extended.push(0);
-        let mut decoder = Decoder::new("pairing", &extended).expect("decoder");
+        let mut decoder = Decoder::new("trust", &extended).expect("decoder");
         decoder.u16().expect("version");
         decoder.u8().expect("mode");
         decoder.bytes().expect("token");
@@ -265,7 +265,7 @@ mod tests {
 
     #[test]
     fn rejects_oversized_field() {
-        let mut encoder = Encoder::new("pairing").expect("encoder");
+        let mut encoder = Encoder::new("trust").expect("encoder");
         let too_large = vec![0_u8; MAX_CANONICAL_BYTES];
         assert!(matches!(
             encoder.bytes(&too_large),
@@ -274,7 +274,7 @@ mod tests {
     }
 
     fn sample() -> Vec<u8> {
-        let mut encoder = Encoder::new("pairing").expect("encoder");
+        let mut encoder = Encoder::new("trust").expect("encoder");
         encoder.u16(1).expect("version");
         encoder.u8(2).expect("mode");
         encoder.bytes(b"abcdef").expect("token");

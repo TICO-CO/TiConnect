@@ -5,11 +5,11 @@ use ticonnect_core::message::{MessageKind, MessageRecord, conversation_id};
 use ticonnect_core::sign::SignedEnvelope;
 
 use super::MessagingError;
-use crate::storage::Peer;
+use crate::storage::User;
 
-pub fn text(local: NodeId, peer: NodeId, seq: u64, sent_at: i64, body: String) -> MessageRecord {
+pub fn text(local: NodeId, user: NodeId, seq: u64, sent_at: i64, body: String) -> MessageRecord {
     MessageRecord::text(
-        conversation_id(local, peer),
+        conversation_id(local, user),
         local.to_string(),
         seq,
         sent_at,
@@ -19,13 +19,13 @@ pub fn text(local: NodeId, peer: NodeId, seq: u64, sent_at: i64, body: String) -
 
 pub fn attachment(
     local: NodeId,
-    peer: NodeId,
+    user: NodeId,
     seq: u64,
     sent_at: i64,
     attachment: &ticonnect_core::attachment::AttachmentRef,
 ) -> Result<MessageRecord, MessagingError> {
     MessageRecord::new(
-        conversation_id(local, peer),
+        conversation_id(local, user),
         local.to_string(),
         seq,
         sent_at,
@@ -38,7 +38,7 @@ pub fn attachment(
 
 pub fn ack(
     local: NodeId,
-    peer: NodeId,
+    user: NodeId,
     seq: u64,
     sent_at: i64,
     kind: AckKind,
@@ -46,7 +46,7 @@ pub fn ack(
 ) -> Result<MessageRecord, MessagingError> {
     Ok(ticonnect_core::ack::record(
         kind,
-        conversation_id(local, peer),
+        conversation_id(local, user),
         local.to_string(),
         seq,
         sent_at,
@@ -56,20 +56,20 @@ pub fn ack(
 
 pub fn verified(
     bytes: &[u8],
-    peer: &Peer,
+    user: &User,
     local: NodeId,
 ) -> Result<(MessageRecord, Vec<u8>), MessagingError> {
-    let public_key = peer
+    let public_key = user
         .public_key
-        .ok_or_else(|| MessagingError::MissingPeerKey(peer.id.clone()))?;
+        .ok_or_else(|| MessagingError::MissingUserKey(user.id.clone()))?;
     let public_key = VerifyingKey::from_bytes(&public_key)
-        .map_err(|_| MessagingError::InvalidPeerKey(peer.id.clone()))?;
+        .map_err(|_| MessagingError::InvalidUserKey(user.id.clone()))?;
     let (record, envelope) = MessageRecord::decode_signed(bytes, &public_key)?;
-    if record.sender_id != peer.id {
+    if record.sender_id != user.id {
         return Err(MessagingError::SenderMismatch);
     }
-    let peer_id = peer_node(peer)?;
-    if record.conversation_id != conversation_id(local, peer_id) {
+    let user_id = user_node(user)?;
+    if record.conversation_id != conversation_id(local, user_id) {
         return Err(MessagingError::ConversationMismatch);
     }
     Ok((record, envelope.signature().to_vec()))
@@ -87,8 +87,8 @@ pub fn is_ack(record: &MessageRecord) -> bool {
     record.kind == MessageKind::Ack
 }
 
-fn peer_node(peer: &Peer) -> Result<NodeId, MessagingError> {
-    peer.id
+fn user_node(user: &User) -> Result<NodeId, MessagingError> {
+    user.id
         .parse()
-        .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))
+        .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))
 }

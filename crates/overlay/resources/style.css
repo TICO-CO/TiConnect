@@ -35,3 +35,16 @@ window.ticonnect-overlay {
 window.ticonnect-x11-overlay {
   background-color: transparent;
 }
+
+.ticonnect-card-action {
+  min-height: 28px;
+  padding: 2px 12px;
+  border-radius: 8px;
+  font-size: 0.85em;
+}
+
+window.ticonnect-player {
+  background-color: #000000;
+  border-radius: 12px;
+  box-shadow: 0 8px 28px alpha(black, 0.35);
+}

@@ -4,7 +4,7 @@ use ticonnect_core::call::{CallDirection, CallId, CallState};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveCall {
     pub id: CallId,
-    pub peer_id: String,
+    pub user_id: String,
     pub direction: CallDirection,
     pub state: CallState,
     pub created_at: i64,
@@ -15,7 +15,7 @@ impl ActiveCall {
     pub fn info(&self) -> CallInfo {
         CallInfo {
             id: self.id,
-            peer_id: self.peer_id.clone(),
+            user_id: self.user_id.clone(),
             direction: self.direction,
             state: self.state,
             created_at: self.created_at,
@@ -27,7 +27,7 @@ impl ActiveCall {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CallInfo {
     pub id: CallId,
-    pub peer_id: String,
+    pub user_id: String,
     pub direction: CallDirection,
     pub state: CallState,
     pub created_at: i64,
@@ -72,36 +72,36 @@ impl CallRegistry {
         self.active.as_ref()
     }
 
-    pub fn start(&mut self, peer_id: &str, now: i64) -> Result<CallTransition, CallStateError> {
-        self.begin(peer_id, CallDirection::Outgoing, now)
+    pub fn start(&mut self, user_id: &str, now: i64) -> Result<CallTransition, CallStateError> {
+        self.begin(user_id, CallDirection::Outgoing, now)
     }
 
-    pub fn incoming(&mut self, peer_id: &str, now: i64) -> Result<CallTransition, CallStateError> {
-        self.begin(peer_id, CallDirection::Incoming, now)
+    pub fn incoming(&mut self, user_id: &str, now: i64) -> Result<CallTransition, CallStateError> {
+        self.begin(user_id, CallDirection::Incoming, now)
     }
 
     pub fn incoming_with_id(
         &mut self,
         id: CallId,
-        peer_id: &str,
+        user_id: &str,
         now: i64,
     ) -> Result<CallTransition, CallStateError> {
-        self.begin_with_id(id, peer_id, CallDirection::Incoming, now)
+        self.begin_with_id(id, user_id, CallDirection::Incoming, now)
     }
 
     fn begin(
         &mut self,
-        peer_id: &str,
+        user_id: &str,
         direction: CallDirection,
         now: i64,
     ) -> Result<CallTransition, CallStateError> {
-        self.begin_with_id(CallId::generate(), peer_id, direction, now)
+        self.begin_with_id(CallId::generate(), user_id, direction, now)
     }
 
     fn begin_with_id(
         &mut self,
         id: CallId,
-        peer_id: &str,
+        user_id: &str,
         direction: CallDirection,
         now: i64,
     ) -> Result<CallTransition, CallStateError> {
@@ -110,7 +110,7 @@ impl CallRegistry {
         }
         let call = ActiveCall {
             id,
-            peer_id: peer_id.to_owned(),
+            user_id: user_id.to_owned(),
             direction,
             state: CallState::Ringing,
             created_at: now,
@@ -150,11 +150,11 @@ impl CallRegistry {
         self.end(id, EndReason::Error, false)
     }
 
-    pub fn disconnected(&mut self, peer_id: &str) -> Option<(ActiveCall, EndReason)> {
+    pub fn disconnected(&mut self, user_id: &str) -> Option<(ActiveCall, EndReason)> {
         if self
             .active
             .as_ref()
-            .is_some_and(|call| call.peer_id == peer_id)
+            .is_some_and(|call| call.user_id == user_id)
         {
             let mut call = self.active.take().expect("active call");
             call.state = CallState::Ended;
@@ -212,12 +212,12 @@ mod tests {
     #[test]
     fn follows_the_documented_state_machine() {
         let mut registry = CallRegistry::default();
-        let CallTransition::Ringing(call) = registry.start("peer", 1).expect("start") else {
+        let CallTransition::Ringing(call) = registry.start("user", 1).expect("start") else {
             panic!("expected ringing");
         };
         assert_eq!(call.state, CallState::Ringing);
         assert!(matches!(
-            registry.start("peer", 2),
+            registry.start("user", 2),
             Err(CallStateError::Busy)
         ));
 
@@ -238,7 +238,7 @@ mod tests {
     #[test]
     fn incoming_decline_timeout_and_disconnect_end_calls() {
         let mut registry = CallRegistry::default();
-        let CallTransition::Ringing(call) = registry.incoming("peer", 1).expect("incoming") else {
+        let CallTransition::Ringing(call) = registry.incoming("user", 1).expect("incoming") else {
             panic!("expected ringing");
         };
         assert!(matches!(
@@ -246,7 +246,7 @@ mod tests {
             Ok(CallTransition::Ended(_, EndReason::Declined))
         ));
 
-        let CallTransition::Ringing(call) = registry.incoming("peer", 1).expect("incoming") else {
+        let CallTransition::Ringing(call) = registry.incoming("user", 1).expect("incoming") else {
             panic!("expected ringing");
         };
         assert!(matches!(
@@ -254,11 +254,11 @@ mod tests {
             Ok(CallTransition::Ended(_, EndReason::Timeout))
         ));
 
-        let CallTransition::Ringing(_) = registry.incoming("peer", 1).expect("incoming") else {
+        let CallTransition::Ringing(_) = registry.incoming("user", 1).expect("incoming") else {
             panic!("expected ringing");
         };
         assert_eq!(
-            registry.disconnected("peer").map(|(_, reason)| reason),
+            registry.disconnected("user").map(|(_, reason)| reason),
             Some(EndReason::Disconnected)
         );
     }
@@ -267,7 +267,7 @@ mod tests {
     fn invalid_transitions_are_rejected() {
         let mut registry = CallRegistry::default();
         assert!(registry.decline(CallId::generate()).is_err());
-        let CallTransition::Ringing(call) = registry.incoming("peer", 1).expect("incoming") else {
+        let CallTransition::Ringing(call) = registry.incoming("user", 1).expect("incoming") else {
             panic!("expected ringing");
         };
         assert!(registry.hangup(call.id).is_err());

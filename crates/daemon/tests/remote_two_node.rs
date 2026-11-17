@@ -35,7 +35,7 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
     assert_eq!(requested.role, "host");
     assert_eq!(requested.state, "requested");
     assert_eq!(requested.pin.len(), 6);
-    assert_eq!(requested.peer_id, first.node_id().to_string());
+    assert_eq!(requested.user_id, first.node_id().to_string());
 
     second
         .remote
@@ -260,11 +260,11 @@ async fn input_is_rejected_without_active_session() {
     let first = TestNode::start("remote-input-first").await;
     let second = TestNode::start("remote-input-second").await;
     connect_pair(&first, &second).await;
-    let peer = second
+    let user = second
         .transport
         .session_by_node_id(first.node_id())
         .expect("session")
-        .peer()
+        .user()
         .clone();
     let packet = InputPacket {
         session_id: [0; 16],
@@ -274,7 +274,7 @@ async fn input_is_rejected_without_active_session() {
         pressed: false,
     };
     assert!(matches!(
-        second.remote.inject_input(peer, packet),
+        second.remote.inject_input(user, packet),
         Err(ticonnect_daemon::remote::RemoteError::Inactive)
     ));
 

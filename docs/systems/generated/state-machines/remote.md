@@ -9,16 +9,13 @@
 stateDiagram-v2
   state "idle: No remote session." as s_idle
   state "requested: Viewer asked for a session." as s_requested
-  state "consented: Host granted consent and PIN." as s_consented
   state "active: Capture and input are active." as s_active
   state "ending: Teardown in progress." as s_ending
   state "ended: Terminal session state." as s_ended
-  state "denied: Consent denied or PIN failed." as s_denied
-  s_idle --> s_requested: request [peer trusted]
-  s_requested --> s_consented: consent / generate PIN
+  state "denied: Consent denied." as s_denied
+  s_idle --> s_requested: request [user trusted]
+  s_requested --> s_active: consent / open portal and start framing
   s_requested --> s_denied: deny
-  s_consented --> s_active: pin_ok / open portal and start framing
-  s_consented --> s_denied: pin_fail [attempts remaining]
   s_active --> s_ending: kill_switch
   s_active --> s_ending: disconnect
   s_active --> s_ending: hangup
@@ -27,11 +24,9 @@ stateDiagram-v2
 
 | From | Event | To | Guard | Action |
 |---|---|---|---|---|
-| `idle` | request | `requested` | peer trusted |  |
-| `requested` | consent | `consented` |  | generate PIN |
+| `idle` | request | `requested` | user trusted |  |
+| `requested` | consent | `active` |  | open portal and start framing |
 | `requested` | deny | `denied` |  |  |
-| `consented` | pin_ok | `active` |  | open portal and start framing |
-| `consented` | pin_fail | `denied` | attempts remaining |  |
 | `active` | kill_switch | `ending` |  |  |
 | `active` | disconnect | `ending` |  |  |
 | `active` | hangup | `ending` |  |  |

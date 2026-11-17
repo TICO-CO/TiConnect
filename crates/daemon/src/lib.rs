@@ -1,12 +1,12 @@
 #![forbid(unsafe_code)]
 
 pub mod attachments;
+pub mod auto_trust;
 pub mod calls;
 pub mod config_watch;
 pub mod discovery_service;
 pub mod identity;
 pub mod messaging;
-pub mod pairing_service;
 pub mod profile;
 pub mod reconnect_service;
 pub mod remote;
@@ -15,6 +15,7 @@ pub mod service;
 pub mod storage;
 pub mod tray;
 pub mod trust;
+pub mod watch_party;
 
 #[cfg(test)]
 mod tests {

@@ -80,7 +80,6 @@ impl From<Error> for RpcError {
             Error::InvalidResponse(_) => "invalid_response",
             Error::Settings(_) => "settings_error",
             Error::Autostart(_) => "autostart_error",
-            Error::Pairing(_) => "pairing_error",
         };
         Self::new(code, error.to_string())
     }
@@ -122,10 +121,14 @@ async fn dispatch_inner(
         }
         "identity" => Ok(json!(link.identity().await?)),
         "status" => Ok(json!(link.status().await?)),
-        "list_peers" => Ok(json!(link.list_peers().await?)),
+        "list_users" => Ok(json!(link.list_users().await?)),
+        "get_user" => {
+            let input: UserId = params(value)?;
+            Ok(json!(link.get_user(input.user_id).await?))
+        }
         "list_candidates" => Ok(json!(link.list_candidates().await?)),
         "list_conversation_summaries" => Ok(json!(link.list_conversation_summaries().await?)),
-        "list_blocked_peers" => Ok(json!(link.list_blocked_peers().await?)),
+        "list_blocked_users" => Ok(json!(link.list_blocked_users().await?)),
         "list_settings" => {
             let settings = link.list_settings().await?;
             Ok(json!(settings.values()))
@@ -153,29 +156,14 @@ async fn dispatch_inner(
             link.clear_avatar().await?;
             Ok(Value::Null)
         }
-        "start_pairing" => Ok(json!(link.start_pairing().await?)),
-        "pair_with_pin" => {
-            let input: PairWithPin = params(value)?;
-            link.pair_with_pin(input.node_id, input.pin).await?;
+        "block_user" => {
+            let input: UserId = params(value)?;
+            link.block_user(input.user_id).await?;
             Ok(Value::Null)
         }
-        "pair_with_qr" => {
-            let input: PairWithQr = params(value)?;
-            link.pair_with_qr(input.payload).await?;
-            Ok(Value::Null)
-        }
-        "cancel_pairing" => {
-            link.cancel_pairing().await?;
-            Ok(Value::Null)
-        }
-        "block_peer" => {
-            let input: PeerId = params(value)?;
-            link.block_peer(input.peer_id).await?;
-            Ok(Value::Null)
-        }
-        "unblock_peer" => {
+        "unblock_user" => {
             let input: Fingerprint = params(value)?;
-            link.unblock_peer(input.fingerprint).await?;
+            link.unblock_user(input.fingerprint).await?;
             Ok(Value::Null)
         }
         "list_messages" => {
@@ -191,11 +179,11 @@ async fn dispatch_inner(
         }
         "send_message" => {
             let input: SendMessage = params(value)?;
-            Ok(json!(link.send_message(input.peer_id, input.body).await?))
+            Ok(json!(link.send_message(input.user_id, input.body).await?))
         }
         "send_attachment" => Err(RpcError::new(
             "use_http",
-            "attachments are uploaded by POST /attachment?peer_id=...",
+            "attachments are uploaded by POST /attachment?user_id=...",
         )),
         "attachment_path" | "save_attachment" => Err(RpcError::new(
             "use_http",
@@ -227,14 +215,14 @@ async fn dispatch_inner(
                 .await?;
             Ok(Value::Null)
         }
-        "set_peer_policy" => {
+        "set_user_policy" => {
             let input: SetPolicy = params(value)?;
-            link.set_peer_policy(input.peer_id, input.policy).await?;
+            link.set_user_policy(input.user_id, input.policy).await?;
             Ok(Value::Null)
         }
         "set_typing" => {
             let input: SetTyping = params(value)?;
-            link.set_typing(input.peer_id, input.typing).await?;
+            link.set_typing(input.user_id, input.typing).await?;
             Ok(Value::Null)
         }
         "set_dnd" => {
@@ -243,8 +231,8 @@ async fn dispatch_inner(
             Ok(Value::Null)
         }
         "start_call" => {
-            let input: PeerId = params(value)?;
-            Ok(json!(link.start_call(input.peer_id).await?))
+            let input: UserId = params(value)?;
+            Ok(json!(link.start_call(input.user_id).await?))
         }
         "accept_call" => {
             let input: CallId = params(value)?;
@@ -262,9 +250,39 @@ async fn dispatch_inner(
             Ok(Value::Null)
         }
         "call_state" => Ok(json!(link.call_state().await?)),
+        "start_watch_party" => {
+            let input: StartWatchParty = params(value)?;
+            Ok(json!(
+                link.start_watch_party(input.user_id, input.video_id)
+                    .await?
+            ))
+        }
+        "accept_watch_party" => {
+            let input: PartyId = params(value)?;
+            link.accept_watch_party(input.party_id).await?;
+            Ok(Value::Null)
+        }
+        "decline_watch_party" => {
+            let input: PartyId = params(value)?;
+            link.decline_watch_party(input.party_id).await?;
+            Ok(Value::Null)
+        }
+        "publish_watch_party" => {
+            let input: PublishWatchParty = params(value)?;
+            Ok(json!(
+                link.publish_watch_party(input.party_id, input.position_ms, input.playing)
+                    .await?
+            ))
+        }
+        "end_watch_party" => {
+            let input: PartyId = params(value)?;
+            link.end_watch_party(input.party_id).await?;
+            Ok(Value::Null)
+        }
+        "watch_party" => Ok(json!(link.watch_party().await?)),
         "request_remote_session" => {
-            let input: PeerId = params(value)?;
-            Ok(json!(link.request_remote_session(input.peer_id).await?))
+            let input: UserId = params(value)?;
+            Ok(json!(link.request_remote_session(input.user_id).await?))
         }
         "accept_remote_session" => {
             let input: AcceptRemote = params(value)?;
@@ -310,19 +328,8 @@ struct Enabled {
 }
 
 #[derive(Deserialize)]
-struct PairWithPin {
-    node_id: String,
-    pin: String,
-}
-
-#[derive(Deserialize)]
-struct PairWithQr {
-    payload: String,
-}
-
-#[derive(Deserialize)]
-struct PeerId {
-    peer_id: String,
+struct UserId {
+    user_id: String,
 }
 
 #[derive(Deserialize)]
@@ -349,7 +356,7 @@ struct ListMessages {
 
 #[derive(Deserialize)]
 struct SendMessage {
-    peer_id: String,
+    user_id: String,
     body: String,
 }
 
@@ -361,13 +368,13 @@ struct MarkRead {
 
 #[derive(Deserialize)]
 struct SetPolicy {
-    peer_id: String,
-    policy: ticonnect_core::ipc::events::PeerPolicy,
+    user_id: String,
+    policy: ticonnect_core::ipc::events::UserPolicy,
 }
 
 #[derive(Deserialize)]
 struct SetTyping {
-    peer_id: String,
+    user_id: String,
     typing: bool,
 }
 
@@ -379,6 +386,24 @@ struct CallId {
 #[derive(Deserialize)]
 struct SessionId {
     session_id: String,
+}
+
+#[derive(Deserialize)]
+struct StartWatchParty {
+    user_id: String,
+    video_id: String,
+}
+
+#[derive(Deserialize)]
+struct PartyId {
+    party_id: String,
+}
+
+#[derive(Deserialize)]
+struct PublishWatchParty {
+    party_id: String,
+    position_ms: u64,
+    playing: bool,
 }
 
 #[derive(Deserialize)]

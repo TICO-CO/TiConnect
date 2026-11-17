@@ -50,7 +50,7 @@ fn required_indexes_exist() {
 }
 
 #[test]
-fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
+fn user_state_rename_preserves_rows_and_removes_user_fk() {
     let path = temp_db();
     let mut connection = Connection::open(&path).expect("open db");
     connection
@@ -69,9 +69,9 @@ fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
         .execute_batch(
             "INSERT INTO peers
                  (id, fingerprint, public_key, display_name, policy, trusted_at, last_seen)
-             VALUES ('peer-1', 'fingerprint-1', NULL, NULL, 'accept', 1, NULL);
+             VALUES ('user-1', 'fingerprint-1', NULL, NULL, 'accept', 1, NULL);
              INSERT INTO peer_state (peer_id, last_sent_seq, last_recv_seq)
-             VALUES ('peer-1', 7, 3);",
+             VALUES ('user-1', 7, 3);",
         )
         .expect("seed data");
 
@@ -80,16 +80,16 @@ fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
 
     let state: (i64, i64) = connection
         .query_row(
-            "SELECT last_sent_seq, last_recv_seq FROM peer_state WHERE peer_id = 'peer-1'",
+            "SELECT last_sent_seq, last_recv_seq FROM user_state WHERE user_id = 'user-1'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .expect("peer state");
+        .expect("user state");
     assert_eq!(state, (7, 3));
 
     let foreign_keys: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM pragma_foreign_key_list('peer_state')",
+            "SELECT COUNT(*) FROM pragma_foreign_key_list('user_state')",
             [],
             |row| row.get(0),
         )

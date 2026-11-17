@@ -14,10 +14,10 @@ use ticonnect_core::id::NodeId;
 use tokio::sync::{broadcast as event_bus, watch};
 use tokio::task::JoinHandle;
 
-use self::candidate::{Candidate, CandidateCache, CandidateChange};
+use self::candidate::{Candidate, CandidateCache, CandidateChange, UserPlatform};
 
 pub const SERVICE_TYPE: &str = "_ticonnect._udp.local.";
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const BEACON_PORT: u16 = 45870;
 pub const BEACON_INTERVAL: Duration = Duration::from_secs(5);
 pub const MAX_PACKET_SIZE: usize = 1024;
@@ -25,6 +25,7 @@ pub const MAX_CANDIDATES: usize = 256;
 pub const MAX_ADDRESSES: usize = 8;
 pub const MAX_DISPLAY_NAME: usize = 64;
 pub const MAX_ADDRESS_LENGTH: usize = 45;
+pub const MAX_PLATFORM_FIELD: usize = 64;
 
 #[derive(Debug, Error)]
 pub enum DiscoveryError {
@@ -49,6 +50,7 @@ pub struct DiscoveryConfig {
     pub beacon_interval: Duration,
     pub display_name: String,
     pub avatar_hash: Option<String>,
+    pub platform: UserPlatform,
     pub node_id: String,
     pub fingerprint: String,
     pub transport_port: u16,
@@ -69,6 +71,7 @@ impl DiscoveryConfig {
             beacon_interval: BEACON_INTERVAL,
             display_name: display_name.into(),
             avatar_hash: None,
+            platform: UserPlatform::default(),
             node_id: node_id.into(),
             fingerprint: fingerprint.into(),
             transport_port: 0,
@@ -111,6 +114,7 @@ pub struct DiscoveryStatus {
 }
 
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub enum DiscoveryEvent {
     Found(Candidate),
     Lost(String),

@@ -3,10 +3,10 @@ use tokio::task::JoinHandle;
 
 use super::session;
 use super::{
-    SESSION_REJECTED, Session, Transport, TransportError, TransportEvent, peer_certificate,
+    SESSION_REJECTED, Session, Transport, TransportError, TransportEvent, user_certificate,
 };
-use crate::pairing::PAIRING_ALPN;
 use crate::tls::SESSION_ALPN;
+use crate::trust::TRUST_ALPN;
 
 pub(crate) fn spawn_accept_loop(transport: Transport) -> JoinHandle<()> {
     let endpoint = transport.endpoint().clone();
@@ -29,11 +29,11 @@ async fn handle_incoming(
     let connection = incoming
         .await
         .map_err(|error| TransportError::Handshake(error.to_string()))?;
-    let (fingerprint, public_key) = peer_certificate(&connection)?;
+    let (fingerprint, public_key) = user_certificate(&connection)?;
     let alpn = negotiated_alpn(&connection);
 
-    if alpn.as_deref() == Some(PAIRING_ALPN) {
-        let _ = transport.events().send(TransportEvent::PairingRequested {
+    if alpn.as_deref() == Some(TRUST_ALPN) {
+        let _ = transport.events().send(TransportEvent::TrustRequested {
             fingerprint,
             address: connection.remote_address(),
             connection,
@@ -60,11 +60,11 @@ async fn handle_incoming(
 
     if !transport.trust().is_trusted(&fingerprint.to_hex()) {
         transport.note_failure();
-        connection.close(SESSION_REJECTED.into(), b"untrusted peer");
+        connection.close(SESSION_REJECTED.into(), b"untrusted user");
         return Err(TransportError::Untrusted);
     }
 
-    let peer = session::server_handshake(
+    let user = session::server_handshake(
         &connection,
         transport.node_id(),
         transport.expected_fingerprint(),
@@ -72,14 +72,14 @@ async fn handle_incoming(
         public_key,
     )
     .await?;
-    let session = Session::new(connection.clone(), peer.clone());
+    let session = Session::new(connection.clone(), user.clone());
     transport.register(session);
 
     let disconnect_transport = transport.clone();
-    let disconnect_peer = peer;
+    let disconnect_user = user;
     tokio::spawn(async move {
         connection.closed().await;
-        disconnect_transport.unregister(connection.stable_id(), &disconnect_peer);
+        disconnect_transport.unregister(connection.stable_id(), &disconnect_user);
     });
 
     Ok(())

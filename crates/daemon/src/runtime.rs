@@ -9,16 +9,17 @@ use tokio::sync::watch;
 use zbus::object_server::SignalEmitter;
 
 use crate::attachments;
+use crate::auto_trust;
 use crate::calls;
 use crate::config_watch;
 use crate::discovery_service;
 use crate::messaging::{self, MessagingEvent};
-use crate::pairing_service;
 use crate::profile;
 use crate::reconnect_service;
 use crate::remote;
 use crate::service::{DaemonService, DaemonState};
 use crate::tray;
+use crate::watch_party;
 
 #[derive(Clone)]
 pub struct Shutdown {
@@ -79,7 +80,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
         tracing::warn!(%error, "failed to start discovery");
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
-    let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let auto_trust_task = auto_trust::spawn(connection.clone(), state.auto_trust().clone());
     let profile_task = profile::spawn(
         connection.clone(),
         state.discovery().clone(),
@@ -96,6 +97,26 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     let (remote_sender, remote_receiver) = tokio::sync::mpsc::unbounded_channel();
     state.messaging().set_remote_sender(remote_sender);
     let remote_task = remote::spawn(state.remote().as_ref().clone(), remote_receiver);
+    let (watch_party_sender, watch_party_receiver) = tokio::sync::mpsc::unbounded_channel();
+    state.messaging().set_watch_party_sender(watch_party_sender);
+    let watch_party_task = watch_party::spawn(state.watch_party().clone(), watch_party_receiver);
+    let mut watch_party_events = state.watch_party().subscribe();
+    let watch_party_connection = connection.clone();
+    let watch_party_event_task = tokio::spawn(async move {
+        loop {
+            match watch_party_events.recv().await {
+                Ok(event) => {
+                    if let Err(error) =
+                        crate::service::emit_watch_party_event(&watch_party_connection, event).await
+                    {
+                        tracing::warn!(%error, "failed to emit watch party signal");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
     let mut remote_events = state.remote().subscribe();
     let remote_connection = connection.clone();
     let remote_event_task = tokio::spawn(async move {
@@ -189,7 +210,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     watcher.abort();
     state.discovery().stop_and_wait().await;
     discovery_task.abort();
-    pairing_task.abort();
+    auto_trust_task.abort();
     profile_task.abort();
     messaging_task.abort();
     message_sound_task.abort();
@@ -198,6 +219,8 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     calls_task.abort();
     call_event_task.abort();
     remote_task.abort();
+    watch_party_task.abort();
+    watch_party_event_task.abort();
     remote_event_task.abort();
     tray_task.abort();
     reconnect_task.abort();

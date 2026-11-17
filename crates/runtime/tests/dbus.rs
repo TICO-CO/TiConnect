@@ -20,16 +20,11 @@ trait Daemon {
     fn get_identity(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn start_pairing(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn pair_with_pin(&self, node_id: &str, pin: &str) -> zbus::Result<bool>;
-    fn pair_with_qr(&self, payload: &str) -> zbus::Result<bool>;
-    fn cancel_pairing(&self) -> zbus::Result<()>;
-    fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
-    fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
-    fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
+    fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
+    fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
     fn list_messages(
         &self,
         conversation_id: &str,
@@ -37,20 +32,20 @@ trait Daemon {
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
-    fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
-    fn send_attachment(&self, peer_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn send_attachment(&self, user_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
     fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
     fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
     fn get_attachment_path(&self, hash: &str) -> zbus::Result<String>;
-    fn start_call(&self, peer_id: &str) -> zbus::Result<String>;
+    fn start_call(&self, user_id: &str) -> zbus::Result<String>;
     fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
     fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
     fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
+    fn request_remote_session(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
@@ -124,7 +119,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     let status = proxy.get_status().await.expect("status");
     assert!(status.contains_key(ipc::STATUS_UPTIME_SECONDS));
     assert_eq!(
-        u32::try_from(&status[ipc::STATUS_PEER_COUNT]).expect("peer count"),
+        u32::try_from(&status[ipc::STATUS_USER_COUNT]).expect("user count"),
         0
     );
     assert_eq!(
@@ -162,23 +157,16 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     assert!(settings.contains_key("appearance.color_scheme"));
     assert!(settings.contains_key("attachments.max_size_mib"));
     assert!(settings.contains_key("calls.timeout_secs"));
-    assert!(settings.contains_key("remote.pin_attempts"));
+    assert!(settings.contains_key("remote.session_timeout_secs"));
     assert!(settings.contains_key("video.bitrate_kbps"));
     assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
     assert!(proxy.get_setting("missing.key").await.is_err());
-    assert!(proxy.list_peers().await.expect("peers").is_empty());
+    assert!(proxy.list_users().await.expect("users").is_empty());
     assert!(
         proxy
             .list_candidates()
             .await
             .expect("candidates")
-            .is_empty()
-    );
-    assert!(
-        proxy
-            .list_trusted_peers()
-            .await
-            .expect("trusted peers")
             .is_empty()
     );
     assert!(
@@ -202,7 +190,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     assert!(
         proxy
-            .set_peer_policy("00000000-0000-7000-8000-000000000000", "mute")
+            .set_user_policy("00000000-0000-7000-8000-000000000000", "mute")
             .await
             .is_err()
     );
@@ -260,21 +248,6 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         u32::try_from(&discovery[ipc::DISCOVERY_CANDIDATE_COUNT]).expect("candidate count"),
         0
     );
-
-    let pairing = proxy.start_pairing().await.expect("start pairing");
-    assert_eq!(
-        <&str>::try_from(&pairing[ipc::PAIRING_PIN])
-            .expect("pairing pin")
-            .len(),
-        6
-    );
-    assert!(
-        <&str>::try_from(&pairing[ipc::PAIRING_QR])
-            .expect("pairing qr")
-            .starts_with("ticonnect://pair/v1?")
-    );
-    assert!(u64::try_from(&pairing[ipc::PAIRING_EXPIRES_AT]).expect("expiry") > 0);
-    proxy.cancel_pairing().await.expect("cancel pairing");
 
     assert!(config_dir.join("identity.key").is_file());
     assert!(config_dir.join("identity.toml").is_file());

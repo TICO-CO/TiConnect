@@ -24,7 +24,7 @@ flowchart LR
     n_att_link["ATT.link<br/>ATT"]
     n_db_messages["DB.messages<br/>DB"]
     n_db_outbox["DB.outbox<br/>DB"]
-    n_db_peer_state["DB.peer-state<br/>DB"]
+    n_db_user_state["DB.user-state<br/>DB"]
     n_dom_ids["DOM.ids<br/>DOM"]
     n_dom_message["DOM.message<br/>DOM"]
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
@@ -45,7 +45,7 @@ flowchart LR
   n_msg_outbox -->|calls / sync: sign outbound record| n_msg_signer
   n_msg_outbox -->|calls / sync: queue outbound record| n_db_outbox
   n_msg_outbox -.->|invokes / async: send message frame| n_tx_streams
-  n_msg_sync_planner -->|calls / sync: read peer state| n_db_peer_state
+  n_msg_sync_planner -->|calls / sync: read user state| n_db_user_state
   n_msg_sync_executor -->|calls / sync: plan missing ranges| n_msg_sync_planner
   n_msg_sync_executor -.->|invokes / async: request missing records| n_tx_streams
   n_msg_sync_executor -->|calls / sync: insert synced records| n_db_messages
@@ -58,10 +58,10 @@ flowchart LR
   n_msg_outbox -.->|emits / event: outbox state changed| n_msg_events
   n_msg_sync_executor -.->|emits / event: SyncCompleted| n_msg_events
   n_msg_receipts -->|calls / sync gate:POL.receipts: receipt suppression| n_pol_receipts
-  n_msg_ingest -->|calls / sync: update last_recv_seq| n_db_peer_state
+  n_msg_ingest -->|calls / sync: update last_recv_seq| n_db_user_state
   n_att_link -->|calls / sync: attachment message| n_msg_ingest
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_att_link, n_db_messages, n_db_outbox, n_db_peer_state, n_dom_ids, n_dom_message, n_ipc_signal_bus, n_pol_inbound, n_pol_receipts, n_tx_session, n_tx_streams external;
+  class n_att_link, n_db_messages, n_db_outbox, n_db_user_state, n_dom_ids, n_dom_message, n_ipc_signal_bus, n_pol_inbound, n_pol_receipts, n_tx_session, n_tx_streams external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -78,7 +78,7 @@ flowchart LR
 | `MSG.outbox` | calls | sync | `MSG.signer` | sign outbound record |  |  | 6 |
 | `MSG.outbox` | calls | sync | `DB.outbox` | queue outbound record |  |  | 6 |
 | `MSG.outbox` | invokes | async | `TX.streams` | send message frame |  |  | 6 |
-| `MSG.sync-planner` | calls | sync | `DB.peer-state` | read peer state |  |  | 6 |
+| `MSG.sync-planner` | calls | sync | `DB.user-state` | read user state |  |  | 6 |
 | `MSG.sync-executor` | calls | sync | `MSG.sync-planner` | plan missing ranges |  |  | 6 |
 | `MSG.sync-executor` | invokes | async | `TX.streams` | request missing records |  |  | 6 |
 | `MSG.sync-executor` | calls | sync | `DB.messages` | insert synced records |  |  | 6 |
@@ -91,5 +91,5 @@ flowchart LR
 | `MSG.outbox` | emits | event | `MSG.events` | outbox state changed |  |  | 6 |
 | `MSG.sync-executor` | emits | event | `MSG.events` | SyncCompleted |  |  | 6 |
 | `MSG.receipts` | calls | sync | `POL.receipts` | receipt suppression | POL.receipts |  | 6 |
-| `MSG.ingest` | calls | sync | `DB.peer-state` | update last_recv_seq |  |  | 6 |
+| `MSG.ingest` | calls | sync | `DB.user-state` | update last_recv_seq |  |  | 6 |
 | `ATT.link` | calls | sync | `MSG.ingest` | attachment message |  |  | 9 |

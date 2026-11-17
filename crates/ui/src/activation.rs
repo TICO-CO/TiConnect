@@ -4,7 +4,7 @@ use tokio::sync::broadcast;
 pub enum ActivationEvent {
     Primary,
     Show(String),
-    ShowPeer(String),
+    ShowUser(String),
     Duplicate,
 }
 
@@ -16,12 +16,12 @@ struct UiService {
 #[zbus::interface(name = "org.ticonnect.UI")]
 impl UiService {
     async fn activate(&self, view: String) -> zbus::fdo::Result<()> {
-        if let Some(peer_id) = view.strip_prefix("chat:") {
-            peer_id
+        if let Some(user_id) = view.strip_prefix("chat:") {
+            user_id
                 .parse::<ticonnect_core::id::NodeId>()
-                .map_err(|_| zbus::fdo::Error::InvalidArgs("invalid peer id".to_owned()))?;
+                .map_err(|_| zbus::fdo::Error::InvalidArgs("invalid user id".to_owned()))?;
             self.sender
-                .send(ActivationEvent::ShowPeer(peer_id.to_owned()))
+                .send(ActivationEvent::ShowUser(user_id.to_owned()))
                 .map_err(|_| zbus::fdo::Error::Failed("UI is not available".to_owned()))?;
             return Ok(());
         }

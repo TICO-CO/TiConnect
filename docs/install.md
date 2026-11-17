@@ -89,9 +89,8 @@ directly:
 ```sh
 ticonnect status
 ticonnect id show
-ticonnect pair start
-ticonnect send <peer-id> "hello"
-ticonnect peers list
+ticonnect send <user-id> "hello"
+ticonnect users list
 ticonnect settings list
 ```
 

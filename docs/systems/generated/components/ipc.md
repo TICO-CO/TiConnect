@@ -23,8 +23,6 @@ flowchart LR
     n_disc_dbus["DISC.dbus<br/>DISC"]
     n_dom_ids["DOM.ids<br/>DOM"]
     n_msg_events["MSG.events<br/>MSG"]
-    n_pair_commit["PAIR.commit<br/>PAIR"]
-    n_pair_dbus["PAIR.dbus<br/>PAIR"]
     n_pol_notify["POL.notify<br/>POL"]
     n_pol_store["POL.store<br/>POL"]
     n_rd_consent["RD.consent<br/>RD"]
@@ -32,6 +30,8 @@ flowchart LR
     n_rd_state["RD.state<br/>RD"]
     n_rt_wiring["RT.wiring<br/>RT"]
     n_tray_item["TRAY.item<br/>TRAY"]
+    n_trust_commit["TRUST.commit<br/>TRUST"]
+    n_trust_dbus["TRUST.dbus<br/>TRUST"]
     n_tx_session["TX.session<br/>TX"]
     n_ui_client["UI.client<br/>UI"]
   end
@@ -47,8 +47,8 @@ flowchart LR
   n_ipc_signal_bus -->|calls / sync: signal payload| n_ipc_dto
   n_ipc_version -->|calls / sync: compatibility check| n_ipc_schema
   n_disc_dbus -.->|emits / event: CandidateFound and CandidateLost| n_ipc_signal_bus
-  n_pair_commit -.->|emits / event: PairingCompleted or PairingFailed| n_ipc_signal_bus
-  n_tx_session -.->|emits / event: PeerConnected and PeerDisconnected| n_ipc_signal_bus
+  n_trust_commit -.->|emits / event: Automatic trustCompleted or Automatic trustFailed| n_ipc_signal_bus
+  n_tx_session -.->|emits / event: UserConnected and UserDisconnected| n_ipc_signal_bus
   n_msg_events -.->|emits / event: MessageReceived and MessageStateChanged| n_ipc_signal_bus
   n_pol_notify -.->|emits / event: notification event| n_ipc_signal_bus
   n_pol_store -.->|emits / event: PolicyChanged| n_ipc_signal_bus
@@ -61,9 +61,9 @@ flowchart LR
   n_ui_client -.->|consumes / event: daemon signals| n_ipc_signal_bus
   n_tray_item -.->|emits / event: tray status| n_ipc_signal_bus
   n_cli_daemon -->|calls / sync: daemon proxy| n_ipc_client
-  n_pair_dbus -.->|emits / event: PairingStarted, PairingCompleted, and PairingFailed| n_ipc_signal_bus
+  n_trust_dbus -.->|emits / event: Automatic trustStarted, Automatic trustCompleted, and Automatic trustFailed| n_ipc_signal_bus
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_dbus, n_dom_ids, n_msg_events, n_pair_commit, n_pair_dbus, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_tx_session, n_ui_client external;
+  class n_att_progress, n_call_state, n_cfg_watch, n_cli_daemon, n_disc_dbus, n_dom_ids, n_msg_events, n_pol_notify, n_pol_store, n_rd_consent, n_rd_indicator, n_rd_state, n_rt_wiring, n_tray_item, n_trust_commit, n_trust_dbus, n_tx_session, n_ui_client external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -80,8 +80,8 @@ flowchart LR
 | `IPC.signal-bus` | calls | sync | `IPC.dto` | signal payload |  |  | 2 |
 | `IPC.version` | calls | sync | `IPC.schema` | compatibility check |  |  | 2 |
 | `DISC.dbus` | emits | event | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  | 4 |
-| `PAIR.commit` | emits | event | `IPC.signal-bus` | PairingCompleted or PairingFailed |  |  | 5 |
-| `TX.session` | emits | event | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  | 5 |
+| `TRUST.commit` | emits | event | `IPC.signal-bus` | Automatic trustCompleted or Automatic trustFailed |  |  | 5 |
+| `TX.session` | emits | event | `IPC.signal-bus` | UserConnected and UserDisconnected |  |  | 5 |
 | `MSG.events` | emits | event | `IPC.signal-bus` | MessageReceived and MessageStateChanged |  |  | 6 |
 | `POL.notify` | emits | event | `IPC.signal-bus` | notification event |  |  | 6 |
 | `POL.store` | emits | event | `IPC.signal-bus` | PolicyChanged |  |  | 6 |
@@ -94,4 +94,4 @@ flowchart LR
 | `UI.client` | consumes | event | `IPC.signal-bus` | daemon signals |  |  | 7 |
 | `TRAY.item` | emits | event | `IPC.signal-bus` | tray status |  |  | 6 |
 | `CLI.daemon` | calls | sync | `IPC.client` | daemon proxy |  |  | 2 |
-| `PAIR.dbus` | emits | event | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  | 5 |
+| `TRUST.dbus` | emits | event | `IPC.signal-bus` | Automatic trustStarted, Automatic trustCompleted, and Automatic trustFailed |  |  | 5 |

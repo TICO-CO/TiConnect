@@ -126,8 +126,8 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
     let first = TestNode::start("att-dedupe-first").await;
     let second = TestNode::start("att-dedupe-second").await;
     connect_pair(&first, &second).await;
-    let peer_first = first.node_id().to_string();
-    let peer_second = second.node_id().to_string();
+    let user_first = first.node_id().to_string();
+    let user_second = second.node_id().to_string();
     let conversation = conversation_id(first.node_id(), second.node_id());
 
     let path = first.dir.join("duplicate.bin");
@@ -146,7 +146,7 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
         .expect("record");
     first
         .messaging
-        .send_attachment(&peer_second, &attachment)
+        .send_attachment(&user_second, &attachment)
         .await
         .expect("send first");
     wait_for(Duration::from_secs(10), || async {
@@ -166,7 +166,7 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
     while events.try_recv().is_ok() {}
     first
         .messaging
-        .send_attachment(&peer_second, &attachment)
+        .send_attachment(&user_second, &attachment)
         .await
         .expect("send duplicate");
     wait_for(Duration::from_secs(10), || async {
@@ -193,9 +193,9 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
 
     second
         .messaging
-        .set_peer_policy(&peer_first, ticonnect_daemon::storage::PeerPolicy::Ignore)
+        .set_user_policy(&user_first, ticonnect_daemon::storage::UserPolicy::Ignore)
         .await
-        .expect("ignore peer");
+        .expect("ignore user");
     let ignored_path = first.dir.join("ignored.bin");
     std::fs::write(&ignored_path, b"ignored attachment").expect("write ignored");
     let ignored = first
@@ -205,7 +205,7 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
         .expect("prepare ignored");
     first
         .messaging
-        .send_attachment(&peer_second, &ignored)
+        .send_attachment(&user_second, &ignored)
         .await
         .expect("send ignored");
     tokio::time::sleep(Duration::from_millis(800)).await;
@@ -221,7 +221,7 @@ async fn duplicate_content_skips_second_transfer_and_ignore_blocks_new_attachmen
 
     second
         .messaging
-        .set_peer_policy(&peer_first, ticonnect_daemon::storage::PeerPolicy::Accept)
+        .set_user_policy(&user_first, ticonnect_daemon::storage::UserPolicy::Accept)
         .await
         .expect("restore policy");
     first.shutdown().await;

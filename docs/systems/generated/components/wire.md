@@ -24,11 +24,11 @@ flowchart LR
     n_dom_attachment_ref["DOM.attachment-ref<br/>DOM"]
     n_dom_message["DOM.message<br/>DOM"]
     n_dt_validate["DT.validate<br/>DT"]
-    n_pair_endpoint["PAIR.endpoint<br/>PAIR"]
+    n_trust_endpoint["TRUST.endpoint<br/>TRUST"]
     n_tx_datagrams["TX.datagrams<br/>TX"]
     n_tx_streams["TX.streams<br/>TX"]
   end
-  n_pair_endpoint -->|calls / sync: pairing frame envelope| n_wire_envelope
+  n_trust_endpoint -->|calls / sync: trust frame envelope| n_wire_envelope
   n_tx_streams -->|calls / sync: stream frames| n_wire_envelope
   n_tx_datagrams -->|calls / sync: datagram frames| n_wire_envelope
   n_wire_envelope -->|calls / sync: frame limits| n_wire_limits
@@ -46,12 +46,12 @@ flowchart LR
   n_wire_transfer -->|calls / sync: attachment reference| n_dom_attachment_ref
   n_wire_input -->|calls / sync gate:RD.consent: input validation| n_dt_validate
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_dom_ack, n_dom_attachment_ref, n_dom_message, n_dt_validate, n_pair_endpoint, n_tx_datagrams, n_tx_streams external;
+  class n_dom_ack, n_dom_attachment_ref, n_dom_message, n_dt_validate, n_trust_endpoint, n_tx_datagrams, n_tx_streams external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
 |---|---|---|---|---|---|---|---|
-| `PAIR.endpoint` | calls | sync | `WIRE.envelope` | pairing frame envelope |  |  | 5 |
+| `TRUST.endpoint` | calls | sync | `WIRE.envelope` | trust frame envelope |  |  | 5 |
 | `TX.streams` | calls | sync | `WIRE.envelope` | stream frames |  |  | 5 |
 | `TX.datagrams` | calls | sync | `WIRE.envelope` | datagram frames |  |  | 5 |
 | `WIRE.envelope` | calls | sync | `WIRE.limits` | frame limits |  |  | 5 |

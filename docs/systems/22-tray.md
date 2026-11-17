@@ -34,7 +34,7 @@ Runs inside the daemon. Calls policy and IPC. Does not own policy state.
 - ksni StatusNotifierItem
 - menu actions
 - DND toggle
-- peer policy submenu
+- user policy submenu
 
 ## Relations
 
@@ -43,7 +43,7 @@ Runs inside the daemon. Calls policy and IPC. Does not own policy state.
 | `TRAY.item` | `calls` | `sync` | `TRAY.menu` | tray menu |  |  |
 | `TRAY.menu` | `calls` | `sync` | `TRAY.policy` | policy menu |  |  |
 | `TRAY.menu` | `calls` | `sync` | `TRAY.activate` | open app action |  |  |
-| `TRAY.policy` | `calls` | `sync` | `POL.store` | set peer policy | POL.store |  |
+| `TRAY.policy` | `calls` | `sync` | `POL.store` | set user policy | POL.store |  |
 | `TRAY.activate` | `calls` | `sync` | `UI.activate` | Activate view |  |  |
 | `TRAY.fallback` | `calls` | `sync` | `TRAY.item` | tray unavailable |  |  |
 | `TRAY.item` | `emits` | `event` | `IPC.signal-bus` | tray status |  |  |
@@ -56,7 +56,7 @@ Runs inside the daemon. Calls policy and IPC. Does not own policy state.
 - `INV-POL-1` — Ignore policy is enforced before storage; DND suppresses notifications but not storage. Test: planned: crates/daemon/tests/policy.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 

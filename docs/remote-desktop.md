@@ -2,7 +2,7 @@
 
 ## Consent flow
 
-1. The viewer calls `RequestRemoteSession(peer_id)`. The host creates a session
+1. The viewer calls `RequestRemoteSession(user_id)`. The host creates a session
    in `requested` and emits `RemoteSessionRequested` with the viewer fingerprint
    and a fresh six-digit PIN.
 2. The host shows the consent dialog and calls `AcceptRemoteSession(session_id, "")`
@@ -14,7 +14,7 @@
 5. `EndRemoteSession(session_id)` is the kill switch. It stops capture, releases
    input, sends a kill frame, and tears down the route immediately.
 
-Sessions are scoped to exactly one pinned peer. There is no remembered grant in
+Sessions are scoped to exactly one pinned user. There is no remembered grant in
 v1: every session repeats consent and PIN entry.
 
 ## Desktop support

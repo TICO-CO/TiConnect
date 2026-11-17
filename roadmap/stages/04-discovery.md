@@ -21,7 +21,7 @@ Component graph: [DISC](../../docs/systems/generated/components/disc.md).
 
 ## Non-goals
 
-- No pairing, TLS, or message exchange.
+- No trust, TLS, or message exchange.
 - No relay, WAN, or internet discovery.
 - No UI.
 - No trust decisions based on discovery data.
@@ -125,12 +125,12 @@ Stages 1, 1.5, and 3 complete.
 
 - Risk: mDNS blocked by network or avahi conflicts. Mitigation: broadcast
   fallback and configurable backends.
-- Risk: spoofed candidates. Mitigation: candidates are hints only; pairing and
+- Risk: spoofed candidates. Mitigation: candidates are hints only; trust and
   pinning decide trust.
 - Risk: multicast storms on large LANs. Mitigation: beacon interval config and
   candidate caps.
 
 ## Works without later stages
 
-Candidates are listed and expire with no pairing, transport, or UI. Nothing is
+Candidates are listed and expire with no trust, transport, or UI. Nothing is
 exchanged beyond discovery metadata.

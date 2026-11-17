@@ -12,20 +12,20 @@ use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
 use ticonnect_core::id::NodeId;
 use ticonnect_core::message::{MessageKind, MessageRecord};
 use ticonnect_net::transfer::{Chunk, DEFAULT_CHUNK_SIZE, ResumeError, ResumePlan, TransferFrame};
-use ticonnect_net::transport::{PeerInfo, Transport};
+use ticonnect_net::transport::{Transport, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 
 use crate::messaging::{MessagingEvent, now_unix_ms};
-use crate::storage::{AttachmentRecord, DatabaseHandle, PeerPolicy, StorageError, TransferPartial};
+use crate::storage::{AttachmentRecord, DatabaseHandle, StorageError, TransferPartial, UserPolicy};
 
 use store::{AttachmentStore, StoreError};
 use transfer::InboundTransfer;
 
 pub const TRANSFER_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_CONCURRENT_TRANSFERS: usize = 8;
-pub const MAX_TRANSFERS_PER_PEER: usize = 2;
+pub const MAX_TRANSFERS_PER_USER: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferPhase {
@@ -53,7 +53,7 @@ impl TransferPhase {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TransferSnapshot {
     pub hash: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub name: String,
     pub size: u64,
     pub bytes: u64,
@@ -247,7 +247,7 @@ impl AttachmentService {
 
     async fn on_message(
         &self,
-        peer_id: &str,
+        user_id: &str,
         record: &MessageRecord,
         notify: bool,
     ) -> Result<(), AttachmentsError> {
@@ -261,10 +261,10 @@ impl AttachmentService {
         if record.kind == MessageKind::Ack {
             return Ok(());
         }
-        let Some(peer) = self.inner.database.get_peer(peer_id).await? else {
+        let Some(user) = self.inner.database.get_user(user_id).await? else {
             return Ok(());
         };
-        if peer.policy == PeerPolicy::Ignore {
+        if user.policy == UserPolicy::Ignore {
             return Ok(());
         }
         if self.inner.store.contains(attachment.hash) {
@@ -276,10 +276,10 @@ impl AttachmentService {
         }
         let _ = notify;
         let service = self.clone();
-        let peer_id = peer_id.to_owned();
+        let user_id = user_id.to_owned();
         tokio::spawn(async move {
-            if let Err(error) = service.receive(&peer_id, attachment).await {
-                tracing::debug!(peer_id, %error, "attachment receive failed");
+            if let Err(error) = service.receive(&user_id, attachment).await {
+                tracing::debug!(user_id, %error, "attachment receive failed");
             }
         });
         Ok(())
@@ -287,27 +287,27 @@ impl AttachmentService {
 
     pub async fn receive_attachment(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: AttachmentRef,
     ) -> Result<(), AttachmentsError> {
-        self.receive(peer_id, attachment).await
+        self.receive(user_id, attachment).await
     }
 
     async fn receive(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: AttachmentRef,
     ) -> Result<(), AttachmentsError> {
         let hash = attachment.hash.to_hex();
-        self.reserve(peer_id, &hash)?;
+        self.reserve(user_id, &hash)?;
         let cancel = Arc::new(AtomicBool::new(false));
         self.inner
             .cancelled
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(hash.clone(), cancel.clone());
-        let result = self.receive_inner(peer_id, &attachment, &cancel).await;
-        self.release(peer_id, &hash);
+        let result = self.receive_inner(user_id, &attachment, &cancel).await;
+        self.release(user_id, &hash);
         self.inner
             .cancelled
             .lock()
@@ -330,7 +330,7 @@ impl AttachmentService {
 
     async fn receive_inner(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: &AttachmentRef,
         cancel: &AtomicBool,
     ) -> Result<(), AttachmentsError> {
@@ -339,23 +339,23 @@ impl AttachmentService {
             self.inner.store.put_bytes(attachment.hash, &[])?;
             self.record_local(attachment).await?;
             self.set_phase(&hash, TransferPhase::Complete, String::new());
-            self.progress(peer_id, attachment, 0, TransferPhase::Complete);
+            self.progress(user_id, attachment, 0, TransferPhase::Complete);
             self.emit(TransferEvent::Done { hash });
             return Ok(());
         }
-        let peer_node: NodeId = peer_id
+        let user_node: NodeId = user_id
             .parse()
-            .map_err(|_| AttachmentsError::InvalidPeer(peer_id.to_owned()))?;
+            .map_err(|_| AttachmentsError::InvalidUser(user_id.to_owned()))?;
         let session = self
             .inner
             .transport
-            .session_by_node_id(peer_node)
-            .ok_or(AttachmentsError::PeerOffline)?;
+            .session_by_node_id(user_node)
+            .ok_or(AttachmentsError::UserOffline)?;
 
         let mut plan = ResumePlan::new(attachment.size);
         if let Some(partial) = self.inner.database.get_transfer_partial(&hash).await?
             && partial.size == attachment.size
-            && partial.peer_id == peer_id
+            && partial.user_id == user_id
         {
             for (start, end) in parse_ranges(&partial.ranges) {
                 let _ = plan.add(start, end);
@@ -373,7 +373,7 @@ impl AttachmentService {
         }
         self.set_phase(&hash, TransferPhase::Requesting, String::new());
         self.progress(
-            peer_id,
+            user_id,
             attachment,
             plan.received_bytes(),
             TransferPhase::Requesting,
@@ -444,12 +444,12 @@ impl AttachmentService {
                     plan.add(offset, chunk.end())
                         .map_err(|error| AttachmentsError::Invalid(error.to_string()))?;
                     self.progress(
-                        peer_id,
+                        user_id,
                         attachment,
                         plan.received_bytes(),
                         TransferPhase::Receiving,
                     );
-                    self.persist_partial(peer_id, attachment, &plan, &temp)
+                    self.persist_partial(user_id, attachment, &plan, &temp)
                         .await?;
                 }
                 TransferFrame::Complete { .. } => break,
@@ -468,7 +468,7 @@ impl AttachmentService {
         file.sync_all()?;
         self.set_phase(&hash, TransferPhase::Verifying, String::new());
         self.progress(
-            peer_id,
+            user_id,
             attachment,
             plan.received_bytes(),
             TransferPhase::Verifying,
@@ -483,7 +483,7 @@ impl AttachmentService {
         let _ = self.inner.database.remove_transfer_partial(&hash).await;
         self.set_phase(&hash, TransferPhase::Complete, String::new());
         self.progress(
-            peer_id,
+            user_id,
             attachment,
             attachment.size,
             TransferPhase::Complete,
@@ -494,7 +494,7 @@ impl AttachmentService {
 
     async fn persist_partial(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: &AttachmentRef,
         plan: &ResumePlan,
         temp: &std::path::Path,
@@ -503,7 +503,7 @@ impl AttachmentService {
             .database
             .upsert_transfer_partial(TransferPartial {
                 hash: attachment.hash.to_hex(),
-                peer_id: peer_id.to_owned(),
+                user_id: user_id.to_owned(),
                 size: attachment.size,
                 bytes_received: plan.received_bytes(),
                 temp_path: temp.display().to_string(),
@@ -516,17 +516,17 @@ impl AttachmentService {
 
     pub async fn serve_attachment(
         &self,
-        peer: PeerInfo,
+        user: UserInfo,
         send: quinn::SendStream,
         recv: quinn::RecvStream,
         frame: TransferFrame,
     ) -> Result<(), AttachmentsError> {
-        self.serve(peer, send, recv, frame).await
+        self.serve(user, send, recv, frame).await
     }
 
     async fn serve(
         &self,
-        peer: PeerInfo,
+        user: UserInfo,
         mut send: quinn::SendStream,
         _recv: quinn::RecvStream,
         frame: TransferFrame,
@@ -588,11 +588,11 @@ impl AttachmentService {
                 .map_err(|error| AttachmentsError::Protocol(error.to_string()))?,
         )
         .await?;
-        tracing::debug!(peer = %peer.node_id, hash = %hash, "served attachment transfer");
+        tracing::debug!(user = %user.node_id, hash = %hash, "served attachment transfer");
         Ok(())
     }
 
-    fn reserve(&self, peer_id: &str, hash: &str) -> Result<(), AttachmentsError> {
+    fn reserve(&self, user_id: &str, hash: &str) -> Result<(), AttachmentsError> {
         let mut active = self
             .inner
             .active
@@ -602,11 +602,11 @@ impl AttachmentService {
         if total >= MAX_CONCURRENT_TRANSFERS {
             return Err(AttachmentsError::Busy);
         }
-        let per_peer = active.get(peer_id).copied().unwrap_or(0);
-        if per_peer >= MAX_TRANSFERS_PER_PEER {
+        let per_user = active.get(user_id).copied().unwrap_or(0);
+        if per_user >= MAX_TRANSFERS_PER_USER {
             return Err(AttachmentsError::Busy);
         }
-        active.insert(peer_id.to_owned(), per_peer + 1);
+        active.insert(user_id.to_owned(), per_user + 1);
         self.inner
             .transfers
             .lock()
@@ -615,7 +615,7 @@ impl AttachmentService {
                 hash.to_owned(),
                 TransferSnapshot {
                     hash: hash.to_owned(),
-                    peer_id: peer_id.to_owned(),
+                    user_id: user_id.to_owned(),
                     name: String::new(),
                     size: 0,
                     bytes: 0,
@@ -626,16 +626,16 @@ impl AttachmentService {
         Ok(())
     }
 
-    fn release(&self, peer_id: &str, hash: &str) {
+    fn release(&self, user_id: &str, hash: &str) {
         let mut active = self
             .inner
             .active
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
-        if let Some(count) = active.get_mut(peer_id) {
+        if let Some(count) = active.get_mut(user_id) {
             *count = count.saturating_sub(1);
             if *count == 0 {
-                active.remove(peer_id);
+                active.remove(user_id);
             }
         }
         let _ = hash;
@@ -656,14 +656,14 @@ impl AttachmentService {
 
     fn progress(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: &AttachmentRef,
         bytes: u64,
         phase: TransferPhase,
     ) {
         let snapshot = TransferSnapshot {
             hash: attachment.hash.to_hex(),
-            peer_id: peer_id.to_owned(),
+            user_id: user_id.to_owned(),
             name: attachment.name.clone(),
             size: attachment.size,
             bytes,
@@ -693,8 +693,8 @@ pub fn spawn(
             tokio::select! {
                 event = messaging.recv() => {
                     match event {
-                        Ok(MessagingEvent::MessageReceived { peer_id, message, notify }) => {
-                            if let Err(error) = service.on_message(&peer_id, &message.record, notify).await {
+                        Ok(MessagingEvent::MessageReceived { user_id, message, notify }) => {
+                            if let Err(error) = service.on_message(&user_id, &message.record, notify).await {
                                 tracing::debug!(%error, "attachment message rejected");
                             }
                         }
@@ -705,8 +705,8 @@ pub fn spawn(
                 }
                 transfer = transfers.recv() => {
                     let Some(transfer) = transfer else { break };
-                    let InboundTransfer { peer, send, recv, frame } = transfer;
-                    if let Err(error) = service.serve(peer, send, recv, frame).await {
+                    let InboundTransfer { user, send, recv, frame } = transfer;
+                    if let Err(error) = service.serve(user, send, recv, frame).await {
                         tracing::debug!(%error, "attachment transfer serve failed");
                     }
                 }
@@ -773,11 +773,11 @@ pub enum AttachmentsError {
     #[error("unknown attachment: {0}")]
     Unknown(String),
 
-    #[error("invalid peer id: {0}")]
-    InvalidPeer(String),
+    #[error("invalid user id: {0}")]
+    InvalidUser(String),
 
-    #[error("peer is offline")]
-    PeerOffline,
+    #[error("user is offline")]
+    UserOffline,
 
     #[error("transfer timed out")]
     Timeout,

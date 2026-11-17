@@ -17,9 +17,9 @@ Component graphs: [MSG](../../docs/systems/generated/components/msg.md), [POL](.
 - Message record creation, signing, verification, and storage.
 - Text messages only in this stage; attachments come in Stage 9.
 - Outbox with retry and 7-day default expiry.
-- Gap sync on reconnect using `peer_state`.
+- Gap sync on reconnect using `user_state`.
 - `delivered` and `read` ack records with coalescing.
-- Per-peer policy and global DND.
+- Per-user policy and global DND.
 - Tray icon via `ksni`.
 - CLI commands to send, list, and mark read.
 
@@ -57,14 +57,14 @@ Stages 1, 1.5, 3, and 5 complete.
 - [x] Messages are immutable; no update path.
 - [x] Store `received_at` locally.
 - [x] Render order uses `sent_at` with `received_at` fallback when clocks skew.
-- [x] Conversation id is deterministic for the peer pair; document derivation.
+- [x] Conversation id is deterministic for the user pair; document derivation.
 
 ## Storage
 
 - [x] Implement message insert, get by id, list by conversation with pagination.
 - [x] Enforce `UNIQUE(conversation_id, sender_id, seq)`.
 - [x] Store signature as `BLOB` and verify on insert.
-- [x] Update `peer_state.last_recv_seq` transactionally with insert.
+- [x] Update `user_state.last_recv_seq` transactionally with insert.
 - [x] Store ack records with `target_id` and kind `ack`.
 - [x] Add indexes needed for pagination and receipt lookup.
 
@@ -73,25 +73,25 @@ Stages 1, 1.5, 3, and 5 complete.
 - [x] Queue outbound messages in `outbox` with `attempts`, `next_try`,
   `expires_at`.
 - [x] Default TTL is 7 days; configurable via `outbox.ttl_days`.
-- [x] Retry with exponential backoff on peer rediscovery and send failure.
-- [x] Flush outbox for a peer after a successful connection and gap sync.
+- [x] Retry with exponential backoff on user rediscovery and send failure.
+- [x] Flush outbox for a user after a successful connection and gap sync.
 - [x] Expired rows are dropped and the message is surfaced as `failed` or
   `expired`.
-- [x] Sending to a muted peer still queues and delivers, but silently.
-- [x] Sending to an ignored peer is dropped at receive; sender sees `sent` once
+- [x] Sending to a muted user still queues and delivers, but silently.
+- [x] Sending to an ignored user is dropped at receive; sender sees `sent` once
   transport acknowledges, or `failed` if never connected. Document semantics.
 - [x] Outbox depth exposed in `GetStatus`.
 
 ## Gap sync
 
-- [x] On authenticated connection, exchange `peer_state`
+- [x] On authenticated connection, exchange `user_state`
   (`last_sent_seq`, `last_recv_seq`).
 - [x] Each side computes missing ranges and requests them.
 - [x] Stream missing records over a dedicated QUIC stream.
 - [x] Verify and insert records; ignore duplicates.
 - [x] Flush outbox after sync completes.
 - [x] Sync is resumable and bounded in memory per batch.
-- [x] Emit `SyncCompleted(peer_id, count)`.
+- [x] Emit `SyncCompleted(user_id, count)`.
 
 ## Read receipts
 
@@ -100,35 +100,35 @@ Stages 1, 1.5, 3, and 5 complete.
   message is scrolled into view; CLI `mark-read` simulates this before the UI.
 - [x] Acks are signed records stored like messages.
 - [x] Coalesce acks over a short interval (default 500 ms).
-- [x] Suppress receipts for mute/ignore peers unless the message was read.
+- [x] Suppress receipts for mute/ignore users unless the message was read.
 - [x] Global `read_receipts.enabled` disables sending but still honors inbound.
 - [x] Message state exposed as `queued`, `sent`, `delivered`, `read`, `failed`,
   `expired`.
 
 ## Policy
 
-- [x] Per-peer policy stored in `peers.policy`.
+- [x] Per-user policy stored in `users.policy`.
 - [x] `accept`: store and notify.
 - [x] `mute`: store silently, no notification.
 - [x] `ignore`: drop inbound with no storage and no notification.
 - [x] Global DND mode suppresses notifications, not storage.
 - [x] Policy changes over D-Bus and tray menu.
-- [x] Emit `PolicyChanged(peer_id, policy)`.
+- [x] Emit `PolicyChanged(user_id, policy)`.
 
 ## Tray
 
 - [x] `ksni` StatusNotifierItem with icon, title, and menu.
-- [x] Menu: open app, DND toggle, per-peer policy submenu, quit.
+- [x] Menu: open app, DND toggle, per-user policy submenu, quit.
 - [x] Tray is optional; daemon runs when tray is unavailable.
 - [x] No tray dependency in headless test runs.
 
 ## D-Bus additions
 
-- [x] `SendMessage(s peer_id, s body) -> s message_id`.
+- [x] `SendMessage(s user_id, s body) -> s message_id`.
 - [x] `ListMessages(s conversation_id, u limit, u offset) -> aa{sv}`.
 - [x] `MarkRead(s conversation_id, as message_ids)`.
 - [x] `GetMessageState(s message_id) -> s`.
-- [x] `SetPeerPolicy(s peer_id, s policy)`.
+- [x] `SetUserPolicy(s user_id, s policy)`.
 - [x] `SetDnd(b enabled)`.
 - [x] Signals `MessageReceived(a{sv})`, `MessageStateChanged(s, s)`,
   `SyncCompleted(s, u)`, `PolicyChanged(s, s)`.

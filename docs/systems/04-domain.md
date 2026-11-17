@@ -82,6 +82,6 @@ Pure domain types. No I/O, no settings, no logging, no database, no network.
 ## Open decisions
 
 - node id derivation resolved as UUIDv7 in Stage 3
-- peer id derivation
+- user id derivation
 - conversation id derivation
 - canonical fingerprint encoding

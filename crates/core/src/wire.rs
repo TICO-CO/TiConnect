@@ -8,7 +8,8 @@ use crate::id::NodeId;
 pub const WIRE_VERSION: u8 = 1;
 pub const PROTOCOL_VERSION: u16 = 1;
 pub const MAX_CONTROL_FRAME: usize = 64 * 1024;
-pub const MAX_PAIRING_FRAME: usize = 4 * 1024;
+pub const MAX_WATCH_PARTY_FRAME: usize = 4096;
+pub const MAX_TRUST_FRAME: usize = 4 * 1024;
 pub const MAX_HANDSHAKE_FRAME: usize = 256;
 pub const MAX_SYNC_FRAME: usize = MAX_CONTROL_FRAME + 1024;
 pub const MAX_MESSAGE_FRAME: usize = MAX_CONTROL_FRAME + 1024;
@@ -60,7 +61,7 @@ pub enum WireError {
 #[repr(u8)]
 pub enum FrameKind {
     Handshake = 1,
-    Pairing = 2,
+    Trust = 2,
     Sync = 3,
     Message = 4,
     Ack = 5,
@@ -71,6 +72,7 @@ pub enum FrameKind {
     Input = 10,
     Remote = 11,
     Typing = 12,
+    WatchParty = 13,
 }
 
 impl FrameKind {
@@ -81,7 +83,7 @@ impl FrameKind {
     pub fn limit(self) -> usize {
         match self {
             Self::Handshake => MAX_HANDSHAKE_FRAME,
-            Self::Pairing => MAX_PAIRING_FRAME,
+            Self::Trust => MAX_TRUST_FRAME,
             Self::Sync => MAX_SYNC_FRAME,
             Self::Message => MAX_MESSAGE_FRAME,
             Self::Ack => MAX_ACK_FRAME,
@@ -92,6 +94,7 @@ impl FrameKind {
             Self::Input => MAX_INPUT_FRAME,
             Self::Remote => MAX_REMOTE_FRAME,
             Self::Typing => MAX_TYPING_FRAME,
+            Self::WatchParty => MAX_WATCH_PARTY_FRAME,
         }
     }
 }
@@ -102,7 +105,7 @@ impl TryFrom<u8> for FrameKind {
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
             1 => Ok(Self::Handshake),
-            2 => Ok(Self::Pairing),
+            2 => Ok(Self::Trust),
             3 => Ok(Self::Sync),
             4 => Ok(Self::Message),
             5 => Ok(Self::Ack),
@@ -113,6 +116,7 @@ impl TryFrom<u8> for FrameKind {
             10 => Ok(Self::Input),
             11 => Ok(Self::Remote),
             12 => Ok(Self::Typing),
+            13 => Ok(Self::WatchParty),
             other => Err(WireError::UnsupportedKind(other)),
         }
     }
@@ -330,7 +334,7 @@ mod tests {
     fn frame_round_trips_for_each_kind() {
         for kind in [
             FrameKind::Handshake,
-            FrameKind::Pairing,
+            FrameKind::Trust,
             FrameKind::Sync,
             FrameKind::Message,
             FrameKind::Ack,
@@ -352,18 +356,18 @@ mod tests {
     }
 
     #[test]
-    fn rejects_oversized_pairing_frame() {
+    fn rejects_oversized_trust_frame() {
         assert!(matches!(
-            Frame::new(FrameKind::Pairing, vec![0_u8; MAX_PAIRING_FRAME + 1]),
+            Frame::new(FrameKind::Trust, vec![0_u8; MAX_TRUST_FRAME + 1]),
             Err(WireError::FrameTooLarge)
         ));
 
         let mut header = Vec::new();
         header.extend_from_slice(MAGIC);
         header.push(WIRE_VERSION);
-        header.push(FrameKind::Pairing.as_u8());
-        header.extend_from_slice(&u32::try_from(MAX_PAIRING_FRAME + 1).unwrap().to_be_bytes());
-        header.extend(std::iter::repeat_n(0_u8, MAX_PAIRING_FRAME + 1));
+        header.push(FrameKind::Trust.as_u8());
+        header.extend_from_slice(&u32::try_from(MAX_TRUST_FRAME + 1).unwrap().to_be_bytes());
+        header.extend(std::iter::repeat_n(0_u8, MAX_TRUST_FRAME + 1));
         assert!(matches!(
             Frame::decode(&header),
             Err(WireError::FrameTooLarge)
@@ -396,10 +400,10 @@ mod tests {
         ));
 
         let mut bad_kind = valid.clone();
-        bad_kind[MAGIC.len() + 1] = 13;
+        bad_kind[MAGIC.len() + 1] = 14;
         assert!(matches!(
             Frame::decode(&bad_kind),
-            Err(WireError::UnsupportedKind(13))
+            Err(WireError::UnsupportedKind(14))
         ));
 
         let mut trailing = valid;

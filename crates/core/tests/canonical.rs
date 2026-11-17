@@ -2,7 +2,7 @@ use ticonnect_core::canonical::{CanonicalError, Decoder, Encoder};
 
 #[test]
 fn canonical_bytes_are_stable_and_round_trip() {
-    let mut encoder = Encoder::new("pairing").expect("encoder");
+    let mut encoder = Encoder::new("trust").expect("encoder");
     encoder.u16(1).expect("version");
     encoder.u8(2).expect("mode");
     encoder.bytes(b"token").expect("token");
@@ -12,7 +12,7 @@ fn canonical_bytes_are_stable_and_round_trip() {
 
     assert_eq!(bytes, stable_bytes());
 
-    let mut decoder = Decoder::new("pairing", &bytes).expect("decoder");
+    let mut decoder = Decoder::new("trust", &bytes).expect("decoder");
     assert_eq!(decoder.u16().expect("version"), 1);
     assert_eq!(decoder.u8().expect("mode"), 2);
     assert_eq!(decoder.bytes().expect("token"), b"token");
@@ -29,7 +29,7 @@ fn canonical_decoder_rejects_wrong_domain_and_malformed_input() {
         Err(CanonicalError::DomainMismatch)
     ));
 
-    let mut decoder = Decoder::new("pairing", &bytes[..bytes.len() - 1]).expect("decoder");
+    let mut decoder = Decoder::new("trust", &bytes[..bytes.len() - 1]).expect("decoder");
     decoder.u16().expect("version");
     decoder.u8().expect("mode");
     decoder.bytes().expect("token");
@@ -39,7 +39,7 @@ fn canonical_decoder_rejects_wrong_domain_and_malformed_input() {
 
 #[test]
 fn canonical_encoder_rejects_oversized_fields() {
-    let mut encoder = Encoder::new("pairing").expect("encoder");
+    let mut encoder = Encoder::new("trust").expect("encoder");
     let oversized = vec![0_u8; ticonnect_core::canonical::MAX_CANONICAL_BYTES];
     assert!(matches!(
         encoder.bytes(&oversized),
@@ -50,8 +50,8 @@ fn canonical_encoder_rejects_oversized_fields() {
 fn stable_bytes() -> Vec<u8> {
     let mut bytes = Vec::new();
     bytes.extend_from_slice(b"TiConnect canonical v1");
-    bytes.extend_from_slice(&7_u32.to_be_bytes());
-    bytes.extend_from_slice(b"pairing");
+    bytes.extend_from_slice(&5_u32.to_be_bytes());
+    bytes.extend_from_slice(b"trust");
     bytes.extend_from_slice(&1_u16.to_be_bytes());
     bytes.push(2);
     bytes.extend_from_slice(&5_u32.to_be_bytes());

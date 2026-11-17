@@ -25,23 +25,19 @@ fails to acquire the name and exits non-zero.
 | `ClearAvatar` | `() -> ()` | Removes the local profile photo. |
 | `GetSetting` | `(s) -> v` | Returns one effective setting; unknown keys return `NotFound`. |
 | `ListSettings` | `() -> a{sv}` | Returns all effective settings. |
-| `ListPeers` | `() -> aa{sv}` | Returns known peers; empty before pairing. |
+| `ListUsers` | `() -> aa{sv}` | Returns known users. |
 | `ListCandidates` | `() -> aa{sv}` | Returns current discovery candidates. |
 | `GetDiscoveryStatus` | `() -> a{sv}` | Returns discovery backend state and counters. |
-| `StartPairing` | `() -> a{sv}` | Starts a pairing session and returns the PIN, QR payload, and expiry. |
-| `PairWithPin` | `(ss) -> b` | Pairs with a discovered node using a PIN. |
-| `PairWithQr` | `(s) -> b` | Pairs using a QR payload. |
-| `CancelPairing` | `() -> ()` | Cancels the active pairing session. |
-| `ForgetPeer` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
-| `ListTrustedPeers` | `() -> aa{sv}` | Returns trusted peers. |
+| `GetUser` | `(s) -> a{sv}` | Returns stable identity plus live address, MAC, OS, desktop, and display-server metadata. |
+| `ForgetUser` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
 | `CountMessages` | `(s) -> u` | Returns the number of stored text messages in a conversation. |
-| `ListConversationSummaries` | `() -> aa{sv}` | Returns last message, unread count, and conversation id per peer. |
+| `ListConversationSummaries` | `() -> aa{sv}` | Returns last message, unread count, and conversation id per user. |
 | `MarkRead` | `(s as) -> ()` | Marks inbound messages read locally and queues receipts when enabled. |
-| `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted peer. |
+| `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted user. |
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
-| `SetPeerPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one peer. |
+| `SetUserPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one user. |
 | `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
@@ -58,7 +54,7 @@ The GTK UI owns `org.ticonnect.UI` on the session bus.
 
 | Method | Signature | Behavior |
 |---|---|---|
-| `Activate` | `(s) -> ()` | Raises the window and switches to `peers`, `chat`, `settings`, or `pairing`. Empty means `chat`; unknown views return `InvalidArgs`. |
+| `Activate` | `(s) -> ()` | Raises the window and switches to `users`, `chat`, `settings`, `remote`, or `watch-party`. Empty means `chat`; unknown views return `InvalidArgs`. |
 
 The tray uses `Activate("chat")`. Closing the UI does not affect the daemon.
 Starting a second UI forwards `Activate("chat")` to the running instance and exits.
@@ -78,19 +74,19 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `SettingsChanged(s)` | Once per setting changed by a config reload. |
 | `CandidateFound(a{sv})` | When discovery adds or refreshes a candidate identity. |
 | `CandidateLost(s)` | When a candidate expires, is removed, or discovery stops. |
-| `PairingStarted(a{sv})` | When a pairing session starts. |
-| `PairingCompleted(ss)` | With the peer id and fingerprint after trust is committed. |
-| `PairingFailed(s)` | With a stable reason when pairing fails. |
-| `PeerConnected(a{sv})` | When a trusted QUIC session becomes active. |
-| `PeerDisconnected(a{sv})` | When a trusted QUIC session closes. |
+| `UserConnected(a{sv})` | When a trusted QUIC session becomes active. |
+| `UserDisconnected(a{sv})` | When a trusted QUIC session closes. |
 | `MessageReceived(a{sv})` | When an inbound message is stored. |
 | `MessageStateChanged(ss)` | When a message state changes. |
 | `ConversationChanged(s)` | When a conversation summary should be reloaded. |
-| `TypingChanged(sb)` | When a peer starts or stops typing. |
-| `PeerProfileChanged(s)` | When a cached peer profile or avatar changes. |
+| `TypingChanged(sb)` | When a user starts or stops typing. |
+| `UserProfileChanged(s)` | When a cached user profile or avatar changes. |
+| `WatchPartyRequested(a{sv})` | When a YouTube watch-party invite arrives. |
+| `WatchPartyChanged(a{sv})` | When watch-party playback state changes. |
+| `WatchPartyEnded(ss)` | When a watch party ends. |
 | `SelfProfileChanged()` | When the local display name or avatar changes. |
-| `SyncCompleted(su)` | When gap sync finishes for a peer. |
-| `PolicyChanged(ss)` | When a peer policy changes. |
+| `SyncCompleted(su)` | When gap sync finishes for a user. |
+| `PolicyChanged(ss)` | When a user policy changes. |
 
 ## Status keys
 
@@ -99,7 +95,7 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | Key | Type | Meaning |
 |---|---|---|
 | `uptime_seconds` | `u64` | Seconds since the daemon started. |
-| `peer_count` | `u32` | Rows in the peers table. |
+| `user_count` | `u32` | Rows in the users table. |
 | `outbox_depth` | `u32` | Queued messages; `0` before messaging lands. |
 | `transport_state` | `s` | `idle` with no sessions, `online` with at least one session. |
 | `active_sessions` | `u32` | Number of active trusted QUIC sessions. |
@@ -126,21 +122,9 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 unset optional paths are empty strings. `appearance.color_scheme` is `system`,
 `light`, or `dark`. Discovery candidate addresses are comma-separated strings.
 
-## Pairing keys
+## User keys
 
-`StartPairing` returns:
-
-| Key | Type | Meaning |
-|---|---|---|
-| `pin` | `s` | Six-digit pairing PIN. |
-| `qr` | `s` | QR payload with node id, address, port, fingerprint, token, and expiry. |
-| `expires_at` | `u64` | Unix seconds when the PIN and token expire. |
-| `node_id` | `s` | This node's UUIDv7. |
-| `port` | `u32` | Advertised QUIC port. |
-
-## Peer keys
-
-`ListPeers` returns one map per peer with `id`, `fingerprint`, `display_name`,
+`ListUsers` returns one map per user with `id`, `fingerprint`, `display_name`,
 `policy`, `trusted_at`, `last_seen`, and `connected`. `policy` is `accept`,
 `mute`, or `ignore`. `last_seen` is `0` when unset. `connected` is true when an
 active transport session exists for that node.
@@ -189,14 +173,10 @@ ticonnect status --json
 ticonnect version
 ticonnect ping
 ticonnect id show
-ticonnect peers list
+ticonnect users list
 ticonnect discover list
 ticonnect discover watch
-ticonnect pair start
-ticonnect pair with-pin <node-id> <pin>
-ticonnect pair with-qr '<payload>'
-ticonnect pair cancel
-ticonnect pair forget <peer-id>
+ticonnect users forget <user-id>
 ticonnect quit
 ```
 

@@ -4,32 +4,9 @@ use thiserror::Error;
 use ticonnect_core::canonical::{CanonicalError, Encoder};
 use ticonnect_core::wire::PROTOCOL_VERSION;
 
-pub const TRANSCRIPT_DOMAIN: &str = "pairing-transcript";
-pub const CONFIRM_DOMAIN: &[u8] = b"ticonnect pairing confirmation v1";
+pub const TRANSCRIPT_DOMAIN: &str = "trust-transcript";
+pub const CONFIRM_DOMAIN: &[u8] = b"ticonnect trust confirmation v1";
 pub const MAX_SPAKE2_MESSAGE: usize = 64;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PairingMode {
-    Pin,
-    Qr,
-}
-
-impl PairingMode {
-    pub fn as_u8(self) -> u8 {
-        match self {
-            Self::Pin => 1,
-            Self::Qr => 2,
-        }
-    }
-
-    pub fn from_u8(value: u8) -> Option<Self> {
-        match value {
-            1 => Some(Self::Pin),
-            2 => Some(Self::Qr),
-            _ => None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Role {
@@ -38,29 +15,22 @@ pub enum Role {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerIdentity {
+pub struct UserIdentity {
     pub node_id: String,
     pub fingerprint: String,
     pub certificate_fingerprint: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairingTranscript {
-    pub mode: PairingMode,
-    pub initiator: PeerIdentity,
-    pub responder: PeerIdentity,
-    pub token: Option<[u8; 32]>,
+pub struct TrustTranscript {
+    pub initiator: UserIdentity,
+    pub responder: UserIdentity,
+    pub token: [u8; 32],
 }
 
-impl PairingTranscript {
-    pub fn new(
-        mode: PairingMode,
-        initiator: PeerIdentity,
-        responder: PeerIdentity,
-        token: Option<[u8; 32]>,
-    ) -> Self {
+impl TrustTranscript {
+    pub fn new(initiator: UserIdentity, responder: UserIdentity, token: [u8; 32]) -> Self {
         Self {
-            mode,
             initiator,
             responder,
             token,
@@ -71,9 +41,6 @@ impl PairingTranscript {
         let mut encoder = Encoder::new(TRANSCRIPT_DOMAIN).map_err(Spake2Error::Transcript)?;
         encoder
             .u16(PROTOCOL_VERSION)
-            .map_err(Spake2Error::Transcript)?;
-        encoder
-            .u8(self.mode.as_u8())
             .map_err(Spake2Error::Transcript)?;
         encoder
             .string(&self.initiator.node_id)
@@ -93,15 +60,9 @@ impl PairingTranscript {
         encoder
             .string(&self.responder.certificate_fingerprint)
             .map_err(Spake2Error::Transcript)?;
-        match self.token {
-            Some(token) => {
-                encoder.u8(1).map_err(Spake2Error::Transcript)?;
-                encoder.bytes(&token).map_err(Spake2Error::Transcript)?;
-            }
-            None => {
-                encoder.u8(0).map_err(Spake2Error::Transcript)?;
-            }
-        }
+        encoder
+            .bytes(&self.token)
+            .map_err(Spake2Error::Transcript)?;
         Ok(*blake3::hash(&encoder.finish()).as_bytes())
     }
 
@@ -114,23 +75,21 @@ impl PairingTranscript {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PairingSecret {
-    Pin(String),
-    Token([u8; 32]),
-}
+pub struct TrustSecret([u8; 32]);
 
-impl PairingSecret {
+impl TrustSecret {
+    pub fn new(token: [u8; 32]) -> Self {
+        Self(token)
+    }
+
     pub fn as_bytes(&self) -> &[u8] {
-        match self {
-            Self::Pin(pin) => pin.as_bytes(),
-            Self::Token(token) => token,
-        }
+        &self.0
     }
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum Spake2Error {
-    #[error("pairing transcript is invalid: {0}")]
+    #[error("trust transcript is invalid: {0}")]
     Transcript(CanonicalError),
 
     #[error("SPAKE2 message is too large")]
@@ -147,8 +106,8 @@ pub struct Spake2Session {
 impl Spake2Session {
     pub fn start(
         role: Role,
-        secret: &PairingSecret,
-        transcript: &PairingTranscript,
+        secret: &TrustSecret,
+        transcript: &TrustTranscript,
     ) -> Result<(Self, Vec<u8>), Spake2Error> {
         let (initiator, responder) = transcript.identity_strings();
         let password = Password::new(secret.as_bytes());
@@ -164,17 +123,17 @@ impl Spake2Session {
 
     pub fn finish(
         mut self,
-        peer_message: &[u8],
+        user_message: &[u8],
         transcript_hash: &[u8; 32],
     ) -> Result<Confirmation, Spake2Error> {
-        if peer_message.len() > MAX_SPAKE2_MESSAGE {
+        if user_message.len() > MAX_SPAKE2_MESSAGE {
             return Err(Spake2Error::MessageTooLarge);
         }
         let state = self.state.take().ok_or_else(|| {
             Spake2Error::Exchange("SPAKE2 session was already finished".to_owned())
         })?;
         let shared = state
-            .finish(peer_message)
+            .finish(user_message)
             .map_err(|error| Spake2Error::Exchange(error.to_string()))?;
 
         let mut hasher = blake3::Hasher::new();
@@ -206,11 +165,27 @@ impl Confirmation {
 mod tests {
     use super::*;
 
+    fn fixture() -> TrustTranscript {
+        TrustTranscript::new(
+            UserIdentity {
+                node_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
+                fingerprint: "11".repeat(32),
+                certificate_fingerprint: "22".repeat(32),
+            },
+            UserIdentity {
+                node_id: "018f0000-0000-7000-8000-000000000002".to_owned(),
+                fingerprint: "33".repeat(32),
+                certificate_fingerprint: "44".repeat(32),
+            },
+            [9_u8; 32],
+        )
+    }
+
     #[test]
-    fn same_pin_derives_matching_confirmation() {
-        let transcript = fixture(PairingMode::Pin, None);
+    fn matching_tokens_derive_matching_confirmation() {
+        let transcript = fixture();
         let hash = transcript.hash().expect("transcript");
-        let secret = PairingSecret::Pin("123456".to_owned());
+        let secret = TrustSecret::new([9_u8; 32]);
 
         let (initiator, initiator_message) =
             Spake2Session::start(Role::Initiator, &secret, &transcript).expect("initiator");
@@ -228,11 +203,11 @@ mod tests {
     }
 
     #[test]
-    fn different_pins_derive_different_confirmation() {
-        let transcript = fixture(PairingMode::Pin, None);
+    fn different_tokens_derive_different_confirmation() {
+        let transcript = fixture();
         let hash = transcript.hash().expect("transcript");
-        let initiator_secret = PairingSecret::Pin("123456".to_owned());
-        let responder_secret = PairingSecret::Pin("654321".to_owned());
+        let initiator_secret = TrustSecret::new([9_u8; 32]);
+        let responder_secret = TrustSecret::new([8_u8; 32]);
 
         let (initiator, initiator_message) =
             Spake2Session::start(Role::Initiator, &initiator_secret, &transcript)
@@ -252,28 +227,10 @@ mod tests {
     }
 
     #[test]
-    fn qr_token_is_part_of_the_transcript() {
-        let token = [9_u8; 32];
-        let first = fixture(PairingMode::Qr, Some(token));
-        let second = fixture(PairingMode::Qr, Some([8_u8; 32]));
+    fn token_is_part_of_the_transcript() {
+        let first = TrustTranscript::new(fixture().initiator, fixture().responder, [9_u8; 32]);
+        let second = TrustTranscript::new(fixture().initiator, fixture().responder, [8_u8; 32]);
 
         assert_ne!(first.hash().expect("hash"), second.hash().expect("hash"));
-    }
-
-    fn fixture(mode: PairingMode, token: Option<[u8; 32]>) -> PairingTranscript {
-        PairingTranscript::new(
-            mode,
-            PeerIdentity {
-                node_id: "018f0000-0000-7000-8000-000000000001".to_owned(),
-                fingerprint: "11".repeat(32),
-                certificate_fingerprint: "22".repeat(32),
-            },
-            PeerIdentity {
-                node_id: "018f0000-0000-7000-8000-000000000002".to_owned(),
-                fingerprint: "33".repeat(32),
-                certificate_fingerprint: "44".repeat(32),
-            },
-            token,
-        )
     }
 }

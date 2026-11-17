@@ -16,10 +16,10 @@ Targets are for a modern laptop on a wired or 5 GHz LAN.
 ```sh
 scripts/bench/idle.sh
 scripts/bench/startup.sh
-scripts/bench/messaging.sh <peer-id> 20
-scripts/bench/transfer.sh <peer-id> 64
-scripts/bench/call.sh <peer-id> 15
-scripts/bench/remote.sh <peer-id> 15
+scripts/bench/messaging.sh <user-id> 20
+scripts/bench/transfer.sh <user-id> 64
+scripts/bench/call.sh <user-id> 15
+scripts/bench/remote.sh <user-id> 15
 ```
 
 Record the hardware, kernel, Rust toolchain, desktop, and session type with every

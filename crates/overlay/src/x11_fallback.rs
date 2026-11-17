@@ -7,7 +7,7 @@ use x11rb::protocol::xproto::{AtomEnum, ConfigureWindowAux, ConnectionExt, PropM
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
 
-use crate::card::{Card, ClickHandler, HoverHandler, render_cards};
+use crate::card::{ActionHandler, Card, ClickHandler, HoverHandler, render_cards};
 
 const MARGIN: i32 = 24;
 const TITLE: &str = "TiConnect Overlay";
@@ -29,7 +29,7 @@ impl Surface {
         window.set_focusable(false);
 
         let cards = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        cards.set_valign(gtk::Align::End);
+        cards.set_valign(gtk::Align::Start);
         cards.set_halign(gtk::Align::End);
         window.set_child(Some(&cards));
         window.set_visible(false);
@@ -47,8 +47,14 @@ impl Surface {
         Self { window, cards }
     }
 
-    pub fn render(&self, cards: &[Card], on_click: &ClickHandler, on_hover: &HoverHandler) {
-        render_cards(&self.cards, cards, on_click, on_hover);
+    pub fn render(
+        &self,
+        cards: &[Card],
+        on_click: &ClickHandler,
+        on_hover: &HoverHandler,
+        on_action: &ActionHandler,
+    ) {
+        render_cards(&self.cards, cards, on_click, on_hover, on_action);
         if cards.is_empty() {
             self.window.set_visible(false);
         } else {
@@ -112,9 +118,8 @@ fn position(window: &gtk::Window) -> anyhow::Result<()> {
     let geometry = monitor.geometry();
     let scale = monitor.scale_factor();
     let width = window.width().max(320) * scale;
-    let height = window.height().max(80) * scale;
     let x = geometry.x() * scale + geometry.width() - width - MARGIN * scale;
-    let y = geometry.y() * scale + geometry.height() - height - MARGIN * scale;
+    let y = geometry.y() * scale + MARGIN * scale;
 
     connection.configure_window(
         window_id,

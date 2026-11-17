@@ -16,7 +16,7 @@ use ticonnect_core::id::{MessageId, NodeId};
 use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::message::{MessageKind, MessageRecord};
 use ticonnect_core::wire::{Frame, FrameKind};
-use ticonnect_net::transport::{PeerInfo, Session, Transport, TransportEvent};
+use ticonnect_net::transport::{Session, Transport, TransportEvent, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
@@ -25,9 +25,10 @@ use crate::attachments::transfer::InboundTransfer;
 use crate::calls::{InboundAudio, InboundCallSignal};
 use crate::remote::InboundRemoteFrame;
 use crate::storage::{
-    DatabaseHandle, InsertOutcome, MessageState, Peer, PeerPolicy, StorageError, StoredMessage,
+    DatabaseHandle, InsertOutcome, MessageState, StorageError, StoredMessage, User, UserPolicy,
 };
 use crate::trust::{TrustError, TrustStore};
+use crate::watch_party::InboundWatchPartyFrame;
 use receipts::{PendingAck, ReceiptCoalescer};
 
 use ticonnect_net::transport::TransportError;
@@ -39,7 +40,7 @@ const OUTBOX_TICK: Duration = Duration::from_secs(1);
 #[allow(clippy::large_enum_variant)]
 pub enum MessagingEvent {
     MessageReceived {
-        peer_id: String,
+        user_id: String,
         message: StoredMessage,
         notify: bool,
     },
@@ -48,15 +49,15 @@ pub enum MessagingEvent {
         state: MessageState,
     },
     SyncCompleted {
-        peer_id: String,
+        user_id: String,
         count: u32,
     },
     PolicyChanged {
-        peer_id: String,
-        policy: PeerPolicy,
+        user_id: String,
+        policy: UserPolicy,
     },
     TypingChanged {
-        peer_id: String,
+        user_id: String,
         typing: bool,
     },
 }
@@ -81,6 +82,7 @@ struct Inner {
     call_tx: Mutex<Option<UnboundedSender<InboundCallSignal>>>,
     audio_tx: Mutex<Option<UnboundedSender<InboundAudio>>>,
     remote_tx: Mutex<Option<UnboundedSender<InboundRemoteFrame>>>,
+    watch_party_tx: Mutex<Option<UnboundedSender<InboundWatchPartyFrame>>>,
 }
 
 impl MessagingService {
@@ -109,6 +111,7 @@ impl MessagingService {
                 call_tx: Mutex::new(None),
                 audio_tx: Mutex::new(None),
                 remote_tx: Mutex::new(None),
+                watch_party_tx: Mutex::new(None),
             }),
         }
     }
@@ -142,6 +145,14 @@ impl MessagingService {
             .unwrap_or_else(PoisonError::into_inner) = Some(audio_sender);
     }
 
+    pub fn set_watch_party_sender(&self, sender: UnboundedSender<InboundWatchPartyFrame>) {
+        *self
+            .inner
+            .watch_party_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(sender);
+    }
+
     pub fn set_remote_sender(&self, sender: UnboundedSender<InboundRemoteFrame>) {
         *self
             .inner
@@ -153,6 +164,14 @@ impl MessagingService {
     fn remote_sender(&self) -> Option<UnboundedSender<InboundRemoteFrame>> {
         self.inner
             .remote_tx
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn watch_party_sender(&self) -> Option<UnboundedSender<InboundWatchPartyFrame>> {
+        self.inner
+            .watch_party_tx
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
@@ -202,29 +221,29 @@ impl MessagingService {
             .clone()
     }
 
-    pub async fn peer(&self, peer_id: &str) -> Result<Peer, MessagingError> {
+    pub async fn user(&self, user_id: &str) -> Result<User, MessagingError> {
         self.inner
             .trust
-            .peer(peer_id)
+            .user(user_id)
             .await?
-            .ok_or_else(|| MessagingError::UnknownPeer(peer_id.to_owned()))
+            .ok_or_else(|| MessagingError::UnknownUser(user_id.to_owned()))
     }
 
-    pub async fn conversation_id(&self, peer_id: &str) -> Result<String, MessagingError> {
-        let peer = self.peer(peer_id).await?;
-        let peer_node: NodeId = peer
+    pub async fn conversation_id(&self, user_id: &str) -> Result<String, MessagingError> {
+        let user = self.user(user_id).await?;
+        let user_node: NodeId = user
             .id
             .parse()
-            .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
+            .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
         Ok(ticonnect_core::message::conversation_id(
             self.inner.local,
-            peer_node,
+            user_node,
         ))
     }
 
     pub async fn send_message(
         &self,
-        peer_id: &str,
+        user_id: &str,
         body: &str,
     ) -> Result<MessageId, MessagingError> {
         if body.is_empty() {
@@ -234,22 +253,22 @@ impl MessagingService {
             return Err(MessagingError::BodyTooLarge);
         }
 
-        let peer = self.peer(peer_id).await?;
-        let peer_node: NodeId = peer
+        let user = self.user(user_id).await?;
+        let user_node: NodeId = user
             .id
             .parse()
-            .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
+            .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
         let now = now_unix_ms();
         self.inner
             .database
             .ensure_conversation(
-                &ticonnect_core::message::conversation_id(self.inner.local, peer_node),
-                peer_id,
+                &ticonnect_core::message::conversation_id(self.inner.local, user_node),
+                user_id,
                 now,
             )
             .await?;
-        let seq = self.inner.database.allocate_seq(peer_id).await?;
-        let record = store::text(self.inner.local, peer_node, seq, now, body.to_owned());
+        let seq = self.inner.database.allocate_seq(user_id).await?;
+        let record = store::text(self.inner.local, user_node, seq, now, body.to_owned());
         let envelope = record.signed(&self.inner.identity)?;
         let state = MessageState::Queued;
         self.inner
@@ -273,34 +292,34 @@ impl MessagingService {
             message_id: record.message_id.to_string(),
             state,
         });
-        outbox::flush_peer(self, peer_id).await;
+        outbox::flush_user(self, user_id).await;
         Ok(record.message_id)
     }
 
     pub async fn send_attachment(
         &self,
-        peer_id: &str,
+        user_id: &str,
         attachment: &AttachmentRef,
     ) -> Result<MessageId, MessagingError> {
         attachment
             .validate(ticonnect_core::attachment::DEFAULT_MAX_ATTACHMENT_SIZE)
             .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
-        let peer = self.peer(peer_id).await?;
-        let peer_node: NodeId = peer
+        let user = self.user(user_id).await?;
+        let user_node: NodeId = user
             .id
             .parse()
-            .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
+            .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
         let now = now_unix_ms();
         self.inner
             .database
             .ensure_conversation(
-                &ticonnect_core::message::conversation_id(self.inner.local, peer_node),
-                peer_id,
+                &ticonnect_core::message::conversation_id(self.inner.local, user_node),
+                user_id,
                 now,
             )
             .await?;
-        let seq = self.inner.database.allocate_seq(peer_id).await?;
-        let record = store::attachment(self.inner.local, peer_node, seq, now, attachment)?;
+        let seq = self.inner.database.allocate_seq(user_id).await?;
+        let record = store::attachment(self.inner.local, user_node, seq, now, attachment)?;
         let envelope = record.signed(&self.inner.identity)?;
         let state = MessageState::Queued;
         self.inner
@@ -323,7 +342,7 @@ impl MessagingService {
             message_id: record.message_id.to_string(),
             state,
         });
-        outbox::flush_peer(self, peer_id).await;
+        outbox::flush_user(self, user_id).await;
         Ok(record.message_id)
     }
 
@@ -350,13 +369,13 @@ impl MessagingService {
         conversation_id: &str,
         message_ids: &[String],
     ) -> Result<(), MessagingError> {
-        let peer_id = self.conversation_peer(conversation_id).await?;
-        let peer = self.peer(&peer_id).await?;
+        let user_id = self.conversation_user(conversation_id).await?;
+        let user = self.user(&user_id).await?;
         self.inner
             .database
             .mark_messages_read(conversation_id, message_ids, now_unix_ms())
             .await?;
-        if !policy::read_receipt(peer.policy, self.settings().read_receipts_enabled()) {
+        if !policy::read_receipt(user.policy, self.settings().read_receipts_enabled()) {
             return Ok(());
         }
 
@@ -372,7 +391,7 @@ impl MessagingService {
             {
                 continue;
             }
-            self.queue_receipt(&peer_id, target, AckKind::Read);
+            self.queue_receipt(&user_id, target, AckKind::Read);
         }
         Ok(())
     }
@@ -385,16 +404,16 @@ impl MessagingService {
             .ok_or_else(|| MessagingError::UnknownMessage(message_id.to_owned()))
     }
 
-    pub async fn set_typing(&self, peer_id: &str, typing: bool) -> Result<(), MessagingError> {
+    pub async fn set_typing(&self, user_id: &str, typing: bool) -> Result<(), MessagingError> {
         if !self.settings().typing_enabled() {
             return Ok(());
         }
-        let peer = self.peer(peer_id).await?;
-        if peer.policy == PeerPolicy::Ignore {
+        let user = self.user(user_id).await?;
+        if user.policy == UserPolicy::Ignore {
             return Ok(());
         }
-        let node_id = NodeId::from_str(peer_id)
-            .map_err(|_| MessagingError::UnknownPeer(peer_id.to_owned()))?;
+        let node_id = NodeId::from_str(user_id)
+            .map_err(|_| MessagingError::UnknownUser(user_id.to_owned()))?;
         let Some(session) = self.inner.transport.session_by_node_id(node_id) else {
             return Ok(());
         };
@@ -407,21 +426,21 @@ impl MessagingService {
         Ok(())
     }
 
-    pub async fn set_peer_policy(
+    pub async fn set_user_policy(
         &self,
-        peer_id: &str,
-        policy: PeerPolicy,
+        user_id: &str,
+        policy: UserPolicy,
     ) -> Result<(), MessagingError> {
         if !self
             .inner
             .database
-            .update_peer_policy(peer_id, policy)
+            .update_user_policy(user_id, policy)
             .await?
         {
-            return Err(MessagingError::UnknownPeer(peer_id.to_owned()));
+            return Err(MessagingError::UnknownUser(user_id.to_owned()));
         }
         self.emit(MessagingEvent::PolicyChanged {
-            peer_id: peer_id.to_owned(),
+            user_id: user_id.to_owned(),
             policy,
         });
         Ok(())
@@ -439,22 +458,22 @@ impl MessagingService {
         self.settings().dnd_enabled()
     }
 
-    pub async fn on_peer_connected(&self, peer: PeerInfo) {
-        let fingerprint = peer.fingerprint.to_hex();
-        if let Ok(Some(stored)) = self.inner.trust.peer_by_fingerprint(&fingerprint).await
+    pub async fn on_user_connected(&self, user: UserInfo) {
+        let fingerprint = user.fingerprint.to_hex();
+        if let Ok(Some(stored)) = self.inner.trust.user_by_fingerprint(&fingerprint).await
             && stored.public_key.is_none()
         {
             let _ = self
                 .inner
                 .database
-                .update_peer_public_key(&stored.id, peer.public_key)
+                .update_user_public_key(&stored.id, user.public_key)
                 .await;
         }
 
         let Some(session) = self
             .inner
             .transport
-            .session_by_fingerprint(&peer.fingerprint)
+            .session_by_fingerprint(&user.fingerprint)
         else {
             return;
         };
@@ -484,7 +503,7 @@ impl MessagingService {
                     Ok(payload) => {
                         if let Some(sender) = service.audio_sender() {
                             let _ = sender.send(InboundAudio {
-                                peer: datagram_session.peer().clone(),
+                                user: datagram_session.user().clone(),
                                 payload: payload.to_vec(),
                             });
                         }
@@ -505,9 +524,9 @@ impl MessagingService {
         });
     }
 
-    pub fn on_peer_disconnected(&self, peer: &PeerInfo) {
-        let fingerprint = peer.fingerprint.to_hex();
-        self.clear_sync_ready(&peer.node_id.to_string());
+    pub fn on_user_disconnected(&self, user: &UserInfo) {
+        let fingerprint = user.fingerprint.to_hex();
+        self.clear_sync_ready(&user.node_id.to_string());
         if let Some(task) = self
             .inner
             .session_tasks
@@ -520,18 +539,18 @@ impl MessagingService {
     }
 
     async fn session_loop(&self, session: Session) {
-        let peer = session.peer().clone();
+        let user = session.user().clone();
         loop {
             tokio::select! {
                 result = session.accept_uni() => {
                     match result {
                         Ok(mut recv) => {
                             let service = self.clone();
-                            let peer = peer.clone();
+                            let user = user.clone();
                             tokio::spawn(async move {
                                 match ticonnect_net::transport::session::read_frame(&mut recv).await {
                                     Ok(frame) => {
-                                        if let Err(error) = service.handle_frame(&peer, frame).await {
+                                        if let Err(error) = service.handle_frame(&user, frame).await {
                                             tracing::debug!(%error, "inbound message frame rejected");
                                         }
                                     }
@@ -549,7 +568,7 @@ impl MessagingService {
                     match result {
                         Ok((mut send, mut recv)) => {
                             let service = self.clone();
-                            let peer = peer.clone();
+                            let user = user.clone();
                             tokio::spawn(async move {
                                 let first = match ticonnect_net::transport::session::read_frame(&mut recv).await {
                                     Ok(frame) => frame,
@@ -570,7 +589,7 @@ impl MessagingService {
                                         return;
                                     };
                                     let _ = sender.send(InboundTransfer {
-                                        peer,
+                                        user,
                                         send,
                                         recv,
                                         frame,
@@ -587,7 +606,7 @@ impl MessagingService {
                                         return;
                                     }
                                 };
-                                if let Err(error) = sync::run_responder(service, peer, hello, &mut send, &mut recv).await {
+                                if let Err(error) = sync::run_responder(service, user, hello, &mut send, &mut recv).await {
                                     tracing::debug!(%error, "sync responder failed");
                                 }
                             });
@@ -603,7 +622,7 @@ impl MessagingService {
         }
     }
 
-    async fn handle_frame(&self, peer: &PeerInfo, frame: Frame) -> Result<(), MessagingError> {
+    async fn handle_frame(&self, user: &UserInfo, frame: Frame) -> Result<(), MessagingError> {
         match frame.kind() {
             FrameKind::Message | FrameKind::Ack => {}
             FrameKind::Typing => {
@@ -611,12 +630,12 @@ impl MessagingService {
                 let stored = self
                     .inner
                     .trust
-                    .peer_by_fingerprint(&peer.fingerprint.to_hex())
+                    .user_by_fingerprint(&user.fingerprint.to_hex())
                     .await?
-                    .ok_or_else(|| MessagingError::UnknownPeer(peer.node_id.to_string()))?;
-                if stored.policy != PeerPolicy::Ignore && self.settings().typing_enabled() {
+                    .ok_or_else(|| MessagingError::UnknownUser(user.node_id.to_string()))?;
+                if stored.policy != UserPolicy::Ignore && self.settings().typing_enabled() {
                     self.emit(MessagingEvent::TypingChanged {
-                        peer_id: stored.id,
+                        user_id: stored.id,
                         typing: typing.typing,
                     });
                 }
@@ -627,7 +646,18 @@ impl MessagingService {
                     .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
                 if let Some(sender) = self.call_sender() {
                     let _ = sender.send(InboundCallSignal {
-                        peer: peer.clone(),
+                        user: user.clone(),
+                        frame,
+                    });
+                }
+                return Ok(());
+            }
+            FrameKind::WatchParty => {
+                let frame = ticonnect_core::watch_party::WatchPartyFrame::from_wire(&frame)
+                    .map_err(|error| MessagingError::InvalidAttachment(error.to_string()))?;
+                if let Some(sender) = self.watch_party_sender() {
+                    let _ = sender.send(InboundWatchPartyFrame {
+                        user: user.clone(),
                         frame,
                     });
                 }
@@ -636,7 +666,7 @@ impl MessagingService {
             FrameKind::Remote | FrameKind::Input => {
                 if let Some(sender) = self.remote_sender() {
                     let _ = sender.send(InboundRemoteFrame {
-                        peer: peer.clone(),
+                        user: user.clone(),
                         frame,
                     });
                 }
@@ -648,16 +678,16 @@ impl MessagingService {
         let stored = self
             .inner
             .trust
-            .peer_by_fingerprint(&peer.fingerprint.to_hex())
+            .user_by_fingerprint(&user.fingerprint.to_hex())
             .await?
-            .ok_or_else(|| MessagingError::UnknownPeer(peer.node_id.to_string()))?;
-        if stored.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| MessagingError::UnknownUser(user.node_id.to_string()))?;
+        if stored.policy == UserPolicy::Ignore {
             return Ok(());
         }
         if stored.public_key.is_none() {
             self.inner
                 .database
-                .update_peer_public_key(&stored.id, peer.public_key)
+                .update_user_public_key(&stored.id, user.public_key)
                 .await?;
         }
         self.ingest_payload(&stored.id, frame.payload()).await?;
@@ -666,17 +696,17 @@ impl MessagingService {
 
     pub(crate) async fn ingest_payload(
         &self,
-        peer_id: &str,
+        user_id: &str,
         bytes: &[u8],
     ) -> Result<bool, MessagingError> {
-        let peer = self.peer(peer_id).await?;
-        if peer.policy == PeerPolicy::Ignore {
+        let user = self.user(user_id).await?;
+        if user.policy == UserPolicy::Ignore {
             return Ok(false);
         }
-        let (record, signature) = store::verified(bytes, &peer, self.inner.local)?;
+        let (record, signature) = store::verified(bytes, &user, self.inner.local)?;
         match record.kind {
             MessageKind::Ack => {
-                self.ingest_ack(&peer, record, signature).await?;
+                self.ingest_ack(&user, record, signature).await?;
                 Ok(true)
             }
             MessageKind::Text | MessageKind::Image | MessageKind::Audio | MessageKind::File => {
@@ -690,7 +720,7 @@ impl MessagingService {
                             )
                         })?;
                 }
-                self.ingest_text(&peer, record, signature).await?;
+                self.ingest_text(&user, record, signature).await?;
                 Ok(true)
             }
         }
@@ -698,12 +728,12 @@ impl MessagingService {
 
     async fn ingest_text(
         &self,
-        peer: &Peer,
+        user: &User,
         record: MessageRecord,
         signature: Vec<u8>,
     ) -> Result<(), MessagingError> {
         let decision = policy::inbound(
-            peer.policy,
+            user.policy,
             self.settings().dnd_enabled(),
             self.settings().read_receipts_enabled(),
         );
@@ -719,7 +749,7 @@ impl MessagingService {
         let outcome = self
             .inner
             .database
-            .insert_inbound(record.clone(), received_at, signature, &peer.id)
+            .insert_inbound(record.clone(), received_at, signature, &user.id)
             .await?;
         if outcome == InsertOutcome::Inserted {
             let stored = self
@@ -729,20 +759,20 @@ impl MessagingService {
                 .await?
                 .ok_or_else(|| MessagingError::UnknownMessage(record.message_id.to_string()))?;
             self.emit(MessagingEvent::MessageReceived {
-                peer_id: peer.id.clone(),
+                user_id: user.id.clone(),
                 message: stored,
                 notify,
             });
         }
         if delivered_receipt {
-            self.queue_receipt(&peer.id, record.message_id, AckKind::Delivered);
+            self.queue_receipt(&user.id, record.message_id, AckKind::Delivered);
         }
         Ok(())
     }
 
     async fn ingest_ack(
         &self,
-        peer: &Peer,
+        user: &User,
         record: MessageRecord,
         signature: Vec<u8>,
     ) -> Result<(), MessagingError> {
@@ -755,7 +785,7 @@ impl MessagingService {
         let received_at = now_unix_ms();
         self.inner
             .database
-            .insert_inbound(record, received_at, signature, &peer.id)
+            .insert_inbound(record, received_at, signature, &user.id)
             .await?;
 
         let Some(stored) = self.inner.database.get_message(&target).await? else {
@@ -782,12 +812,12 @@ impl MessagingService {
         Ok(())
     }
 
-    fn queue_receipt(&self, peer_id: &str, target: MessageId, kind: AckKind) {
+    fn queue_receipt(&self, user_id: &str, target: MessageId, kind: AckKind) {
         self.inner
             .receipts
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .queue(peer_id, target, kind);
+            .queue(user_id, target, kind);
     }
 
     pub async fn flush_receipts(&self) {
@@ -805,20 +835,20 @@ impl MessagingService {
     }
 
     async fn create_ack(&self, ack: &PendingAck) -> Result<(), MessagingError> {
-        let peer = self.peer(&ack.peer_id).await?;
-        let peer_node: NodeId = peer
+        let user = self.user(&ack.user_id).await?;
+        let user_node: NodeId = user
             .id
             .parse()
-            .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
-        let conversation = ticonnect_core::message::conversation_id(self.inner.local, peer_node);
+            .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
+        let conversation = ticonnect_core::message::conversation_id(self.inner.local, user_node);
         self.inner
             .database
-            .ensure_conversation(&conversation, &peer.id, now_unix_ms())
+            .ensure_conversation(&conversation, &user.id, now_unix_ms())
             .await?;
-        let seq = self.inner.database.allocate_seq(&peer.id).await?;
+        let seq = self.inner.database.allocate_seq(&user.id).await?;
         let record = store::ack(
             self.inner.local,
-            peer_node,
+            user_node,
             seq,
             now_unix_ms(),
             ack.kind,
@@ -841,7 +871,7 @@ impl MessagingService {
             .database
             .enqueue_outbox(&record.message_id.to_string(), now_unix_ms(), expires_at)
             .await?;
-        outbox::flush_peer(self, &ack.peer_id).await;
+        outbox::flush_user(self, &ack.user_id).await;
         Ok(())
     }
 
@@ -860,15 +890,15 @@ impl MessagingService {
     }
 
     pub async fn flush_due(&self) {
-        let peers = match self.inner.database.list_peers().await {
-            Ok(peers) => peers,
+        let users = match self.inner.database.list_users().await {
+            Ok(users) => users,
             Err(error) => {
-                tracing::warn!(%error, "failed to list peers for outbox");
+                tracing::warn!(%error, "failed to list users for outbox");
                 return;
             }
         };
-        for peer in peers {
-            outbox::flush_peer(self, &peer.id).await;
+        for user in users {
+            outbox::flush_user(self, &user.id).await;
         }
     }
 
@@ -884,41 +914,41 @@ impl MessagingService {
         &self.inner.database
     }
 
-    pub fn sync_ready(&self, peer_id: &str) -> bool {
-        self.is_sync_ready(peer_id)
+    pub fn sync_ready(&self, user_id: &str) -> bool {
+        self.is_sync_ready(user_id)
     }
 
-    pub(crate) fn is_sync_ready(&self, peer_id: &str) -> bool {
+    pub(crate) fn is_sync_ready(&self, user_id: &str) -> bool {
         self.inner
             .sync_ready
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .contains(peer_id)
+            .contains(user_id)
     }
 
-    pub(crate) fn mark_sync_ready(&self, peer_id: &str) {
+    pub(crate) fn mark_sync_ready(&self, user_id: &str) {
         self.inner
             .sync_ready
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .insert(peer_id.to_owned());
+            .insert(user_id.to_owned());
     }
 
-    pub(crate) fn clear_sync_ready(&self, peer_id: &str) {
+    pub(crate) fn clear_sync_ready(&self, user_id: &str) {
         self.inner
             .sync_ready
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .remove(peer_id);
+            .remove(user_id);
     }
 
     pub(crate) fn transport(&self) -> &Transport {
         &self.inner.transport
     }
 
-    pub(crate) fn emit_sync_completed(&self, peer_id: &str, count: u32) {
+    pub(crate) fn emit_sync_completed(&self, user_id: &str, count: u32) {
         self.emit(MessagingEvent::SyncCompleted {
-            peer_id: peer_id.to_owned(),
+            user_id: user_id.to_owned(),
             count,
         });
     }
@@ -930,17 +960,17 @@ impl MessagingService {
         });
     }
 
-    async fn conversation_peer(&self, conversation_id: &str) -> Result<String, MessagingError> {
-        let peers = self.inner.database.list_peers().await?;
-        for peer in peers {
-            let peer_node: NodeId = peer
+    async fn conversation_user(&self, conversation_id: &str) -> Result<String, MessagingError> {
+        let users = self.inner.database.list_users().await?;
+        for user in users {
+            let user_node: NodeId = user
                 .id
                 .parse()
-                .map_err(|_| MessagingError::InvalidPeerId(peer.id.clone()))?;
-            if ticonnect_core::message::conversation_id(self.inner.local, peer_node)
+                .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
+            if ticonnect_core::message::conversation_id(self.inner.local, user_node)
                 == conversation_id
             {
-                return Ok(peer.id);
+                return Ok(user.id);
             }
         }
         Err(MessagingError::UnknownConversation(
@@ -962,9 +992,9 @@ pub fn spawn(connection: zbus::Connection, service: MessagingService) -> JoinHan
             tokio::select! {
                 event = transport_events.recv() => {
                     match event {
-                        Ok(TransportEvent::PeerConnected(peer)) => service.on_peer_connected(peer).await,
-                        Ok(TransportEvent::PeerDisconnected(peer)) => service.on_peer_disconnected(&peer),
-                        Ok(TransportEvent::PairingRequested { .. }) => {}
+                        Ok(TransportEvent::UserConnected(user)) => service.on_user_connected(user).await,
+                        Ok(TransportEvent::UserDisconnected(user)) => service.on_user_disconnected(&user),
+                        Ok(TransportEvent::TrustRequested { .. }) => {}
                         Ok(TransportEvent::ProfileRequested { .. }) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -1025,8 +1055,8 @@ pub enum MessagingError {
     #[error(transparent)]
     Settings(#[from] ticonnect_settings::Error),
 
-    #[error("unknown peer: {0}")]
-    UnknownPeer(String),
+    #[error("unknown user: {0}")]
+    UnknownUser(String),
 
     #[error("unknown conversation: {0}")]
     UnknownConversation(String),
@@ -1037,19 +1067,19 @@ pub enum MessagingError {
     #[error("invalid message id: {0}")]
     InvalidMessageId(String),
 
-    #[error("invalid peer id: {0}")]
-    InvalidPeerId(String),
+    #[error("invalid user id: {0}")]
+    InvalidUserId(String),
 
-    #[error("peer {0} has no stored signing key")]
-    MissingPeerKey(String),
+    #[error("user {0} has no stored signing key")]
+    MissingUserKey(String),
 
-    #[error("peer {0} has an invalid signing key")]
-    InvalidPeerKey(String),
+    #[error("user {0} has an invalid signing key")]
+    InvalidUserKey(String),
 
-    #[error("message sender does not match the peer")]
+    #[error("message sender does not match the user")]
     SenderMismatch,
 
-    #[error("message conversation does not match the peer")]
+    #[error("message conversation does not match the user")]
     ConversationMismatch,
 
     #[error("message body is empty")]
@@ -1073,7 +1103,7 @@ pub enum MessagingError {
     #[error("unexpected frame kind {0}")]
     UnexpectedFrame(u8),
 
-    #[error("sync peer rejected the request with code {0}")]
+    #[error("sync user rejected the request with code {0}")]
     SyncRejected(u8),
 
     #[error("unexpected sync frame")]

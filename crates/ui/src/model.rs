@@ -4,7 +4,7 @@ use ticonnect_settings::Appearance;
 
 pub use ticonnect_core::ipc::events::{
     Call, Candidate, ConversationSummary, DaemonEvent, Identity, Message, MessageState,
-    PairingStart, Peer, PeerPolicy, RemoteSession, Status,
+    RemoteSession, Status, User, UserPolicy,
 };
 
 use crate::error::{Error, Result};
@@ -37,7 +37,7 @@ impl Backoff {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BlockedPeer {
+pub struct BlockedUser {
     pub fingerprint: String,
     pub node_id: String,
     pub display_name: String,
@@ -105,12 +105,11 @@ impl SettingsForm {
     }
 }
 
-pub fn pairing_view(value: &str) -> Result<&'static str> {
+pub fn activation_view(value: &str) -> Result<&'static str> {
     match value.trim().to_ascii_lowercase().as_str() {
         "" | "chat" => Ok("chat"),
-        "peers" => Ok("peers"),
+        "users" => Ok("users"),
         "settings" => Ok("settings"),
-        "pairing" | "pair" => Ok("pairing"),
         other => Err(Error::InvalidResponse(format!(
             "unknown activation view: {other}"
         ))),
@@ -136,8 +135,8 @@ mod tests {
 
     #[test]
     fn activation_views_are_stable() {
-        assert_eq!(pairing_view("").expect("default"), "chat");
-        assert_eq!(pairing_view("settings").expect("settings"), "settings");
-        assert!(pairing_view("bogus").is_err());
+        assert_eq!(activation_view("").expect("default"), "chat");
+        assert_eq!(activation_view("settings").expect("settings"), "settings");
+        assert!(activation_view("bogus").is_err());
     }
 }

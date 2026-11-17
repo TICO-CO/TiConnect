@@ -3,7 +3,7 @@
 ## Goal
 
 Build the GTK4 main window as a separate process that talks to the daemon only
-over D-Bus. Provide peers, chat threads, message state, settings, and the pairing
+over D-Bus. Provide users, chat threads, message state, settings, and the trust
 dialog. The daemon remains fully functional when the UI is closed.
 
 ## Systems and components
@@ -14,10 +14,10 @@ Component graph: [UI](../../docs/systems/generated/components/ui.md).
 ## Scope
 
 - `ticonnect-ui` binary with `gtk4`, `libadwaita`, and `relm4`.
-- Peer list, conversation view, message composer.
+- User list, conversation view, message composer.
 - Message state indicators and policy controls.
 - Settings pages.
-- Pairing dialog (PIN and QR).
+- Automatic trust dialog (PIN and QR).
 - D-Bus client with signal subscriptions.
 
 ## Non-goals
@@ -37,7 +37,7 @@ Stages 1, 1.5, 2, and 6 complete.
   startup and `anyhow` error reporting.
 - `crates/ui/src/app.rs` — relm4 application and components.
 - `crates/ui/src/client.rs` — D-Bus client wrapper.
-- `crates/ui/src/views/{peers.rs,chat.rs,settings.rs,pairing.rs}`
+- `crates/ui/src/views/{users.rs,chat.rs,settings.rs,trust.rs}`
 - `crates/ui/resources/` — desktop file, icons, CSS.
 - D-Bus name `org.ticonnect.UI` with `Activate(view)`.
 
@@ -45,30 +45,30 @@ Stages 1, 1.5, 2, and 6 complete.
 
 - [x] `AdwApplication` with application id `org.ticonnect.UI`.
 - [x] Single main window with adaptive layout.
-- [x] Sidebar: peers and presence.
+- [x] Sidebar: users and presence.
 - [x] Content: selected conversation.
 - [x] Header bar: window title, connection state, menu.
 - [x] Graceful behavior when the daemon is absent: show a clear banner and retry.
 - [x] Reconnect to daemon signals automatically on daemon restart.
 - [x] Own bus name `org.ticonnect.UI` and implement `Activate(view)`.
 
-## Peers and chat
+## Users and chat
 
-- [x] List trusted peers with display name, fingerprint, policy, and presence.
-- [x] Select peer opens or creates the conversation.
+- [x] List trusted users with display name, fingerprint, policy, and presence.
+- [x] Select user opens or creates the conversation.
 - [x] Chat view renders text messages in send order.
 - [x] Show message state: queued, sent, delivered, read, failed, expired.
 - [x] Composer sends via `SendMessage`.
 - [x] Enter sends; Shift+Enter inserts a newline.
 - [x] Mark visible messages read when scrolled into view.
 - [x] Scroll pagination for history.
-- [x] Empty, loading, and error states for peers and messages.
-- [x] Policy control per peer (accept/mute/ignore).
+- [x] Empty, loading, and error states for users and messages.
+- [x] Policy control per user (accept/mute/ignore).
 
 ## Settings
 
 - [x] Display name.
-- [x] Per-peer policy list.
+- [x] Per-user policy list.
 - [x] Ringtone path (placeholder until Stage 10).
 - [x] Discovery enable/disable and backend toggles.
 - [x] Autostart enable/disable via XDG autostart file.
@@ -81,20 +81,20 @@ Stages 1, 1.5, 2, and 6 complete.
 - [x] Refresh displayed settings on `SettingsChanged`; no `SetSetting` D-Bus
   call.
 
-## Pairing dialog
+## Automatic trust dialog
 
-- [x] Start pairing and show 6-digit PIN with expiry countdown.
-- [x] Enter a peer PIN to join a pairing session.
+- [x] Start trust and show 6-digit PIN with expiry countdown.
+- [x] Enter a user PIN to join a trust session.
 - [x] Show QR payload as a QR image.
 - [x] Accept QR payload from clipboard or file for testing.
 - [x] Show success and failure states with reason.
-- [x] Cancel pairing cleanly.
+- [x] Cancel trust cleanly.
 
 ## D-Bus client
 
 - [x] Typed wrapper over `zbus` proxy for `org.ticonnect.Daemon`.
 - [x] Subscribe to `MessageReceived`, `MessageStateChanged`,
-  `PeerConnected`, `PeerDisconnected`, `PairingCompleted`, `SettingsChanged`.
+  `UserConnected`, `UserDisconnected`, `Automatic trustCompleted`, `SettingsChanged`.
 - [x] Dispatch signals to the GTK main loop safely.
 - [x] Handle daemon disappearance and reappearance.
 - [x] No blocking calls on the GTK main thread.
@@ -102,11 +102,11 @@ Stages 1, 1.5, 2, and 6 complete.
 ## Tests
 
 - [x] Unit test: D-Bus client maps daemon errors to UI errors.
-- [x] Widget test or headless test for peer list model updates.
+- [x] Widget test or headless test for user list model updates.
 - [ ] Manual: send and receive messages with the UI open.
 - [ ] Manual: close UI, send from CLI, reopen, confirm history and states.
 - [ ] Manual: daemon restart while UI is open recovers.
-- [ ] Manual: pairing flow with PIN and QR.
+- [ ] Manual: trust flow with PIN and QR.
 - [ ] Manual: settings changes persist across restart and the daemon reflects
   them without restart.
 - [ ] Accessibility check: keyboard navigation, labels, focus order.
@@ -117,7 +117,7 @@ Stages 1, 1.5, 2, and 6 complete.
 - [x] UI only uses the documented D-Bus interface.
 - [x] Fingerprints shown exactly as the daemon reports them.
 - [x] No message body logging.
-- [x] Pairing PIN not persisted in logs or config.
+- [x] Automatic trust PIN not persisted in logs or config.
 
 ## Docs and acceptance
 
@@ -128,10 +128,10 @@ Stages 1, 1.5, 2, and 6 complete.
 
 ## Acceptance criteria
 
-- UI launches, lists peers, and shows conversations.
+- UI launches, lists users, and shows conversations.
 - Sending and receiving works with live updates.
 - Message states match daemon state.
-- Pairing succeeds with PIN and QR.
+- Automatic trust succeeds with PIN and QR.
 - Settings persist and apply.
 - Closing the UI does not affect daemon message reception.
 - `Activate(view)` raises the window on the correct view.

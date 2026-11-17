@@ -4,15 +4,15 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, Call, Candidate, ConversationSummary, Message, MessageState, Peer, PeerPolicy,
-    RemoteSession,
+    self, Call, Candidate, ConversationSummary, Message, MessageState, RemoteSession, User,
+    UserPolicy, WatchParty,
 };
-pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, PairingStart, Status};
+pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
 
 use crate::error::{Error, Result};
-use crate::model::{BlockedPeer, SettingsForm};
+use crate::model::{BlockedUser, SettingsForm};
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
@@ -28,27 +28,20 @@ enum Command {
     },
     ClearAvatar(Reply<()>),
     GetStatus(Reply<Status>),
-    ListPeers(Reply<Vec<Peer>>),
+    ListUsers(Reply<Vec<User>>),
+    GetUser {
+        user_id: String,
+        reply: Reply<ticonnect_core::ipc::events::UserDetails>,
+    },
     ListCandidates(Reply<Vec<Candidate>>),
     ListConversationSummaries(Reply<Vec<ConversationSummary>>),
-    ListBlockedPeers(Reply<Vec<BlockedPeer>>),
+    ListBlockedUsers(Reply<Vec<BlockedUser>>),
     ListSettings(Reply<SettingsForm>),
-    StartPairing(Reply<PairingStart>),
-    PairWithPin {
-        node_id: String,
-        pin: String,
+    BlockUser {
+        user_id: String,
         reply: Reply<()>,
     },
-    PairWithQr {
-        payload: String,
-        reply: Reply<()>,
-    },
-    CancelPairing(Reply<()>),
-    BlockPeer {
-        peer_id: String,
-        reply: Reply<()>,
-    },
-    UnblockPeer {
+    UnblockUser {
         fingerprint: String,
         reply: Reply<()>,
     },
@@ -63,12 +56,12 @@ enum Command {
         reply: Reply<u32>,
     },
     SendMessage {
-        peer_id: String,
+        user_id: String,
         body: String,
         reply: Reply<String>,
     },
     SendAttachment {
-        peer_id: String,
+        user_id: String,
         path: String,
         reply: Reply<String>,
     },
@@ -86,13 +79,13 @@ enum Command {
         message_ids: Vec<String>,
         reply: Reply<()>,
     },
-    SetPeerPolicy {
-        peer_id: String,
-        policy: PeerPolicy,
+    SetUserPolicy {
+        user_id: String,
+        policy: UserPolicy,
         reply: Reply<()>,
     },
     SetTyping {
-        peer_id: String,
+        user_id: String,
         typing: bool,
         reply: Reply<()>,
     },
@@ -101,7 +94,7 @@ enum Command {
         reply: Reply<()>,
     },
     StartCall {
-        peer_id: String,
+        user_id: String,
         reply: Reply<String>,
     },
     AcceptCall {
@@ -118,7 +111,7 @@ enum Command {
     },
     GetCallState(Reply<Option<Call>>),
     RequestRemoteSession {
-        peer_id: String,
+        user_id: String,
         reply: Reply<RemoteSession>,
     },
     AcceptRemoteSession {
@@ -135,6 +128,30 @@ enum Command {
         reply: Reply<()>,
     },
     GetRemoteSession(Reply<Option<RemoteSession>>),
+    StartWatchParty {
+        user_id: String,
+        video_id: String,
+        reply: Reply<WatchParty>,
+    },
+    AcceptWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    DeclineWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    PublishWatchParty {
+        party_id: String,
+        position_ms: u64,
+        playing: bool,
+        reply: Reply<WatchParty>,
+    },
+    EndWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    GetWatchParty(Reply<Option<WatchParty>>),
 }
 
 #[derive(Clone)]
@@ -176,51 +193,37 @@ impl LinkHandle {
         self.request(Command::GetStatus).await
     }
 
-    pub async fn list_peers(&self) -> Result<Vec<Peer>> {
-        self.request(Command::ListPeers).await
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        self.request(Command::ListUsers).await
+    }
+
+    pub async fn get_user(
+        &self,
+        user_id: String,
+    ) -> Result<ticonnect_core::ipc::events::UserDetails> {
+        self.request(|reply| Command::GetUser { user_id, reply })
+            .await
     }
 
     pub async fn list_candidates(&self) -> Result<Vec<Candidate>> {
         self.request(Command::ListCandidates).await
     }
 
-    pub async fn list_blocked_peers(&self) -> Result<Vec<BlockedPeer>> {
-        self.request(Command::ListBlockedPeers).await
+    pub async fn list_blocked_users(&self) -> Result<Vec<BlockedUser>> {
+        self.request(Command::ListBlockedUsers).await
     }
 
     pub async fn list_settings(&self) -> Result<SettingsForm> {
         self.request(Command::ListSettings).await
     }
 
-    pub async fn start_pairing(&self) -> Result<PairingStart> {
-        self.request(Command::StartPairing).await
-    }
-
-    pub async fn pair_with_pin(&self, node_id: String, pin: String) -> Result<()> {
-        self.request(|reply| Command::PairWithPin {
-            node_id,
-            pin,
-            reply,
-        })
-        .await
-    }
-
-    pub async fn pair_with_qr(&self, payload: String) -> Result<()> {
-        self.request(|reply| Command::PairWithQr { payload, reply })
+    pub async fn block_user(&self, user_id: String) -> Result<()> {
+        self.request(|reply| Command::BlockUser { user_id, reply })
             .await
     }
 
-    pub async fn cancel_pairing(&self) -> Result<()> {
-        self.request(Command::CancelPairing).await
-    }
-
-    pub async fn block_peer(&self, peer_id: String) -> Result<()> {
-        self.request(|reply| Command::BlockPeer { peer_id, reply })
-            .await
-    }
-
-    pub async fn unblock_peer(&self, fingerprint: String) -> Result<()> {
-        self.request(|reply| Command::UnblockPeer { fingerprint, reply })
+    pub async fn unblock_user(&self, fingerprint: String) -> Result<()> {
+        self.request(|reply| Command::UnblockUser { fingerprint, reply })
             .await
     }
 
@@ -247,18 +250,18 @@ impl LinkHandle {
         .await
     }
 
-    pub async fn send_message(&self, peer_id: String, body: String) -> Result<String> {
+    pub async fn send_message(&self, user_id: String, body: String) -> Result<String> {
         self.request(|reply| Command::SendMessage {
-            peer_id,
+            user_id,
             body,
             reply,
         })
         .await
     }
 
-    pub async fn send_attachment(&self, peer_id: String, path: String) -> Result<String> {
+    pub async fn send_attachment(&self, user_id: String, path: String) -> Result<String> {
         self.request(|reply| Command::SendAttachment {
-            peer_id,
+            user_id,
             path,
             reply,
         })
@@ -288,18 +291,18 @@ impl LinkHandle {
         .await
     }
 
-    pub async fn set_peer_policy(&self, peer_id: String, policy: PeerPolicy) -> Result<()> {
-        self.request(|reply| Command::SetPeerPolicy {
-            peer_id,
+    pub async fn set_user_policy(&self, user_id: String, policy: UserPolicy) -> Result<()> {
+        self.request(|reply| Command::SetUserPolicy {
+            user_id,
             policy,
             reply,
         })
         .await
     }
 
-    pub async fn set_typing(&self, peer_id: String, typing: bool) -> Result<()> {
+    pub async fn set_typing(&self, user_id: String, typing: bool) -> Result<()> {
         self.request(|reply| Command::SetTyping {
-            peer_id,
+            user_id,
             typing,
             reply,
         })
@@ -311,8 +314,8 @@ impl LinkHandle {
             .await
     }
 
-    pub async fn start_call(&self, peer_id: String) -> Result<String> {
-        self.request(|reply| Command::StartCall { peer_id, reply })
+    pub async fn start_call(&self, user_id: String) -> Result<String> {
+        self.request(|reply| Command::StartCall { user_id, reply })
             .await
     }
 
@@ -335,8 +338,8 @@ impl LinkHandle {
         self.request(Command::GetCallState).await
     }
 
-    pub async fn request_remote_session(&self, peer_id: String) -> Result<RemoteSession> {
-        self.request(|reply| Command::RequestRemoteSession { peer_id, reply })
+    pub async fn request_remote_session(&self, user_id: String) -> Result<RemoteSession> {
+        self.request(|reply| Command::RequestRemoteSession { user_id, reply })
             .await
     }
 
@@ -361,6 +364,49 @@ impl LinkHandle {
 
     pub async fn remote_session(&self) -> Result<Option<RemoteSession>> {
         self.request(Command::GetRemoteSession).await
+    }
+
+    pub async fn start_watch_party(&self, user_id: String, video_id: String) -> Result<WatchParty> {
+        self.request(|reply| Command::StartWatchParty {
+            user_id,
+            video_id,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn accept_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::AcceptWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn decline_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::DeclineWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn publish_watch_party(
+        &self,
+        party_id: String,
+        position_ms: u64,
+        playing: bool,
+    ) -> Result<WatchParty> {
+        self.request(|reply| Command::PublishWatchParty {
+            party_id,
+            position_ms,
+            playing,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn end_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::EndWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn watch_party(&self) -> Result<Option<WatchParty>> {
+        self.request(Command::GetWatchParty).await
     }
 
     async fn request<T>(&self, make: impl FnOnce(Reply<T>) -> Command) -> Result<T> {
@@ -452,19 +498,16 @@ async fn listen(
         .await
         .map_err(bus_error)?;
     let mut typing_changed = proxy.receive_typing_changed().await.map_err(bus_error)?;
-    let mut peer_profile_changed = proxy
-        .receive_peer_profile_changed()
+    let mut user_profile_changed = proxy
+        .receive_user_profile_changed()
         .await
         .map_err(bus_error)?;
     let mut self_profile_changed = proxy
         .receive_self_profile_changed()
         .await
         .map_err(bus_error)?;
-    let mut connected = proxy.receive_peer_connected().await.map_err(bus_error)?;
-    let mut disconnected = proxy.receive_peer_disconnected().await.map_err(bus_error)?;
-    let mut pairing_started = proxy.receive_pairing_started().await.map_err(bus_error)?;
-    let mut pairing_completed = proxy.receive_pairing_completed().await.map_err(bus_error)?;
-    let mut pairing_failed = proxy.receive_pairing_failed().await.map_err(bus_error)?;
+    let mut connected = proxy.receive_user_connected().await.map_err(bus_error)?;
+    let mut disconnected = proxy.receive_user_disconnected().await.map_err(bus_error)?;
     let mut policy_changed = proxy.receive_policy_changed().await.map_err(bus_error)?;
     let mut settings_changed = proxy.receive_settings_changed().await.map_err(bus_error)?;
     let mut sync_completed = proxy.receive_sync_completed().await.map_err(bus_error)?;
@@ -491,6 +534,15 @@ async fn listen(
         .receive_remote_indicator_changed()
         .await
         .map_err(bus_error)?;
+    let mut watch_party_requested = proxy
+        .receive_watch_party_requested()
+        .await
+        .map_err(bus_error)?;
+    let mut watch_party_changed = proxy
+        .receive_watch_party_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut watch_party_ended = proxy.receive_watch_party_ended().await.map_err(bus_error)?;
     let mut transfer_done = proxy.receive_transfer_done().await.map_err(bus_error)?;
     let mut transfer_failed = proxy.receive_transfer_failed().await.map_err(bus_error)?;
     let mut candidate_found = proxy.receive_candidate_found().await.map_err(bus_error)?;
@@ -522,21 +574,21 @@ async fn listen(
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 let _ = events.send(DaemonEvent::ConversationChanged {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                 });
             }
             signal = typing_changed.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 let _ = events.send(DaemonEvent::TypingChanged {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                     typing: args.typing,
                 });
             }
-            signal = peer_profile_changed.next() => {
+            signal = user_profile_changed.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PeerProfileChanged {
+                let _ = events.send(DaemonEvent::UserProfileChanged {
                     fingerprint: args.fingerprint.to_owned(),
                 });
             }
@@ -547,43 +599,23 @@ async fn listen(
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(DaemonEvent::PeerConnected(peer));
+                if let Ok(user) = events::parse_user(&args.user) {
+                    let _ = events.send(DaemonEvent::UserConnected(user));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(DaemonEvent::PeerDisconnected(peer));
+                if let Ok(user) = events::parse_user(&args.user) {
+                    let _ = events.send(DaemonEvent::UserDisconnected(user));
                 }
-            }
-            signal = pairing_started.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(start) = events::parse_pairing(&args.pairing) {
-                    let _ = events.send(DaemonEvent::PairingStarted(start));
-                }
-            }
-            signal = pairing_completed.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PairingCompleted {
-                    peer_id: args.peer_id.to_owned(),
-                    fingerprint: args.fingerprint.to_owned(),
-                });
-            }
-            signal = pairing_failed.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PairingFailed(args.reason.to_owned()));
             }
             signal = policy_changed.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 let _ = events.send(DaemonEvent::PolicyChanged {
-                    peer_id: args.peer_id.to_owned(),
-                    policy: PeerPolicy::parse(args.policy),
+                    user_id: args.user_id.to_owned(),
+                    policy: UserPolicy::parse(args.policy),
                 });
             }
             signal = settings_changed.next() => {
@@ -651,6 +683,28 @@ async fn listen(
                     total: args.total,
                 });
             }
+            signal = watch_party_requested.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(party) = events::parse_watch_party(&args.party) {
+                    let _ = events.send(DaemonEvent::WatchPartyRequested(party));
+                }
+            }
+            signal = watch_party_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                if let Ok(party) = events::parse_watch_party(&args.party) {
+                    let _ = events.send(DaemonEvent::WatchPartyChanged(party));
+                }
+            }
+            signal = watch_party_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else { continue };
+                let _ = events.send(DaemonEvent::WatchPartyEnded {
+                    party_id: args.party_id.to_owned(),
+                    reason: args.reason.to_owned(),
+                });
+            }
             signal = transfer_done.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
@@ -668,7 +722,7 @@ async fn listen(
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 let _ = events.send(DaemonEvent::SyncCompleted {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                     count: args.count,
                 });
             }
@@ -729,9 +783,16 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
-        Command::ListPeers(reply) => {
-            let result = match proxy.list_peers().await {
-                Ok(values) => events::parse_peers(&values).map_err(payload_error),
+        Command::ListUsers(reply) => {
+            let result = match proxy.list_users().await {
+                Ok(values) => events::parse_users(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::GetUser { user_id, reply } => {
+            let result = match proxy.get_user(&user_id).await {
+                Ok(values) => events::parse_user_details(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
@@ -763,55 +824,24 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
-        Command::StartPairing(reply) => {
-            let result = match proxy.start_pairing().await {
-                Ok(values) => events::parse_pairing(&values).map_err(payload_error),
+        Command::ListBlockedUsers(reply) => {
+            let result = match proxy.list_blocked_users().await {
+                Ok(values) => Ok(parse_blocked_users(&values)),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
-        Command::PairWithPin {
-            node_id,
-            pin,
-            reply,
-        } => {
+        Command::BlockUser { user_id, reply } => {
             let result = proxy
-                .pair_with_pin(&node_id, &pin)
+                .forget_user(&user_id)
                 .await
                 .map(|_| ())
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::PairWithQr { payload, reply } => {
+        Command::UnblockUser { fingerprint, reply } => {
             let result = proxy
-                .pair_with_qr(&payload)
-                .await
-                .map(|_| ())
-                .map_err(bus_error);
-            let _ = reply.send(result);
-        }
-        Command::CancelPairing(reply) => {
-            let result = proxy.cancel_pairing().await.map_err(bus_error);
-            let _ = reply.send(result);
-        }
-        Command::ListBlockedPeers(reply) => {
-            let result = match proxy.list_blocked_peers().await {
-                Ok(values) => Ok(parse_blocked_peers(&values)),
-                Err(error) => Err(bus_error(error)),
-            };
-            let _ = reply.send(result);
-        }
-        Command::BlockPeer { peer_id, reply } => {
-            let result = proxy
-                .forget_peer(&peer_id)
-                .await
-                .map(|_| ())
-                .map_err(bus_error);
-            let _ = reply.send(result);
-        }
-        Command::UnblockPeer { fingerprint, reply } => {
-            let result = proxy
-                .unblock_peer(&fingerprint)
+                .unblock_user(&fingerprint)
                 .await
                 .map(|_| ())
                 .map_err(bus_error);
@@ -843,20 +873,20 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let _ = reply.send(result);
         }
         Command::SendMessage {
-            peer_id,
+            user_id,
             body,
             reply,
         } => {
-            let result = proxy.send_message(&peer_id, &body).await.map_err(bus_error);
+            let result = proxy.send_message(&user_id, &body).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SendAttachment {
-            peer_id,
+            user_id,
             path,
             reply,
         } => {
             let result = proxy
-                .send_attachment(&peer_id, &path, "")
+                .send_attachment(&user_id, &path, "")
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -888,31 +918,31 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::SetPeerPolicy {
-            peer_id,
+        Command::SetUserPolicy {
+            user_id,
             policy,
             reply,
         } => {
             let result = proxy
-                .set_peer_policy(&peer_id, policy.as_str())
+                .set_user_policy(&user_id, policy.as_str())
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SetTyping {
-            peer_id,
+            user_id,
             typing,
             reply,
         } => {
-            let result = proxy.set_typing(&peer_id, typing).await.map_err(bus_error);
+            let result = proxy.set_typing(&user_id, typing).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SetDnd { enabled, reply } => {
             let result = proxy.set_dnd(enabled).await.map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::StartCall { peer_id, reply } => {
-            let result = proxy.start_call(&peer_id).await.map_err(bus_error);
+        Command::StartCall { user_id, reply } => {
+            let result = proxy.start_call(&user_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::AcceptCall { call_id, reply } => {
@@ -927,8 +957,59 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = proxy.hangup_call(&call_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::RequestRemoteSession { peer_id, reply } => {
-            let result = match proxy.request_remote_session(&peer_id).await {
+        Command::StartWatchParty {
+            user_id,
+            video_id,
+            reply,
+        } => {
+            let result = match proxy.start_watch_party(&user_id, &video_id).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::AcceptWatchParty { party_id, reply } => {
+            let result = proxy.accept_watch_party(&party_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::DeclineWatchParty { party_id, reply } => {
+            let result = proxy
+                .decline_watch_party(&party_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::PublishWatchParty {
+            party_id,
+            position_ms,
+            playing,
+            reply,
+        } => {
+            let result = match proxy
+                .publish_watch_party(&party_id, position_ms, playing)
+                .await
+            {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::EndWatchParty { party_id, reply } => {
+            let result = proxy.end_watch_party(&party_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::GetWatchParty(reply) => {
+            let result = match proxy.get_watch_party().await {
+                Ok(values) if values.is_empty() => Ok(None),
+                Ok(values) => events::parse_watch_party(&values)
+                    .map(Some)
+                    .map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::RequestRemoteSession { user_id, reply } => {
+            let result = match proxy.request_remote_session(&user_id).await {
                 Ok(values) => events::parse_remote_session(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
@@ -992,14 +1073,14 @@ fn parse_settings(values: &HashMap<String, OwnedVariant>) -> SettingsForm {
     SettingsForm::new(events::settings_map(values))
 }
 
-fn parse_blocked_peers(values: &[HashMap<String, OwnedVariant>]) -> Vec<BlockedPeer> {
+fn parse_blocked_users(values: &[HashMap<String, OwnedVariant>]) -> Vec<BlockedUser> {
     values
         .iter()
-        .map(|peer| BlockedPeer {
-            fingerprint: variant_string(peer, ipc::PEER_FINGERPRINT),
-            node_id: variant_string(peer, ipc::PEER_ID),
-            display_name: variant_string(peer, ipc::PEER_DISPLAY_NAME),
-            blocked_at: peer
+        .map(|user| BlockedUser {
+            fingerprint: variant_string(user, ipc::USER_FINGERPRINT),
+            node_id: variant_string(user, ipc::USER_ID),
+            display_name: variant_string(user, ipc::USER_DISPLAY_NAME),
+            blocked_at: user
                 .get(ipc::BLOCKED_AT)
                 .and_then(|value| u64::try_from(value).ok())
                 .unwrap_or_default(),
@@ -1016,7 +1097,7 @@ fn variant_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
 }
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {
-    crate::model::pairing_view(value)
+    crate::model::activation_view(value)
 }
 
 #[cfg(test)]
@@ -1032,7 +1113,7 @@ mod tests {
     #[test]
     fn invalid_required_field_is_reported() {
         let values = HashMap::new();
-        assert!(events::required_string(&values, ipc::PEER_ID).is_err());
+        assert!(events::required_string(&values, ipc::USER_ID).is_err());
     }
 
     #[test]

@@ -4,10 +4,10 @@
 
 ## Goal
 
-Allow a trusted peer to view and control the host desktop. Capture and input go
+Allow a trusted user to view and control the host desktop. Capture and input go
 through a single RemoteDesktop portal grant. Consent is explicit, an indicator is
 always visible, and a kill switch ends the session immediately. Sessions are
-PIN-gated and scoped to one trusted peer.
+PIN-gated and scoped to one trusted user.
 
 ## Systems and components
 
@@ -48,14 +48,14 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 
 ## Consent and session flow
 
-- [x] Viewer requests a session with the host peer.
+- [x] Viewer requests a session with the host user.
 - [x] Host daemon shows a consent dialog with viewer identity and fingerprint.
 - [x] Host generates a per-session PIN shown locally and entered by the viewer.
-- [x] Session is scoped to exactly one trusted peer.
+- [x] Session is scoped to exactly one trusted user.
 - [x] Consent is required for every session; no remembered grant in v1.
 - [x] Host shows a persistent "remote session active" indicator while active.
 - [x] Kill switch ends capture, input, and transport immediately.
-- [x] Session ends on transport loss, peer disconnect, or explicit hangup.
+- [x] Session ends on transport loss, user disconnect, or explicit hangup.
 - [x] Deny path leaves no capture or input resources open.
 - [x] Session timeout configurable; default off with explicit hangup.
 
@@ -86,12 +86,12 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 - [x] Bound input rate and coalesce motion events.
 - [x] Validate event types and ranges before injection.
 - [x] Reject input when no active session or when the viewer is not the granted
-  peer.
+  user.
 - [x] Release input devices on session end.
 
 ## D-Bus additions
 
-- [x] `RequestRemoteSession(s peer_id) -> a{sv}` with session id and PIN.
+- [x] `RequestRemoteSession(s user_id) -> a{sv}` with session id and PIN.
 - [x] `AcceptRemoteSession(s session_id, s pin)`.
 - [x] `DenyRemoteSession(s session_id)`.
 - [x] `EndRemoteSession(s session_id)`.
@@ -115,7 +115,7 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 - [x] Frame loss triggers keyframe request.
 - [x] Input event validation and rate limiting.
 - [x] Session end releases capture, input, and transport resources.
-- [x] Untrusted peer cannot request or join a session.
+- [x] Untrusted user cannot request or join a session.
 - [x] Wrong PIN fails with bounded attempts.
 - [x] Kill switch stops the session within a bounded time.
 - [ ] Manual: GNOME Wayland and KDE Wayland capture plus input.
@@ -125,7 +125,7 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 
 - [x] Per-session consent, no silent or unattended access.
 - [x] Per-session PIN with attempt limits and expiry.
-- [x] Session scoped to one pinned peer.
+- [x] Session scoped to one pinned user.
 - [x] Persistent visible indicator, not dismissible while active.
 - [x] Hard kill switch always reachable.
 - [x] Input injection only while the session is active.
@@ -139,15 +139,15 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 - [x] Document portal requirements and desktop support matrix.
 - [x] Document Wayland libei vs X11 XTEST behavior.
 - [x] Document performance target and 4K exclusion.
-- [x] Document how to revoke a peer and end sessions.
+- [x] Document how to revoke a user and end sessions.
 
 ## Acceptance criteria
 
-- A trusted peer views the host desktop after explicit consent.
+- A trusted user views the host desktop after explicit consent.
 - Input injection works on Wayland and X11.
 - The indicator is visible for the whole session.
 - The kill switch ends the session immediately.
-- Wrong PIN and untrusted peers are rejected.
+- Wrong PIN and untrusted users are rejected.
 - Session cleanup leaves no capture or input resources open.
 
 ## Demo
@@ -172,4 +172,4 @@ Stages 1, 1.5, 3, 5, and 7 complete.
 ## Works without later stages
 
 Remote desktop works with no attachments, voice calls, or overlay dependency.
-Only earlier pairing, transport, and UI pieces are required.
+Only earlier trust, transport, and UI pieces are required.

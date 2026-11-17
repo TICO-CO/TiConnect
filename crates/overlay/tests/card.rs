@@ -1,14 +1,17 @@
 use ticonnect_overlay::card::{
-    AddOutcome, Card, CardQueue, CardRouter, DEDUP_CAPACITY, MAX_VISIBLE, preview,
+    AddOutcome, Card, CardKind, CardQueue, CardRouter, DEDUP_CAPACITY, MAX_VISIBLE, preview,
 };
 
 fn card(id: &str) -> Card {
     Card {
         id: id.to_owned(),
-        peer_id: format!("peer-{id}"),
+        user_id: format!("user-{id}"),
         sender: "Ada".to_owned(),
         preview: format!("body {id}"),
         sent_at: 1,
+        kind: CardKind::Message,
+        persistent: false,
+        actions: Vec::new(),
     }
 }
 
@@ -80,6 +83,17 @@ fn router_respects_notify_policy_and_overlay_state() {
         router.route(card("c"), true, true, false),
         AddOutcome::Notification
     );
+}
+
+#[test]
+fn persistent_cards_do_not_expire() {
+    let mut queue = CardQueue::new(1_000);
+    let mut call = card("call");
+    call.persistent = true;
+    call.actions = vec![ticonnect_overlay::card::CardAction::AcceptCall];
+    queue.enqueue(call);
+    assert!(!queue.advance(60_000));
+    assert_eq!(queue.visible().count(), 1);
 }
 
 #[test]

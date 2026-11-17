@@ -452,9 +452,9 @@ mod tests {
     fn text_record_round_trips_and_verifies() {
         let identity = IdentityKeyPair::from_secret_bytes([71_u8; 32]);
         let sender = NodeId::generate();
-        let peer = NodeId::generate();
+        let user = NodeId::generate();
         let record = MessageRecord::text(
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             1,
             1_700_000_000_000,
@@ -472,9 +472,9 @@ mod tests {
     fn tampering_fails_verification() {
         let identity = IdentityKeyPair::from_secret_bytes([72_u8; 32]);
         let sender = NodeId::generate();
-        let peer = NodeId::generate();
+        let user = NodeId::generate();
         let record = MessageRecord::text(
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             1,
             1,
@@ -496,12 +496,12 @@ mod tests {
     fn attachment_record_round_trips() {
         let identity = IdentityKeyPair::from_secret_bytes([73_u8; 32]);
         let sender = NodeId::generate();
-        let peer = NodeId::generate();
+        let user = NodeId::generate();
         let attachment =
             AttachmentRef::new(AttachmentHash::of(b"payload"), "photo.png", 7, "image/png")
                 .expect("attachment");
         let record = MessageRecord::new(
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             1,
             1,
@@ -539,9 +539,9 @@ mod tests {
     #[test]
     fn rejects_oversized_body_and_bad_ack() {
         let sender = NodeId::generate();
-        let peer = NodeId::generate();
+        let user = NodeId::generate();
         let mut record = MessageRecord::text(
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             1,
             1,
@@ -553,7 +553,7 @@ mod tests {
         ));
 
         record = MessageRecord::new(
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             2,
             1,

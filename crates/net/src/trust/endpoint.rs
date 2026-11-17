@@ -6,19 +6,18 @@ use ticonnect_core::fingerprint::{Fingerprint, FingerprintError};
 use ticonnect_core::id::NodeId;
 use tokio::time::timeout;
 
-use super::PAIRING_TIMEOUT_SECS;
-use super::frames::{FrameError, PairingMessage, decode_frame, encode_frame};
+use super::TRUST_TIMEOUT_SECS;
+use super::frames::{FrameError, TrustMessage, decode_frame, encode_frame};
 use super::spake2::{
-    Confirmation, PairingMode, PairingSecret, PairingTranscript, PeerIdentity, Role, Spake2Error,
-    Spake2Session,
+    Confirmation, Role, Spake2Error, Spake2Session, TrustSecret, TrustTranscript, UserIdentity,
 };
-use ticonnect_core::wire::{MAX_PAIRING_FRAME, WireError};
+use ticonnect_core::wire::{MAX_TRUST_FRAME, WireError};
 
-const STEP_TIMEOUT: Duration = Duration::from_secs(PAIRING_TIMEOUT_SECS);
+const STEP_TIMEOUT: Duration = Duration::from_secs(TRUST_TIMEOUT_SECS);
 
 #[derive(Debug, Error)]
 pub enum EndpointError {
-    #[error("pairing connection failed: {0}")]
+    #[error("trust connection failed: {0}")]
     Connection(String),
 
     #[error(transparent)]
@@ -30,35 +29,32 @@ pub enum EndpointError {
     #[error(transparent)]
     Wire(#[from] WireError),
 
-    #[error("pairing timed out")]
+    #[error("trust exchange timed out")]
     Timeout,
 
-    #[error("pairing hello is invalid")]
+    #[error("trust hello is invalid")]
     InvalidHello,
 
-    #[error("pairing mode does not match")]
-    ModeMismatch,
-
-    #[error("peer certificate fingerprint does not match")]
+    #[error("user certificate fingerprint does not match")]
     CertificateMismatch,
 
-    #[error("peer identity does not match")]
+    #[error("user identity does not match")]
     IdentityMismatch,
 
-    #[error("pairing confirmation does not match")]
+    #[error("trust confirmation does not match")]
     ConfirmationMismatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairingPeer {
+pub struct TrustUser {
     pub node_id: NodeId,
     pub fingerprint: Fingerprint,
     pub certificate_fingerprint: Fingerprint,
 }
 
-impl PairingPeer {
-    fn identity(&self) -> PeerIdentity {
-        PeerIdentity {
+impl TrustUser {
+    fn identity(&self) -> UserIdentity {
+        UserIdentity {
             node_id: self.node_id.to_string(),
             fingerprint: self.fingerprint.to_hex(),
             certificate_fingerprint: self.certificate_fingerprint.to_hex(),
@@ -67,33 +63,28 @@ impl PairingPeer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PairingOutcome {
-    pub peer: PairingPeer,
-    pub mode: PairingMode,
+pub struct TrustOutcome {
+    pub user: TrustUser,
 }
 
 #[derive(Debug, Clone)]
 pub struct InitiatorRequest {
-    pub local: PairingPeer,
-    pub expected: PairingPeer,
-    pub mode: PairingMode,
-    pub secret: PairingSecret,
-    pub token: Option<[u8; 32]>,
+    pub local: TrustUser,
+    pub expected: TrustUser,
+    pub token: [u8; 32],
 }
 
 #[derive(Debug, Clone)]
 pub struct ResponderRequest {
-    pub local: PairingPeer,
-    pub pin_secret: Option<PairingSecret>,
-    pub qr_secret: Option<PairingSecret>,
-    pub token: Option<[u8; 32]>,
+    pub local: TrustUser,
+    pub token: [u8; 32],
     pub certificate_fingerprint: Fingerprint,
 }
 
 pub async fn run_initiator(
     connection: &quinn::Connection,
     request: InitiatorRequest,
-) -> Result<PairingOutcome, EndpointError> {
+) -> Result<TrustOutcome, EndpointError> {
     timeout(STEP_TIMEOUT, run_initiator_inner(connection, request))
         .await
         .map_err(|_| EndpointError::Timeout)?
@@ -102,7 +93,7 @@ pub async fn run_initiator(
 pub async fn run_responder(
     connection: &quinn::Connection,
     request: ResponderRequest,
-) -> Result<PairingOutcome, EndpointError> {
+) -> Result<TrustOutcome, EndpointError> {
     timeout(STEP_TIMEOUT, run_responder_inner(connection, request))
         .await
         .map_err(|_| EndpointError::Timeout)?
@@ -111,29 +102,21 @@ pub async fn run_responder(
 async fn run_initiator_inner(
     connection: &quinn::Connection,
     request: InitiatorRequest,
-) -> Result<PairingOutcome, EndpointError> {
-    if request.mode == PairingMode::Qr && request.token.is_none() {
-        return Err(EndpointError::InvalidHello);
-    }
-
+) -> Result<TrustOutcome, EndpointError> {
     let (mut send, mut recv) = connection
         .open_bi()
         .await
         .map_err(|error| EndpointError::Connection(error.to_string()))?;
 
-    let hello = PairingMessage::Hello {
+    let hello = TrustMessage::Hello {
         node_id: request.local.node_id.to_string(),
         fingerprint: request.local.fingerprint.to_hex(),
         certificate_fingerprint: request.local.certificate_fingerprint.to_hex(),
-        mode: request.mode.as_u8(),
     };
     write_message(&mut send, &hello).await?;
 
     let hello = expect_hello(read_message(&mut recv).await?)?;
-    if hello.mode != request.mode.as_u8() {
-        return Err(EndpointError::ModeMismatch);
-    }
-    let remote = hello_to_peer(hello)?;
+    let remote = hello_to_user(hello)?;
     if remote.certificate_fingerprint != request.expected.certificate_fingerprint
         || remote.fingerprint != request.expected.fingerprint
     {
@@ -143,126 +126,100 @@ async fn run_initiator_inner(
         return Err(EndpointError::IdentityMismatch);
     }
 
-    let transcript = PairingTranscript::new(
-        request.mode,
-        request.local.identity(),
-        remote.identity(),
-        request.token,
-    );
+    let transcript =
+        TrustTranscript::new(request.local.identity(), remote.identity(), request.token);
     let hash = transcript.hash()?;
-    let (session, message) = Spake2Session::start(Role::Initiator, &request.secret, &transcript)?;
+    let secret = TrustSecret::new(request.token);
+    let (session, message) = Spake2Session::start(Role::Initiator, &secret, &transcript)?;
     write_message(
         &mut send,
-        &PairingMessage::Spake2 {
+        &TrustMessage::Spake2 {
             message: message.clone(),
         },
     )
     .await?;
 
-    let peer_message = expect_spake2(read_message(&mut recv).await?)?;
-    let confirmation = session.finish(&peer_message, &hash)?;
+    let user_message = expect_spake2(read_message(&mut recv).await?)?;
+    let confirmation = session.finish(&user_message, &hash)?;
     write_message(
         &mut send,
-        &PairingMessage::Confirm {
+        &TrustMessage::Confirm {
             value: *confirmation.as_bytes(),
         },
     )
     .await?;
 
-    let peer_confirmation = expect_confirm(read_message(&mut recv).await?)?;
-    if !confirmation.matches(&Confirmation::from_bytes(peer_confirmation)) {
+    let user_confirmation = expect_confirm(read_message(&mut recv).await?)?;
+    if !confirmation.matches(&Confirmation::from_bytes(user_confirmation)) {
         return Err(EndpointError::ConfirmationMismatch);
     }
     let _ = send.finish();
 
-    Ok(PairingOutcome {
-        peer: remote,
-        mode: request.mode,
-    })
+    Ok(TrustOutcome { user: remote })
 }
 
 async fn run_responder_inner(
     connection: &quinn::Connection,
     request: ResponderRequest,
-) -> Result<PairingOutcome, EndpointError> {
+) -> Result<TrustOutcome, EndpointError> {
     let (mut send, mut recv) = connection
         .accept_bi()
         .await
         .map_err(|error| EndpointError::Connection(error.to_string()))?;
 
     let hello = expect_hello(read_message(&mut recv).await?)?;
-    let mode = PairingMode::from_u8(hello.mode).ok_or(EndpointError::ModeMismatch)?;
-    let (secret, token) = match mode {
-        PairingMode::Pin => (
-            request
-                .pin_secret
-                .clone()
-                .ok_or(EndpointError::ModeMismatch)?,
-            None,
-        ),
-        PairingMode::Qr => (
-            request
-                .qr_secret
-                .clone()
-                .ok_or(EndpointError::ModeMismatch)?,
-            request.token,
-        ),
-    };
-    if mode == PairingMode::Qr && token.is_none() {
-        return Err(EndpointError::InvalidHello);
-    }
-    let remote = hello_to_peer(hello)?;
+    let remote = hello_to_user(hello)?;
     if remote.certificate_fingerprint != request.certificate_fingerprint {
         return Err(EndpointError::CertificateMismatch);
     }
 
-    let hello = PairingMessage::Hello {
+    let hello = TrustMessage::Hello {
         node_id: request.local.node_id.to_string(),
         fingerprint: request.local.fingerprint.to_hex(),
         certificate_fingerprint: request.local.certificate_fingerprint.to_hex(),
-        mode: mode.as_u8(),
     };
     write_message(&mut send, &hello).await?;
 
     let transcript =
-        PairingTranscript::new(mode, remote.identity(), request.local.identity(), token);
+        TrustTranscript::new(remote.identity(), request.local.identity(), request.token);
     let hash = transcript.hash()?;
+    let secret = TrustSecret::new(request.token);
 
-    let peer_message = expect_spake2(read_message(&mut recv).await?)?;
+    let user_message = expect_spake2(read_message(&mut recv).await?)?;
     let (session, message) = Spake2Session::start(Role::Responder, &secret, &transcript)?;
     write_message(
         &mut send,
-        &PairingMessage::Spake2 {
+        &TrustMessage::Spake2 {
             message: message.clone(),
         },
     )
     .await?;
 
-    let confirmation = session.finish(&peer_message, &hash)?;
-    let peer_confirmation = expect_confirm(read_message(&mut recv).await?)?;
-    if !confirmation.matches(&Confirmation::from_bytes(peer_confirmation)) {
+    let confirmation = session.finish(&user_message, &hash)?;
+    let user_confirmation = expect_confirm(read_message(&mut recv).await?)?;
+    if !confirmation.matches(&Confirmation::from_bytes(user_confirmation)) {
         return Err(EndpointError::ConfirmationMismatch);
     }
     write_message(
         &mut send,
-        &PairingMessage::Confirm {
+        &TrustMessage::Confirm {
             value: *confirmation.as_bytes(),
         },
     )
     .await?;
     let _ = send.finish();
 
-    Ok(PairingOutcome { peer: remote, mode })
+    Ok(TrustOutcome { user: remote })
 }
 
 async fn write_message(
     send: &mut quinn::SendStream,
-    message: &PairingMessage,
+    message: &TrustMessage,
 ) -> Result<(), EndpointError> {
     let frame = encode_frame(message)?;
     let bytes = frame.encode();
     let length = u32::try_from(bytes.len())
-        .map_err(|_| EndpointError::Connection("pairing frame is too large".to_owned()))?;
+        .map_err(|_| EndpointError::Connection("trust frame is too large".to_owned()))?;
     send.write_all(&length.to_be_bytes())
         .await
         .map_err(|error| EndpointError::Connection(error.to_string()))?;
@@ -272,13 +229,13 @@ async fn write_message(
     Ok(())
 }
 
-async fn read_message(recv: &mut quinn::RecvStream) -> Result<PairingMessage, EndpointError> {
+async fn read_message(recv: &mut quinn::RecvStream) -> Result<TrustMessage, EndpointError> {
     let mut length = [0_u8; 4];
     recv.read_exact(&mut length)
         .await
         .map_err(|error| EndpointError::Connection(error.to_string()))?;
     let length = u32::from_be_bytes(length) as usize;
-    if length > MAX_PAIRING_FRAME {
+    if length > MAX_TRUST_FRAME {
         return Err(EndpointError::InvalidHello);
     }
     let mut bytes = vec![0_u8; length];
@@ -288,53 +245,48 @@ async fn read_message(recv: &mut quinn::RecvStream) -> Result<PairingMessage, En
     Ok(decode_frame(&ticonnect_core::wire::Frame::decode(&bytes)?)?)
 }
 
-fn expect_hello(message: PairingMessage) -> Result<HelloFields, EndpointError> {
+fn expect_hello(message: TrustMessage) -> Result<HelloFields, EndpointError> {
     match message {
-        PairingMessage::Hello {
+        TrustMessage::Hello {
             node_id,
             fingerprint,
             certificate_fingerprint,
-            mode,
         } => Ok(HelloFields {
             node_id,
             fingerprint,
             certificate_fingerprint,
-            mode,
         }),
         _ => Err(EndpointError::InvalidHello),
     }
 }
 
-fn hello_to_peer(hello: HelloFields) -> Result<PairingPeer, EndpointError> {
+fn hello_to_user(hello: HelloFields) -> Result<TrustUser, EndpointError> {
     let node_id = NodeId::from_str(&hello.node_id).map_err(|_| EndpointError::InvalidHello)?;
-    let fingerprint = Fingerprint::from_str(&hello.fingerprint).map_err(peer_fingerprint_error)?;
+    let fingerprint = Fingerprint::from_str(&hello.fingerprint).map_err(user_fingerprint_error)?;
     let certificate_fingerprint =
-        Fingerprint::from_str(&hello.certificate_fingerprint).map_err(peer_fingerprint_error)?;
-    if PairingMode::from_u8(hello.mode).is_none() {
-        return Err(EndpointError::InvalidHello);
-    }
-    Ok(PairingPeer {
+        Fingerprint::from_str(&hello.certificate_fingerprint).map_err(user_fingerprint_error)?;
+    Ok(TrustUser {
         node_id,
         fingerprint,
         certificate_fingerprint,
     })
 }
 
-fn expect_spake2(message: PairingMessage) -> Result<Vec<u8>, EndpointError> {
+fn expect_spake2(message: TrustMessage) -> Result<Vec<u8>, EndpointError> {
     match message {
-        PairingMessage::Spake2 { message } => Ok(message),
+        TrustMessage::Spake2 { message } => Ok(message),
         _ => Err(EndpointError::InvalidHello),
     }
 }
 
-fn expect_confirm(message: PairingMessage) -> Result<[u8; 32], EndpointError> {
+fn expect_confirm(message: TrustMessage) -> Result<[u8; 32], EndpointError> {
     match message {
-        PairingMessage::Confirm { value } => Ok(value),
+        TrustMessage::Confirm { value } => Ok(value),
         _ => Err(EndpointError::InvalidHello),
     }
 }
 
-fn peer_fingerprint_error(_: FingerprintError) -> EndpointError {
+fn user_fingerprint_error(_: FingerprintError) -> EndpointError {
     EndpointError::InvalidHello
 }
 
@@ -342,5 +294,4 @@ struct HelloFields {
     node_id: String,
     fingerprint: String,
     certificate_fingerprint: String,
-    mode: u8,
 }

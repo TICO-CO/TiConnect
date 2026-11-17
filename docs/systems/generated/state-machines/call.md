@@ -11,8 +11,8 @@ stateDiagram-v2
   state "ringing: Incoming or outgoing ring." as s_ringing
   state "in_call: Audio connected." as s_in_call
   state "ended: Terminal call state." as s_ended
-  s_idle --> s_ringing: start [peer trusted and policy allows]
-  s_idle --> s_ringing: incoming [peer trusted and policy allows]
+  s_idle --> s_ringing: start [user trusted and policy allows]
+  s_idle --> s_ringing: incoming [user trusted and policy allows]
   s_ringing --> s_in_call: accept / start audio devices
   s_ringing --> s_ended: decline
   s_ringing --> s_ended: timeout
@@ -23,8 +23,8 @@ stateDiagram-v2
 
 | From | Event | To | Guard | Action |
 |---|---|---|---|---|
-| `idle` | start | `ringing` | peer trusted and policy allows |  |
-| `idle` | incoming | `ringing` | peer trusted and policy allows |  |
+| `idle` | start | `ringing` | user trusted and policy allows |  |
+| `idle` | incoming | `ringing` | user trusted and policy allows |  |
 | `ringing` | accept | `in_call` |  | start audio devices |
 | `ringing` | decline | `ended` |  |  |
 | `ringing` | timeout | `ended` |  |  |

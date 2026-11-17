@@ -6,7 +6,7 @@ use ticonnect_core::id::NodeId;
 use ticonnect_core::message::conversation_id;
 use ticonnect_daemon::identity::Identity;
 use ticonnect_daemon::messaging::MessagingService;
-use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewPeer, PeerPolicy};
+use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewUser, UserPolicy};
 use ticonnect_daemon::trust::TrustStore;
 use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
 use ticonnect_settings::Settings;
@@ -29,12 +29,12 @@ async fn two_nodes_exchange_messages_and_receipts() {
 
     first
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: second.node_id.to_string(),
             fingerprint: second.transport.fingerprint().to_hex(),
             public_key: Some(second_identity.key_pair().verifying_key().to_bytes()),
             display_name: Some("Second".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -42,12 +42,12 @@ async fn two_nodes_exchange_messages_and_receipts() {
         .expect("trust second");
     second
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: first.node_id.to_string(),
             fingerprint: first.transport.fingerprint().to_hex(),
             public_key: Some(first_identity.key_pair().verifying_key().to_bytes()),
             display_name: Some("First".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -67,17 +67,17 @@ async fn two_nodes_exchange_messages_and_receipts() {
 
     first
         .messaging
-        .on_peer_connected(session.peer().clone())
+        .on_user_connected(session.user().clone())
         .await;
     let remote = second
         .transport
         .sessions()
         .into_iter()
-        .find(|session| session.peer().node_id == first.node_id)
+        .find(|session| session.user().node_id == first.node_id)
         .expect("second session")
-        .peer()
+        .user()
         .clone();
-    second.messaging.on_peer_connected(remote).await;
+    second.messaging.on_user_connected(remote).await;
 
     wait_for(Duration::from_secs(10), || async {
         first.messaging.sync_ready(&second.node_id.to_string())
@@ -137,7 +137,7 @@ async fn two_nodes_exchange_messages_and_receipts() {
 
     second
         .messaging
-        .set_peer_policy(&first.node_id.to_string(), PeerPolicy::Ignore)
+        .set_user_policy(&first.node_id.to_string(), UserPolicy::Ignore)
         .await
         .expect("ignore first");
     first

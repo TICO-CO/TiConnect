@@ -11,10 +11,10 @@ pub async fn run_initiator(
     service: MessagingService,
     session: Session,
 ) -> Result<(), MessagingError> {
-    let peer_node = session.peer().node_id;
-    let peer_id = peer_node.to_string();
-    let conversation_id = ensure_conversation(&service, peer_node).await?;
-    let local = service.database().peer_state(&peer_id).await?;
+    let user_node = session.user().node_id;
+    let user_id = user_node.to_string();
+    let conversation_id = ensure_conversation(&service, user_node).await?;
+    let local = service.database().user_state(&user_id).await?;
 
     let (mut send, mut recv) = session.open_bi().await?;
     write_stream_frame(
@@ -29,33 +29,33 @@ pub async fn run_initiator(
     let remote = expect_hello(read_sync(&mut recv).await?)?;
     let count = request_phase(
         &service,
-        &peer_id,
+        &user_id,
         remote.last_sent_seq,
         &mut send,
         &mut recv,
     )
     .await?;
-    serve_phase(&service, &peer_id, &conversation_id, &mut send, &mut recv).await?;
+    serve_phase(&service, &user_id, &conversation_id, &mut send, &mut recv).await?;
     let _ = send.finish();
 
-    service.mark_sync_ready(&peer_id);
-    service.emit_sync_completed(&peer_id, count);
-    outbox::flush_peer(&service, &peer_id).await;
+    service.mark_sync_ready(&user_id);
+    service.emit_sync_completed(&user_id, count);
+    outbox::flush_user(&service, &user_id).await;
     Ok(())
 }
 
 pub async fn run_responder(
     service: MessagingService,
-    peer_info: ticonnect_net::transport::PeerInfo,
+    user_info: ticonnect_net::transport::UserInfo,
     hello: SyncFrame,
     send: &mut quinn::SendStream,
     recv: &mut quinn::RecvStream,
 ) -> Result<(), MessagingError> {
-    let peer_node = peer_info.node_id;
-    let peer_id = peer_node.to_string();
-    let conversation_id = ensure_conversation(&service, peer_node).await?;
+    let user_node = user_info.node_id;
+    let user_id = user_node.to_string();
+    let conversation_id = ensure_conversation(&service, user_node).await?;
     let remote = expect_hello(hello)?;
-    let local = service.database().peer_state(&peer_id).await?;
+    let local = service.database().user_state(&user_id).await?;
     write_stream_frame(
         send,
         &sync_frame_to_wire(&SyncFrame::Hello {
@@ -65,36 +65,36 @@ pub async fn run_responder(
     )
     .await?;
 
-    serve_phase(&service, &peer_id, &conversation_id, send, recv).await?;
-    let count = request_phase(&service, &peer_id, remote.last_sent_seq, send, recv).await?;
+    serve_phase(&service, &user_id, &conversation_id, send, recv).await?;
+    let count = request_phase(&service, &user_id, remote.last_sent_seq, send, recv).await?;
     let _ = send.finish();
 
-    service.mark_sync_ready(&peer_id);
-    service.emit_sync_completed(&peer_id, count);
-    outbox::flush_peer(&service, &peer_id).await;
+    service.mark_sync_ready(&user_id);
+    service.emit_sync_completed(&user_id, count);
+    outbox::flush_user(&service, &user_id).await;
     Ok(())
 }
 
 async fn ensure_conversation(
     service: &MessagingService,
-    peer_node: NodeId,
+    user_node: NodeId,
 ) -> Result<String, MessagingError> {
-    let conversation = ticonnect_core::message::conversation_id(service.local_node_id(), peer_node);
+    let conversation = ticonnect_core::message::conversation_id(service.local_node_id(), user_node);
     service
         .database()
-        .ensure_conversation(&conversation, &peer_node.to_string(), super::now_unix_ms())
+        .ensure_conversation(&conversation, &user_node.to_string(), super::now_unix_ms())
         .await?;
     Ok(conversation)
 }
 
 async fn request_phase(
     service: &MessagingService,
-    peer_id: &str,
+    user_id: &str,
     remote_last_sent: u64,
     send: &mut quinn::SendStream,
     recv: &mut quinn::RecvStream,
 ) -> Result<u32, MessagingError> {
-    let local = service.database().peer_state(peer_id).await?;
+    let local = service.database().user_state(user_id).await?;
     let mut from = local.last_recv_seq.saturating_add(1);
     let mut inserted = 0_u32;
 
@@ -112,7 +112,7 @@ async fn request_phase(
         loop {
             match read_sync(recv).await? {
                 SyncFrame::Record { envelope } => {
-                    if service.ingest_payload(peer_id, &envelope).await? {
+                    if service.ingest_payload(user_id, &envelope).await? {
                         inserted = inserted.saturating_add(1);
                     }
                 }
@@ -123,7 +123,7 @@ async fn request_phase(
                 _ => return Err(MessagingError::UnexpectedSyncFrame),
             }
         }
-        service.database().advance_recv_seq(peer_id, to).await?;
+        service.database().advance_recv_seq(user_id, to).await?;
         from = to.saturating_add(1);
     }
 
@@ -133,7 +133,7 @@ async fn request_phase(
 
 async fn serve_phase(
     service: &MessagingService,
-    peer_id: &str,
+    user_id: &str,
     conversation_id: &str,
     send: &mut quinn::SendStream,
     recv: &mut quinn::RecvStream,
@@ -165,7 +165,7 @@ async fn serve_phase(
                     count = count.saturating_add(1);
                 }
                 write_stream_frame(send, &sync_frame_to_wire(&SyncFrame::Done { count })?).await?;
-                tracing::trace!(peer_id, count, "served sync batch");
+                tracing::trace!(user_id, count, "served sync batch");
             }
             SyncFrame::Complete => return Ok(()),
             SyncFrame::Error { code } => return Err(MessagingError::SyncRejected(code)),

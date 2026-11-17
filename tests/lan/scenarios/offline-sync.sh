@@ -51,7 +51,7 @@ SYNC_SEQ="$(message_seq node-b "$MSG_SYNC")"
 stop_node node-b
 sqlite_exec_stopped node-b "
     DELETE FROM messages WHERE id='$MSG_SYNC';
-    UPDATE peer_state SET last_recv_seq=$((SYNC_SEQ - 1)) WHERE peer_id='$A_ID';
+    UPDATE user_state SET last_recv_seq=$((SYNC_SEQ - 1)) WHERE user_id='$A_ID';
 "
 assert_eq "$(sqlite_exec_stopped node-b "SELECT COUNT(*) FROM messages WHERE id='$MSG_SYNC';")" \
     "0" "gap-sync seed message was not removed"
@@ -90,7 +90,7 @@ TOKEN_RESTART="$(unique_token restart)"
 MSG_RESTART="$(cli node-a send "$B_ID" "$TOKEN_RESTART")"
 wait_for 60 message_body_is node-b "$A_ID" "$MSG_RESTART" "$TOKEN_RESTART" \
     || fail "messaging failed after restart"
-assert_eq "$(peer_policy node-a "$B_ID")" "accept" "peer policy after restart"
-assert_eq "$(peer_policy node-b "$A_ID")" "accept" "peer policy after restart"
+assert_eq "$(user_policy node-a "$B_ID")" "accept" "user policy after restart"
+assert_eq "$(user_policy node-b "$A_ID")" "accept" "user policy after restart"
 
 log "offline-sync scenario passed"

@@ -10,12 +10,12 @@ use ticonnect_core::call::{AudioPacket, CallId, CallSignalFrame, CallState};
 use ticonnect_core::id::NodeId;
 use ticonnect_media::jitter::{JitterBuffer, JitterFrame};
 use ticonnect_media::ringtone::{RingtoneControl, RingtoneError};
-use ticonnect_net::transport::{PeerInfo, Session, Transport, TransportError};
+use ticonnect_net::transport::{Session, Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
 
 use crate::messaging::now_unix_ms;
-use crate::storage::{DatabaseHandle, PeerPolicy, StorageError};
+use crate::storage::{DatabaseHandle, StorageError, UserPolicy};
 use crate::trust::{TrustError, TrustStore};
 
 use session::{AudioReceiver, MediaError, MediaSession};
@@ -27,7 +27,7 @@ pub enum CallEvent {
     StateChanged(CallInfo),
     Ended {
         call_id: CallId,
-        peer_id: String,
+        user_id: String,
         reason: String,
     },
 }
@@ -75,13 +75,13 @@ impl CallMetricsHandle {
 
 #[derive(Debug)]
 pub struct InboundCallSignal {
-    pub peer: PeerInfo,
+    pub user: UserInfo,
     pub frame: CallSignalFrame,
 }
 
 #[derive(Debug)]
 pub struct InboundAudio {
-    pub peer: PeerInfo,
+    pub user: UserInfo,
     pub payload: Vec<u8>,
 }
 
@@ -174,24 +174,24 @@ impl CallService {
             .map(state::ActiveCall::info)
     }
 
-    pub async fn start_call(&self, peer_id: &str) -> Result<CallInfo, CallError> {
-        let peer = self.peer(peer_id).await?;
-        if peer.policy == PeerPolicy::Ignore {
+    pub async fn start_call(&self, user_id: &str) -> Result<CallInfo, CallError> {
+        let user = self.user(user_id).await?;
+        if user.policy == UserPolicy::Ignore {
             return Err(CallError::Rejected);
         }
-        let peer_node = parse_peer(peer_id)?;
+        let user_node = parse_user(user_id)?;
         let session = self
             .inner
             .transport
-            .session_by_node_id(peer_node)
-            .ok_or(CallError::PeerOffline)?;
+            .session_by_node_id(user_node)
+            .ok_or(CallError::UserOffline)?;
         let call = {
             let mut registry = self
                 .inner
                 .registry
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            match registry.start(peer_id, now_unix_ms())? {
+            match registry.start(user_id, now_unix_ms())? {
                 CallTransition::Ringing(call) => call,
                 _ => return Err(CallError::InvalidState),
             }
@@ -199,13 +199,13 @@ impl CallService {
         let info = call.info();
         self.emit(CallEvent::StateChanged(info.clone()));
         if let Err(error) = self
-            .send_signal(&session, Endpoint::Peer, &CallSignalFrame::Offer(call.id))
+            .send_signal(&session, Endpoint::User, &CallSignalFrame::Offer(call.id))
             .await
         {
             self.fail(call.id);
             return Err(error);
         }
-        self.spawn_timeout(call.id, call.peer_id.clone());
+        self.spawn_timeout(call.id, call.user_id.clone());
         Ok(info)
     }
 
@@ -224,7 +224,7 @@ impl CallService {
         self.inner.ringtone.stop();
         self.inner.ringtone.duck(false);
         if let Err(error) = self
-            .send_signal_for_peer(&call.peer_id, CallSignalFrame::Accept(call.id))
+            .send_signal_for_user(&call.user_id, CallSignalFrame::Accept(call.id))
             .await
         {
             self.fail(call.id);
@@ -267,17 +267,17 @@ impl CallService {
 
     pub async fn handle_signal(
         &self,
-        peer: PeerInfo,
+        user: UserInfo,
         frame: CallSignalFrame,
     ) -> Result<(), CallError> {
-        let peer_id = peer.node_id.to_string();
+        let user_id = user.node_id.to_string();
         let stored = self
             .inner
             .trust
-            .peer_by_fingerprint(&peer.fingerprint.to_hex())
+            .user_by_fingerprint(&user.fingerprint.to_hex())
             .await?
-            .ok_or_else(|| CallError::UnknownPeer(peer_id.clone()))?;
-        if stored.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| CallError::UnknownUser(user_id.clone()))?;
+        if stored.policy == UserPolicy::Ignore {
             return Ok(());
         }
         match frame {
@@ -288,13 +288,13 @@ impl CallService {
                         .registry
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner);
-                    registry.incoming_with_id(call_id, &peer_id, now_unix_ms())
+                    registry.incoming_with_id(call_id, &user_id, now_unix_ms())
                 };
                 let call = match transition {
                     Ok(CallTransition::Ringing(call)) => call,
                     Ok(_) | Err(CallStateError::Busy) => {
                         let _ = self
-                            .send_signal_frame(&peer, CallSignalFrame::Busy(call_id))
+                            .send_signal_frame(&user, CallSignalFrame::Busy(call_id))
                             .await;
                         return Ok(());
                     }
@@ -309,13 +309,13 @@ impl CallService {
                     tracing::warn!(%error, "failed to start ringtone");
                 }
                 let _ = self
-                    .send_signal_frame(&peer, CallSignalFrame::Ringing(call.id))
+                    .send_signal_frame(&user, CallSignalFrame::Ringing(call.id))
                     .await;
-                self.spawn_timeout(call.id, peer_id);
+                self.spawn_timeout(call.id, user_id);
                 Ok(())
             }
             CallSignalFrame::Ringing(call_id) => {
-                self.ensure_active(call_id, &peer_id)?;
+                self.ensure_active(call_id, &user_id)?;
                 Ok(())
             }
             CallSignalFrame::Accept(call_id) => {
@@ -339,7 +339,7 @@ impl CallService {
                 Ok(())
             }
             CallSignalFrame::Decline(call_id) => {
-                self.ensure_active(call_id, &peer_id)?;
+                self.ensure_active(call_id, &user_id)?;
                 let transition = {
                     let mut registry = self
                         .inner
@@ -352,7 +352,7 @@ impl CallService {
                 Ok(())
             }
             CallSignalFrame::Hangup(call_id) => {
-                self.ensure_active(call_id, &peer_id)?;
+                self.ensure_active(call_id, &user_id)?;
                 let transition = {
                     let mut registry = self
                         .inner
@@ -365,7 +365,7 @@ impl CallService {
                 Ok(())
             }
             CallSignalFrame::Busy(call_id) | CallSignalFrame::Error { call_id, .. } => {
-                self.ensure_active(call_id, &peer_id)?;
+                self.ensure_active(call_id, &user_id)?;
                 let transition = {
                     let mut registry = self
                         .inner
@@ -380,11 +380,11 @@ impl CallService {
         }
     }
 
-    pub fn handle_audio(&self, peer: PeerInfo, payload: &[u8]) -> Result<(), CallError> {
+    pub fn handle_audio(&self, user: UserInfo, payload: &[u8]) -> Result<(), CallError> {
         let packet =
             AudioPacket::decode(payload).map_err(|error| CallError::Protocol(error.to_string()))?;
         let call_id = packet.id();
-        self.ensure_active(call_id, &peer.node_id.to_string())?;
+        self.ensure_active(call_id, &user.node_id.to_string())?;
         self.inner.metrics.note_received();
         {
             let mut jitter = self
@@ -437,18 +437,18 @@ impl CallService {
         Ok(())
     }
 
-    pub fn handle_disconnect(&self, peer: &PeerInfo) {
+    pub fn handle_disconnect(&self, user: &UserInfo) {
         let ended = self
             .inner
             .registry
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .disconnected(&peer.node_id.to_string());
+            .disconnected(&user.node_id.to_string());
         if let Some((call, reason)) = ended {
             self.cleanup();
             self.emit(CallEvent::Ended {
                 call_id: call.id,
-                peer_id: call.peer_id.clone(),
+                user_id: call.user_id.clone(),
                 reason: reason.as_str().to_owned(),
             });
         }
@@ -464,11 +464,11 @@ impl CallService {
                 EndReason::Declined => CallSignalFrame::Decline(call.id),
                 _ => CallSignalFrame::Hangup(call.id),
             };
-            let _ = self.send_signal_for_peer(&call.peer_id, frame).await;
+            let _ = self.send_signal_for_user(&call.user_id, frame).await;
         }
         self.emit(CallEvent::Ended {
             call_id: call.id,
-            peer_id: call.peer_id.clone(),
+            user_id: call.user_id.clone(),
             reason: reason.as_str().to_owned(),
         });
     }
@@ -486,7 +486,7 @@ impl CallService {
         if let Some(CallTransition::Ended(call, reason)) = ended {
             self.emit(CallEvent::Ended {
                 call_id: call.id,
-                peer_id: call.peer_id,
+                user_id: call.user_id,
                 reason: reason.as_str().to_owned(),
             });
         }
@@ -524,11 +524,11 @@ impl CallService {
         {
             return true;
         }
-        let Some(session) = parse_peer(&call.peer_id)
+        let Some(session) = parse_user(&call.user_id)
             .ok()
             .and_then(|node_id| self.inner.transport.session_by_node_id(node_id))
         else {
-            tracing::warn!(peer_id = %call.peer_id, "call media session is unavailable");
+            tracing::warn!(user_id = %call.user_id, "call media session is unavailable");
             return false;
         };
         let settings = self.settings();
@@ -560,28 +560,28 @@ impl CallService {
         }
     }
 
-    fn ensure_active(&self, call_id: CallId, peer_id: &str) -> Result<(), CallError> {
+    fn ensure_active(&self, call_id: CallId, user_id: &str) -> Result<(), CallError> {
         let registry = self
             .inner
             .registry
             .lock()
             .unwrap_or_else(PoisonError::into_inner);
         match registry.active() {
-            Some(call) if call.id == call_id && call.peer_id == peer_id => Ok(()),
+            Some(call) if call.id == call_id && call.user_id == user_id => Ok(()),
             Some(_) => Err(CallError::InvalidState),
             None => Err(CallError::UnknownCall(call_id)),
         }
     }
 
-    async fn peer(&self, peer_id: &str) -> Result<crate::storage::Peer, CallError> {
+    async fn user(&self, user_id: &str) -> Result<crate::storage::User, CallError> {
         self.inner
             .trust
-            .peer(peer_id)
+            .user(user_id)
             .await?
-            .ok_or_else(|| CallError::UnknownPeer(peer_id.to_owned()))
+            .ok_or_else(|| CallError::UnknownUser(user_id.to_owned()))
     }
 
-    fn spawn_timeout(&self, call_id: CallId, peer_id: String) {
+    fn spawn_timeout(&self, call_id: CallId, user_id: String) {
         let service = self.clone();
         let timeout = u64::from(self.settings().call_timeout_secs());
         tokio::spawn(async move {
@@ -601,38 +601,38 @@ impl CallService {
             };
             if let Some(transition) = transition {
                 service.finish(transition, true).await;
-                tracing::debug!(peer_id, "call timed out");
+                tracing::debug!(user_id, "call timed out");
             }
         });
     }
 
-    async fn send_signal_for_peer(
+    async fn send_signal_for_user(
         &self,
-        peer_id: &str,
+        user_id: &str,
         frame: CallSignalFrame,
     ) -> Result<(), CallError> {
-        let peer_id = parse_peer(peer_id)?;
+        let user_id = parse_user(user_id)?;
         let session = self
             .inner
             .transport
-            .session_by_node_id(peer_id)
-            .ok_or(CallError::PeerOffline)?;
-        self.send_signal(&session, Endpoint::Peer, &frame).await
+            .session_by_node_id(user_id)
+            .ok_or(CallError::UserOffline)?;
+        self.send_signal(&session, Endpoint::User, &frame).await
     }
 
     async fn send_signal_frame(
         &self,
-        peer: &PeerInfo,
+        user: &UserInfo,
         frame: CallSignalFrame,
     ) -> Result<(), CallError> {
         let Some(session) = self
             .inner
             .transport
-            .session_by_fingerprint(&peer.fingerprint)
+            .session_by_fingerprint(&user.fingerprint)
         else {
-            return Err(CallError::PeerOffline);
+            return Err(CallError::UserOffline);
         };
-        self.send_signal(&session, Endpoint::Peer, &frame).await
+        self.send_signal(&session, Endpoint::User, &frame).await
     }
 
     async fn send_signal(
@@ -656,7 +656,7 @@ impl CallService {
 }
 
 enum Endpoint {
-    Peer,
+    User,
 }
 
 pub fn spawn(
@@ -670,20 +670,20 @@ pub fn spawn(
             tokio::select! {
                 signal = signals.recv() => {
                     let Some(signal) = signal else { break };
-                    if let Err(error) = service.handle_signal(signal.peer, signal.frame).await {
+                    if let Err(error) = service.handle_signal(signal.user, signal.frame).await {
                         tracing::debug!(%error, "call signal rejected");
                     }
                 }
                 packet = audio.recv() => {
                     let Some(packet) = packet else { break };
-                    if let Err(error) = service.handle_audio(packet.peer, &packet.payload) {
+                    if let Err(error) = service.handle_audio(packet.user, &packet.payload) {
                         tracing::debug!(%error, "call audio rejected");
                     }
                 }
                 event = transport_events.recv() => {
                     match event {
-                        Ok(ticonnect_net::transport::TransportEvent::PeerDisconnected(peer)) => {
-                            service.handle_disconnect(&peer);
+                        Ok(ticonnect_net::transport::TransportEvent::UserDisconnected(user)) => {
+                            service.handle_disconnect(&user);
                         }
                         Ok(_) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -695,10 +695,10 @@ pub fn spawn(
     })
 }
 
-fn parse_peer(peer_id: &str) -> Result<NodeId, CallError> {
-    peer_id
+fn parse_user(user_id: &str) -> Result<NodeId, CallError> {
+    user_id
         .parse()
-        .map_err(|_| CallError::InvalidPeer(peer_id.to_owned()))
+        .map_err(|_| CallError::InvalidUser(user_id.to_owned()))
 }
 
 #[derive(Debug, Error)]
@@ -724,17 +724,17 @@ pub enum CallError {
     #[error(transparent)]
     Signal(#[from] ticonnect_core::call::CallError),
 
-    #[error("unknown peer: {0}")]
-    UnknownPeer(String),
+    #[error("unknown user: {0}")]
+    UnknownUser(String),
 
-    #[error("invalid peer id: {0}")]
-    InvalidPeer(String),
+    #[error("invalid user id: {0}")]
+    InvalidUser(String),
 
     #[error("call was rejected by policy")]
     Rejected,
 
-    #[error("peer is offline")]
-    PeerOffline,
+    #[error("user is offline")]
+    UserOffline,
 
     #[error("unknown call: {0}")]
     UnknownCall(CallId),

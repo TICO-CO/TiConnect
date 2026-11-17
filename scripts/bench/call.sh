@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-peer="${1:?usage: call.sh PEER_ID SECONDS}"
+user="${1:?usage: call.sh USER_ID SECONDS}"
 seconds="${2:-15}"
 
-call_id="$(ticonnect-cli call start "$peer" | tr -d '[:space:]')"
+call_id="$(ticonnect-cli call start "$user" | tr -d '[:space:]')"
 echo "call_id=$call_id"
 sleep "$seconds"
 pid="$(pgrep -n ticonnectd || true)"

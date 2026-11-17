@@ -5,7 +5,6 @@ shopt -s nullglob
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="${TICONNECT_BIN:-$ROOT/target/debug/ticonnect}"
 SMOKE=0
-LAB_OPEN_LAN="${LAB_OPEN_LAN:-1}"
 
 usage() {
     cat >&2 <<'EOF'
@@ -162,7 +161,7 @@ node_id() {
 }
 
 write_node_files() {
-    local node="$1" bus="$2" dir="$3" id="$4" peer_id="$5" label="$6" peer_label="$7"
+    local node="$1" bus="$2" dir="$3" id="$4" user_id="$5" label="$6" user_label="$7"
     mkdir -p "$dir/bin"
     cat >"$dir/bin/ticonnect" <<EOF
 #!/bin/sh
@@ -189,18 +188,18 @@ export LAB_DIR='$WORK'
 export LAB_NODE_DIR='$dir'
 export LAB_NODE='$node'
 export LAB_LABEL='$label'
-export LAB_PEER_LABEL='$peer_label'
+export LAB_USER_LABEL='$user_label'
 export NODE_ID='$id'
-export PEER_ID='$peer_id'
+export USER_ID='$user_id'
 export PATH='$dir/bin':"\$PATH"
 EOF
 
     cat >"$dir/bashrc" <<EOF
 source '$dir/env'
 export PS1='[$node] \\w \$ '
-peer() { printf '%s\\n' "\$PEER_ID"; }
-send() { ticonnect send "\$PEER_ID" "\$*"; }
-inbox() { ticonnect messages "\$PEER_ID" --limit "\${1:-20}"; }
+user() { printf '%s\\n' "\$USER_ID"; }
+send() { ticonnect send "\$USER_ID" "\$*"; }
+inbox() { ticonnect messages "\$USER_ID" --limit "\${1:-20}"; }
 pair() { '$WORK/bin/lab-pair'; }
 ui() {
     if [ -f "\$LAB_NODE_DIR/ui.pid" ] && kill -0 "\$(cat "\$LAB_NODE_DIR/ui.pid")" 2>/dev/null; then
@@ -258,10 +257,10 @@ help-lab() {
     cat <<'HELP'
 node commands:
   ticonnect <args>   talk to this node's daemon
-  pair               pair the two lab nodes
-  peer               print the peer node id
-  send "hello"       send to the peer
-  inbox [limit]      show messages from the peer
+  trust              wait for automatic LAN trust
+  user               print the user node id
+  send "hello"       send to the user
+  inbox [limit]      show messages from the user
   ui / stop-ui       start or stop this node's UI
   ovl / stop-ovl     start or stop this node's overlay
   logs [lines]       show the daemon log
@@ -270,7 +269,7 @@ HELP
 }
 echo "Node \$LAB_LABEL"
 echo "  id:   \$NODE_ID"
-echo "  peer: \$PEER_ID"
+echo "  user: \$USER_ID"
 echo "  type 'help-lab' for commands"
 EOF
 }
@@ -283,7 +282,7 @@ cli_a() { '$NODE_A/bin/ticonnect' "\$@"; }
 cli_b() { '$NODE_B/bin/ticonnect' "\$@"; }
 A_ID='$A_ID'
 B_ID='$B_ID'
-if cli_a peers list | grep -q "\$B_ID"; then
+if cli_a users list | grep -q "\$B_ID"; then
     echo "already paired"
     exit 0
 fi
@@ -291,17 +290,13 @@ for _ in \$(seq 1 600); do
     cli_a discover list | grep -q "\$B_ID" && break
     sleep 0.1
 done
-cli_a discover list | grep -q "\$B_ID" || { echo "peer not discovered" >&2; exit 1; }
-start="\$(cli_a pair start)"
-pin="\$(printf '%s\\n' "\$start" | sed -n 's/^pin: //p')"
-[ -n "\$pin" ] || { echo "no pairing PIN" >&2; exit 1; }
-cli_b pair with-pin "\$A_ID" "\$pin" >/dev/null
+cli_a discover list | grep -q "\$B_ID" || { echo "user not discovered" >&2; exit 1; }
 for _ in \$(seq 1 300); do
-    cli_a peers list | grep -q "\$B_ID" && cli_b peers list | grep -q "\$A_ID" && break
+    cli_a users list | grep -q "\$B_ID" && cli_b users list | grep -q "\$A_ID" && break
     sleep 0.1
 done
-cli_a peers list | grep -q "\$B_ID" && cli_b peers list | grep -q "\$A_ID"
-echo "paired"
+cli_a users list | grep -q "\$B_ID" && cli_b users list | grep -q "\$A_ID"
+echo "trusted"
 EOF
     chmod 755 "$WORK/bin/lab-pair"
 }
@@ -327,25 +322,16 @@ B_ID="$(node_id b)"
 
 cli a settings set identity.display_name "Lab Node A" >/dev/null
 cli b settings set identity.display_name "Lab Node B" >/dev/null
-if [ "$LAB_OPEN_LAN" = "0" ]; then
-    cli a settings set trust.open_lan false >/dev/null
-    cli b settings set trust.open_lan false >/dev/null
-fi
-
 mkdir -p "$WORK/bin"
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
 write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair
 
 if [ "$SMOKE" = "1" ]; then
-    if [ "$LAB_OPEN_LAN" = "1" ]; then
-        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
-            fail "node-a did not auto-trust node-b"
-        wait_for "cli b peers list | grep -q '$A_ID'" 300 ||
-            fail "node-b did not auto-trust node-a"
-    else
-        "$WORK/bin/lab-pair" >/dev/null
-    fi
+    wait_for "cli a users list | grep -q '$B_ID'" 300 ||
+        fail "node-a did not auto-trust node-b"
+    wait_for "cli b users list | grep -q '$A_ID'" 300 ||
+        fail "node-b did not auto-trust node-a"
     message_id="$(cli a send "$B_ID" "lab-smoke-$(date +%s)")"
     for _ in $(seq 1 100); do
         cli b messages "$A_ID" --limit 20 | grep -q "$message_id" && break
@@ -354,18 +340,16 @@ if [ "$SMOKE" = "1" ]; then
     cli b messages "$A_ID" --limit 20 | grep -q "$message_id" ||
         fail "smoke message did not arrive"
 
-    if [ "$LAB_OPEN_LAN" = "1" ]; then
-        B_FP="$(cli a peers list | awk -v id="$B_ID" '$1 == id {print $2}')"
-        [ -n "$B_FP" ] || fail "missing peer fingerprint"
-        cli a pair forget "$B_ID" >/dev/null
-        sleep 1
-        if cli a peers list | grep -q "$B_ID"; then
-            fail "blocked peer was re-trusted"
-        fi
-        cli a pair unblock "$B_FP" >/dev/null
-        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
-            fail "unblocked peer did not re-trust"
+    B_FP="$(cli a users list | awk -v id="$B_ID" '$1 == id {print $2}')"
+    [ -n "$B_FP" ] || fail "missing user fingerprint"
+    cli a users forget "$B_ID" >/dev/null
+    sleep 1
+    if cli a users list | grep -q "$B_ID"; then
+        fail "blocked user was re-trusted"
     fi
+    cli a users unblock "$B_FP" >/dev/null
+    wait_for "cli a users list | grep -q '$B_ID'" 300 ||
+        fail "unblocked user did not re-trust"
 
     printf 'lab smoke passed: a=%s b=%s\n' "$A_ID" "$B_ID"
     exit 0

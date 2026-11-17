@@ -11,7 +11,7 @@ use ticonnect_daemon::calls::CallService;
 use ticonnect_daemon::identity::{Identity, PublicIdentity};
 use ticonnect_daemon::messaging::MessagingService;
 use ticonnect_daemon::remote::{NoopRemoteHost, RemoteService};
-use ticonnect_daemon::storage::{DatabaseHandle, NewPeer, PeerPolicy};
+use ticonnect_daemon::storage::{DatabaseHandle, NewUser, UserPolicy};
 use ticonnect_daemon::trust::TrustStore;
 use ticonnect_media::ringtone::NullRingtone;
 use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
@@ -146,12 +146,12 @@ impl TestNode {
 pub async fn trust_pair(first: &TestNode, second: &TestNode) {
     first
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: second.node_id().to_string(),
             fingerprint: second.identity.fingerprint().to_hex(),
             public_key: Some(second.public_key),
             display_name: Some("Second".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -159,12 +159,12 @@ pub async fn trust_pair(first: &TestNode, second: &TestNode) {
         .expect("trust second");
     second
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: first.node_id().to_string(),
             fingerprint: first.identity.fingerprint().to_hex(),
             public_key: Some(first.public_key),
             display_name: Some("First".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -186,17 +186,17 @@ pub async fn connect_pair(first: &TestNode, second: &TestNode) {
         .expect("connect second");
     first
         .messaging
-        .on_peer_connected(first_session.peer().clone())
+        .on_user_connected(first_session.user().clone())
         .await;
-    let second_peer = wait_for(Duration::from_secs(5), || async {
+    let second_user = wait_for(Duration::from_secs(5), || async {
         second
             .transport
             .session_by_node_id(first.node_id())
-            .map(|session| session.peer().clone())
+            .map(|session| session.user().clone())
     })
     .await
     .expect("second session");
-    second.messaging.on_peer_connected(second_peer).await;
+    second.messaging.on_user_connected(second_user).await;
     wait_true(Duration::from_secs(10), || async {
         first.messaging.sync_ready(&second.node_id().to_string())
             && second.messaging.sync_ready(&first.node_id().to_string())

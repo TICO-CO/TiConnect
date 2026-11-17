@@ -18,18 +18,14 @@ pub trait Daemon {
     fn clear_avatar(&self) -> zbus::Result<()>;
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn get_user(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn start_pairing(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn pair_with_pin(&self, node_id: &str, pin: &str) -> zbus::Result<bool>;
-    fn pair_with_qr(&self, payload: &str) -> zbus::Result<bool>;
-    fn cancel_pairing(&self) -> zbus::Result<()>;
-    fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
-    fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
-    fn list_blocked_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
-    fn unblock_peer(&self, fingerprint: &str) -> zbus::Result<bool>;
-    fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
+    fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
+    fn list_blocked_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn unblock_user(&self, fingerprint: &str) -> zbus::Result<bool>;
+    fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
     fn list_messages(
         &self,
         conversation_id: &str,
@@ -39,22 +35,37 @@ pub trait Daemon {
     fn list_conversation_summaries(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn count_messages(&self, conversation_id: &str) -> zbus::Result<u32>;
     fn mark_read(&self, conversation_id: &str, message_ids: &[&str]) -> zbus::Result<()>;
-    fn set_typing(&self, peer_id: &str, typing: bool) -> zbus::Result<()>;
+    fn set_typing(&self, user_id: &str, typing: bool) -> zbus::Result<()>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
-    fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
-    fn send_attachment(&self, peer_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn send_attachment(&self, user_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
     fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
     fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
     fn get_attachment_path(&self, hash: &str) -> zbus::Result<String>;
-    fn start_call(&self, peer_id: &str) -> zbus::Result<String>;
+    fn start_call(&self, user_id: &str) -> zbus::Result<String>;
     fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
     fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
     fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn get_call_metrics(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn start_watch_party(
+        &self,
+        user_id: &str,
+        video_id: &str,
+    ) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_watch_party(&self, party_id: &str) -> zbus::Result<()>;
+    fn decline_watch_party(&self, party_id: &str) -> zbus::Result<()>;
+    fn publish_watch_party(
+        &self,
+        party_id: &str,
+        position_ms: u64,
+        playing: bool,
+    ) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn end_watch_party(&self, party_id: &str) -> zbus::Result<()>;
+    fn get_watch_party(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn request_remote_session(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
@@ -68,19 +79,10 @@ pub trait Daemon {
     fn candidate_lost(&self, fingerprint: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn pairing_started(&self, pairing: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+    fn user_connected(&self, user: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn pairing_completed(&self, peer_id: &str, fingerprint: &str) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn pairing_failed(&self, reason: &str) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn peer_connected(&self, peer: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
-
-    #[zbus(signal)]
-    fn peer_disconnected(&self, peer: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+    fn user_disconnected(&self, user: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn message_received(&self, message: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
@@ -89,22 +91,22 @@ pub trait Daemon {
     fn message_state_changed(&self, message_id: &str, state: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn conversation_changed(&self, peer_id: &str) -> zbus::Result<()>;
+    fn conversation_changed(&self, user_id: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn typing_changed(&self, peer_id: &str, typing: bool) -> zbus::Result<()>;
+    fn typing_changed(&self, user_id: &str, typing: bool) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn peer_profile_changed(&self, fingerprint: &str) -> zbus::Result<()>;
+    fn user_profile_changed(&self, fingerprint: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn self_profile_changed(&self) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn sync_completed(&self, peer_id: &str, count: u32) -> zbus::Result<()>;
+    fn sync_completed(&self, user_id: &str, count: u32) -> zbus::Result<()>;
 
     #[zbus(signal)]
-    fn policy_changed(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn policy_changed(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn settings_changed(&self, key: &str) -> zbus::Result<()>;
@@ -117,6 +119,15 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn call_ended(&self, call_id: &str, reason: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn watch_party_requested(&self, party: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn watch_party_changed(&self, party: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn watch_party_ended(&self, party_id: &str, reason: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn remote_session_requested(&self, session: HashMap<String, OwnedVariant>) -> zbus::Result<()>;

@@ -41,9 +41,9 @@ Pane commands:
 
 ```text
 ticonnect status      talk to this node's daemon
-peer                  print the peer node id
-send "hello"          send to the peer
-inbox                 show messages from the peer
+user                  print the user node id
+send "hello"          send to the user
+inbox                 show messages from the user
 ui                    start this node's UI
 stop-ui               stop this node's UI
 ovl                   start this node's overlay
@@ -56,23 +56,12 @@ The `ui` and `ovl` helpers call the hidden internal `ticonnect ui` and
 `ticonnect overlay` entries. The rest use the same unified `ticonnect` binary as
 a normal install.
 
-Open LAN mode is enabled by default, so the two nodes trust each other
-automatically and the peer list populates without pairing. Set
-`LAB_OPEN_LAN=0 make lab` to test manual pairing instead; the `pair` helper is
-still available in that mode.
-
-Manual pairing remains available:
-
-```sh
-# node-a pane
-ticonnect pair start
-# copy the PIN, then in node-b
-ticonnect pair with-pin <node-a-id> <pin>
-```
+Automatic LAN trust is always enabled, so the two nodes trust each other
+automatically and the user list populates without manual pairing.
 
 The lab sets distinct display names and UI window titles for the two nodes.
 Both UIs can run at the same time against their separate buses. Both overlays
-anchor bottom-right and overlap, so run one `ovl` at a time for clear testing.
+anchor top-right and overlap, so run one `ovl` at a time for clear testing.
 
 Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
 stops. Run the automated harness check with:
@@ -105,12 +94,12 @@ TICONNECT_BIN="$PWD/result/bin/ticonnect" make lab-smoke
 ## What is checked
 
 - private per-node D-Bus; no global daemon name collision
-- discovery, PIN pairing, trusted session
+- discovery, automatic trust, trusted session
 - text round trip
 - attachment transfer and content storage on disk
 - UI and overlay process under X11 and Wayland
 - call signaling and two-way Opus frame counters through real PipeWire devices
-- remote consent, PIN, active state, indicator, kill switch
+- remote consent, active state, indicator, kill switch
 - build and run with real `gtk4-layer-shell`
 
 ## Real portal gate

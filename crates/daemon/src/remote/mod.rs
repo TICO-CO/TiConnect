@@ -7,12 +7,12 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use thiserror::Error;
 use ticonnect_core::remote::{InputKind, InputPacket, RemoteSignalFrame};
 use ticonnect_desktop::input::{InputEvent, InputRouter};
-use ticonnect_net::transport::{PeerInfo, Transport, TransportError};
+use ticonnect_net::transport::{Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
 
 use crate::messaging::now_unix_ms;
-use crate::storage::PeerPolicy;
+use crate::storage::UserPolicy;
 use crate::trust::{TrustError, TrustStore};
 
 use consent::{generate_pin, verify_pin};
@@ -23,7 +23,7 @@ use state::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSnapshot {
     pub session_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub fingerprint: String,
     pub role: String,
     pub state: String,
@@ -42,7 +42,7 @@ pub enum RemoteEventMessage {
 
 #[derive(Debug)]
 pub struct InboundRemoteFrame {
-    pub peer: PeerInfo,
+    pub user: UserInfo,
     pub frame: ticonnect_core::wire::Frame,
 }
 
@@ -243,28 +243,28 @@ impl RemoteService {
             .map(snapshot)
     }
 
-    pub async fn request_session(&self, peer_id: &str) -> Result<RemoteSnapshot, RemoteError> {
-        let peer = self
+    pub async fn request_session(&self, user_id: &str) -> Result<RemoteSnapshot, RemoteError> {
+        let user = self
             .inner
             .trust
-            .peer(peer_id)
+            .user(user_id)
             .await?
-            .ok_or_else(|| RemoteError::UnknownPeer(peer_id.to_owned()))?;
-        if peer.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| RemoteError::UnknownUser(user_id.to_owned()))?;
+        if user.policy == UserPolicy::Ignore {
             return Err(RemoteError::Rejected);
         }
-        let peer_node = peer_id
+        let user_node = user_id
             .parse()
-            .map_err(|_| RemoteError::InvalidPeer(peer_id.to_owned()))?;
-        if self.inner.transport.session_by_node_id(peer_node).is_none() {
-            return Err(RemoteError::PeerOffline);
+            .map_err(|_| RemoteError::InvalidUser(user_id.to_owned()))?;
+        if self.inner.transport.session_by_node_id(user_node).is_none() {
+            return Err(RemoteError::UserOffline);
         }
         let settings = self.settings();
         let now = (self.inner.clock)();
         let mut session = RemoteSession {
             id: RemoteSessionId::generate(),
-            peer_id: peer_id.to_owned(),
-            fingerprint: peer.fingerprint.clone(),
+            user_id: user_id.to_owned(),
+            fingerprint: user.fingerprint.clone(),
             role: RemoteRole::Viewer,
             state: RemoteState::Idle,
             pin: None,
@@ -277,7 +277,7 @@ impl RemoteService {
         let frame = RemoteSignalFrame::Request {
             session_id: session.id.as_bytes(),
         };
-        self.send_signal(peer_node, &frame).await?;
+        self.send_signal(user_node, &frame).await?;
         let snapshot = snapshot(&session);
         *self
             .inner
@@ -305,18 +305,18 @@ impl RemoteService {
                 .filter(|session| session.id == id)
                 .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
             if (self.inner.clock)() > session.expires_at {
-                Some((snapshot(session), session.role, session.peer_id.clone()))
+                Some((snapshot(session), session.role, session.user_id.clone()))
             } else {
                 None
             }
         };
-        if let Some((snapshot, role, peer_id)) = expired {
+        if let Some((snapshot, role, user_id)) = expired {
             if role == RemoteRole::Host
-                && let Ok(peer) = peer_id.parse()
+                && let Ok(user) = user_id.parse()
             {
                 let _ = self
                     .send_signal(
-                        peer,
+                        user,
                         &RemoteSignalFrame::Deny {
                             session_id: id_bytes(id),
                         },
@@ -376,12 +376,12 @@ impl RemoteService {
                 }
             }
         };
-        let peer_node = snapshot
-            .peer_id
+        let user_node = snapshot
+            .user_id
             .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
+            .map_err(|_| RemoteError::InvalidUser(snapshot.user_id.clone()))?;
         if let Some(signal) = signal {
-            self.send_signal(peer_node, &signal).await?;
+            self.send_signal(user_node, &signal).await?;
         }
         self.emit(RemoteEventMessage::Requested(snapshot.clone()));
         let _ = role;
@@ -403,13 +403,13 @@ impl RemoteService {
             session.transition(RemoteEvent::Deny)?;
             snapshot(session)
         };
-        let peer_node = snapshot
-            .peer_id
+        let user_node = snapshot
+            .user_id
             .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
+            .map_err(|_| RemoteError::InvalidUser(snapshot.user_id.clone()))?;
         let _ = self
             .send_signal(
-                peer_node,
+                user_node,
                 &RemoteSignalFrame::Deny {
                     session_id: id_bytes(id),
                 },
@@ -438,13 +438,13 @@ impl RemoteService {
             session.transition(RemoteEvent::KillSwitch)?;
             snapshot(session)
         };
-        let peer_node = snapshot
-            .peer_id
+        let user_node = snapshot
+            .user_id
             .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
+            .map_err(|_| RemoteError::InvalidUser(snapshot.user_id.clone()))?;
         let _ = self
             .send_signal(
-                peer_node,
+                user_node,
                 &RemoteSignalFrame::KillSwitch {
                     session_id: id_bytes(id),
                 },
@@ -460,17 +460,17 @@ impl RemoteService {
 
     pub async fn handle_signal(
         &self,
-        peer: PeerInfo,
+        user: UserInfo,
         frame: RemoteSignalFrame,
     ) -> Result<(), RemoteError> {
-        let peer_id = peer.node_id.to_string();
+        let user_id = user.node_id.to_string();
         let stored = self
             .inner
             .trust
-            .peer_by_fingerprint(&peer.fingerprint.to_hex())
+            .user_by_fingerprint(&user.fingerprint.to_hex())
             .await?
-            .ok_or_else(|| RemoteError::UnknownPeer(peer_id.clone()))?;
-        if stored.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| RemoteError::UnknownUser(user_id.clone()))?;
+        if stored.policy == UserPolicy::Ignore {
             return Ok(());
         }
         let id = RemoteSessionId::from_bytes(frame.session_id());
@@ -485,7 +485,7 @@ impl RemoteService {
                 {
                     let _ = self
                         .send_signal(
-                            peer.node_id,
+                            user.node_id,
                             &RemoteSignalFrame::Deny {
                                 session_id: id_bytes(id),
                             },
@@ -496,8 +496,8 @@ impl RemoteService {
                 let settings = self.settings();
                 let mut session = RemoteSession {
                     id,
-                    peer_id: peer_id.clone(),
-                    fingerprint: peer.fingerprint.to_hex(),
+                    user_id: user_id.clone(),
+                    fingerprint: user.fingerprint.to_hex(),
                     role: RemoteRole::Host,
                     state: RemoteState::Idle,
                     pin: Some(generate_pin()),
@@ -525,7 +525,7 @@ impl RemoteService {
                     .unwrap_or_else(PoisonError::into_inner);
                 let session = guard
                     .as_mut()
-                    .filter(|session| session.id == id && session.peer_id == peer_id)
+                    .filter(|session| session.id == id && session.user_id == user_id)
                     .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
                 if session.state == RemoteState::Requested {
                     session.transition(RemoteEvent::Consent)?;
@@ -548,7 +548,7 @@ impl RemoteService {
                         .unwrap_or_else(PoisonError::into_inner);
                     let session = guard
                         .as_mut()
-                        .filter(|session| session.id == id && session.peer_id == peer_id)
+                        .filter(|session| session.id == id && session.user_id == user_id)
                         .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
                     if (self.inner.clock)() > session.expires_at {
                         session.transition(RemoteEvent::Deny)?;
@@ -562,7 +562,7 @@ impl RemoteService {
                     PinOutcome::Expired(snapshot) => {
                         let _ = self
                             .send_signal(
-                                peer.node_id,
+                                user.node_id,
                                 &RemoteSignalFrame::Deny {
                                     session_id: id_bytes(id),
                                 },
@@ -581,7 +581,7 @@ impl RemoteService {
                     self.inner.host.start(1920, 1080)?;
                     let _ = self
                         .send_signal(
-                            peer.node_id,
+                            user.node_id,
                             &RemoteSignalFrame::Start {
                                 session_id: id_bytes(id),
                             },
@@ -595,7 +595,7 @@ impl RemoteService {
                 } else if denied {
                     let _ = self
                         .send_signal(
-                            peer.node_id,
+                            user.node_id,
                             &RemoteSignalFrame::Deny {
                                 session_id: id_bytes(id),
                             },
@@ -610,7 +610,7 @@ impl RemoteService {
                 Ok(())
             }
             RemoteSignalFrame::Deny { .. } => {
-                self.finish_remote(&peer_id, id, "denied").await;
+                self.finish_remote(&user_id, id, "denied").await;
                 Ok(())
             }
             RemoteSignalFrame::Start { .. } => {
@@ -622,7 +622,7 @@ impl RemoteService {
                         .unwrap_or_else(PoisonError::into_inner);
                     let session = guard
                         .as_mut()
-                        .filter(|session| session.id == id && session.peer_id == peer_id)
+                        .filter(|session| session.id == id && session.user_id == user_id)
                         .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
                     if session.state == RemoteState::Requested {
                         session.transition(RemoteEvent::Consent)?;
@@ -638,15 +638,15 @@ impl RemoteService {
                 Ok(())
             }
             RemoteSignalFrame::Hangup { .. } | RemoteSignalFrame::KillSwitch { .. } => {
-                self.finish_remote(&peer_id, id, "hangup").await;
+                self.finish_remote(&user_id, id, "hangup").await;
                 Ok(())
             }
             RemoteSignalFrame::KeyframeRequest { .. } => Ok(()),
         }
     }
 
-    pub fn inject_input(&self, peer: PeerInfo, packet: InputPacket) -> Result<(), RemoteError> {
-        let peer_id = peer.node_id.to_string();
+    pub fn inject_input(&self, user: UserInfo, packet: InputPacket) -> Result<(), RemoteError> {
+        let user_id = user.node_id.to_string();
         let guard = self
             .inner
             .session
@@ -655,7 +655,7 @@ impl RemoteService {
         let session = guard
             .as_ref()
             .filter(|session| {
-                session.peer_id == peer_id
+                session.user_id == user_id
                     && session.state == RemoteState::Active
                     && session.role == RemoteRole::Host
             })
@@ -684,8 +684,8 @@ impl RemoteService {
         self.inner.host.inject(event)
     }
 
-    pub fn handle_disconnect(&self, peer: &PeerInfo) {
-        let peer_id = peer.node_id.to_string();
+    pub fn handle_disconnect(&self, user: &UserInfo) {
+        let user_id = user.node_id.to_string();
         let ended = {
             let mut guard = self
                 .inner
@@ -693,7 +693,7 @@ impl RemoteService {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if let Some(session) = guard.as_mut()
-                && session.peer_id == peer_id
+                && session.user_id == user_id
                 && matches!(
                     session.state,
                     RemoteState::Active | RemoteState::Consented | RemoteState::Requested
@@ -714,14 +714,14 @@ impl RemoteService {
         }
     }
 
-    async fn finish_remote(&self, peer_id: &str, id: RemoteSessionId, reason: &str) {
+    async fn finish_remote(&self, user_id: &str, id: RemoteSessionId, reason: &str) {
         let matches = self
             .inner
             .session
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
-            .is_some_and(|session| session.id == id && session.peer_id == peer_id);
+            .is_some_and(|session| session.id == id && session.user_id == user_id);
         if !matches {
             return;
         }
@@ -753,14 +753,14 @@ impl RemoteService {
 
     async fn send_signal(
         &self,
-        peer_id: ticonnect_core::id::NodeId,
+        user_id: ticonnect_core::id::NodeId,
         frame: &RemoteSignalFrame,
     ) -> Result<(), RemoteError> {
         let session = self
             .inner
             .transport
-            .session_by_node_id(peer_id)
-            .ok_or(RemoteError::PeerOffline)?;
+            .session_by_node_id(user_id)
+            .ok_or(RemoteError::UserOffline)?;
         let mut send = session.open_uni().await?;
         ticonnect_net::transport::session::write_frame(&mut send, &frame.to_wire()?).await?;
         Ok(())
@@ -784,13 +784,13 @@ pub fn spawn(
                     let result = match frame.frame.kind() {
                         ticonnect_core::wire::FrameKind::Remote => {
                             match ticonnect_core::remote::RemoteSignalFrame::from_wire(&frame.frame) {
-                                Ok(signal) => service.handle_signal(frame.peer, signal).await,
+                                Ok(signal) => service.handle_signal(frame.user, signal).await,
                                 Err(error) => Err(RemoteError::Protocol(error.to_string())),
                             }
                         }
                         ticonnect_core::wire::FrameKind::Input => {
                             match ticonnect_core::remote::InputPacket::decode(frame.frame.payload()) {
-                                Ok(packet) => service.inject_input(frame.peer, packet),
+                                Ok(packet) => service.inject_input(frame.user, packet),
                                 Err(error) => Err(RemoteError::Protocol(error.to_string())),
                             }
                         }
@@ -802,8 +802,8 @@ pub fn spawn(
                 }
                 event = transport_events.recv() => {
                     match event {
-                        Ok(ticonnect_net::transport::TransportEvent::PeerDisconnected(peer)) => {
-                            service.handle_disconnect(&peer);
+                        Ok(ticonnect_net::transport::TransportEvent::UserDisconnected(user)) => {
+                            service.handle_disconnect(&user);
                         }
                         Ok(_) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -822,7 +822,7 @@ fn id_bytes(id: RemoteSessionId) -> [u8; 16] {
 fn snapshot(session: &RemoteSession) -> RemoteSnapshot {
     RemoteSnapshot {
         session_id: session.id.to_string(),
-        peer_id: session.peer_id.clone(),
+        user_id: session.user_id.clone(),
         fingerprint: session.fingerprint.clone(),
         role: match session.role {
             RemoteRole::Host => "host",
@@ -850,14 +850,14 @@ pub enum RemoteError {
     #[error(transparent)]
     Signal(#[from] ticonnect_core::remote::RemoteError),
 
-    #[error("unknown peer: {0}")]
-    UnknownPeer(String),
+    #[error("unknown user: {0}")]
+    UnknownUser(String),
 
-    #[error("invalid peer id: {0}")]
-    InvalidPeer(String),
+    #[error("invalid user id: {0}")]
+    InvalidUser(String),
 
-    #[error("peer is offline")]
-    PeerOffline,
+    #[error("user is offline")]
+    UserOffline,
 
     #[error("remote access was rejected by policy")]
     Rejected,

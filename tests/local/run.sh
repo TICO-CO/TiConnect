@@ -240,12 +240,8 @@ pair_nodes() {
     local start pin
     wait_until "cli b discover list | grep -q '$A_ID'" 60 || fail "node-b did not discover node-a"
     wait_until "cli a discover list | grep -q '$B_ID'" 60 || fail "node-a did not discover node-b"
-    start="$(cli a pair start)"
-    pin="$(printf '%s\n' "$start" | sed -n 's/^pin: //p')"
-    [ -n "$pin" ] || fail "pair start failed"
-    cli b pair with-pin "$A_ID" "$pin" >/dev/null
-    wait_until "cli a peers list | grep -q '$B_ID'" 30 || fail "node-a did not trust node-b"
-    wait_until "cli b peers list | grep -q '$A_ID'" 30 || fail "node-b did not trust node-a"
+    wait_until "cli a users list | grep -q '$B_ID'" 30 || fail "node-a did not trust node-b"
+    wait_until "cli b users list | grep -q '$A_ID'" 30 || fail "node-b did not trust node-a"
     wait_until "[ \"\$(cli a status | awk '/^active_sessions:/ {print \$2}')\" -ge 1 ]" 30 || fail "no session"
 }
 

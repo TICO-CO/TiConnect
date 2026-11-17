@@ -5,21 +5,24 @@ use thiserror::Error;
 use zbus::OwnedVariant;
 
 use super::{
-    CALL_CONNECTED_AT, CALL_DIRECTION, CALL_ID, CALL_PEER_ID, CALL_STARTED_AT, CALL_STATE,
+    CALL_CONNECTED_AT, CALL_DIRECTION, CALL_ID, CALL_STARTED_AT, CALL_STATE, CALL_USER_ID,
     CANDIDATE_ADDRESSES, CANDIDATE_AVATAR_HASH, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT,
     CANDIDATE_NODE_ID, CANDIDATE_SOURCE, CONVERSATION_ID, CONVERSATION_LAST_BODY,
     CONVERSATION_LAST_MESSAGE_ID, CONVERSATION_LAST_SENDER_ID, CONVERSATION_LAST_SENT_AT,
-    CONVERSATION_PEER_ID, CONVERSATION_UNREAD_COUNT, IDENTITY_AVATAR_HASH, IDENTITY_DISPLAY_NAME,
+    CONVERSATION_UNREAD_COUNT, CONVERSATION_USER_ID, IDENTITY_AVATAR_HASH, IDENTITY_DISPLAY_NAME,
     IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME,
     MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY,
-    MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_PEER_ID, MESSAGE_RECEIVED_AT,
-    MESSAGE_SENDER_ID, MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, PAIRING_EXPIRES_AT,
-    PAIRING_NODE_ID, PAIRING_PIN, PAIRING_PORT, PAIRING_QR, PEER_AVATAR_HASH, PEER_CONNECTED,
-    PEER_DISPLAY_NAME, PEER_FINGERPRINT, PEER_ID, PEER_LAST_SEEN, PEER_POLICY, PEER_TRUSTED_AT,
-    REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_PEER_ID, REMOTE_PIN,
-    REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH,
-    STATUS_PEER_COUNT, STATUS_TRANSPORT_STATE, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME,
-    TRANSFER_PEER_ID, TRANSFER_PHASE, TRANSFER_REASON, TRANSFER_SIZE,
+    MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
+    MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, MESSAGE_USER_ID, REMOTE_EXPIRES_AT,
+    REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_PIN, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
+    REMOTE_USER_ID, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE,
+    STATUS_USER_COUNT, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PHASE,
+    TRANSFER_REASON, TRANSFER_SIZE, TRANSFER_USER_ID, USER_ADDRESSES, USER_APP_VERSION,
+    USER_AVATAR_HASH, USER_CONNECTED, USER_DESKTOP, USER_DISPLAY_NAME, USER_DISPLAY_SERVER,
+    USER_FINGERPRINT, USER_ID, USER_LAST_SEEN, USER_MAC, USER_OS, USER_POLICY, USER_PORT,
+    USER_SOURCE, USER_TRUSTED_AT, WATCH_PARTY_ACTOR, WATCH_PARTY_ID, WATCH_PARTY_PLAYING,
+    WATCH_PARTY_POSITION_MS, WATCH_PARTY_REVISION, WATCH_PARTY_ROLE, WATCH_PARTY_STATE,
+    WATCH_PARTY_UPDATED_AT, WATCH_PARTY_USER_ID, WATCH_PARTY_VIDEO_ID,
 };
 
 #[derive(Debug, Error)]
@@ -32,13 +35,13 @@ pub type Result<T> = std::result::Result<T, ParseError>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum PeerPolicy {
+pub enum UserPolicy {
     Accept,
     Mute,
     Ignore,
 }
 
-impl PeerPolicy {
+impl UserPolicy {
     pub fn parse(value: &str) -> Self {
         match value {
             "mute" => Self::Mute,
@@ -95,15 +98,42 @@ impl MessageState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Peer {
+pub struct User {
     pub id: String,
     pub fingerprint: String,
     pub display_name: String,
     pub avatar_hash: String,
-    pub policy: PeerPolicy,
+    pub policy: UserPolicy,
     pub trusted_at: u64,
     pub last_seen: u64,
     pub connected: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WatchParty {
+    pub party_id: String,
+    pub user_id: String,
+    pub video_id: String,
+    pub role: String,
+    pub state: String,
+    pub position_ms: u64,
+    pub playing: bool,
+    pub revision: u64,
+    pub actor: String,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UserDetails {
+    pub user: User,
+    pub addresses: String,
+    pub port: u16,
+    pub source: String,
+    pub mac: String,
+    pub os: String,
+    pub desktop: String,
+    pub display_server: String,
+    pub app_version: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,7 +149,7 @@ pub struct Candidate {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationSummary {
     pub conversation_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub last_message_id: String,
     pub last_sender_id: String,
     pub last_body: String,
@@ -131,7 +161,7 @@ pub struct ConversationSummary {
 pub struct Message {
     pub id: String,
     pub conversation_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub sender_id: String,
     pub local_sender: bool,
     pub seq: u64,
@@ -156,7 +186,7 @@ impl Message {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteSession {
     pub session_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub fingerprint: String,
     pub role: String,
     pub state: String,
@@ -168,7 +198,7 @@ pub struct RemoteSession {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Call {
     pub id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub direction: String,
     pub state: String,
     pub started_at: u64,
@@ -178,7 +208,7 @@ pub struct Call {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transfer {
     pub hash: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub name: String,
     pub size: u64,
     pub bytes: u64,
@@ -199,16 +229,7 @@ pub struct Status {
     pub transport_state: String,
     pub active_sessions: u32,
     pub outbox_depth: u32,
-    pub peer_count: u32,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PairingStart {
-    pub pin: String,
-    pub qr: String,
-    pub expires_at: u64,
-    pub node_id: String,
-    pub port: u32,
+    pub user_count: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -216,7 +237,7 @@ pub struct PairingStart {
 pub enum DaemonEvent {
     Connected,
     Disconnected(String),
-    Peers(Vec<Peer>),
+    Users(Vec<User>),
     Candidates(Vec<Candidate>),
     CandidateLost(String),
     MessageReceived(Message),
@@ -225,31 +246,25 @@ pub enum DaemonEvent {
         state: MessageState,
     },
     ConversationChanged {
-        peer_id: String,
+        user_id: String,
     },
     TypingChanged {
-        peer_id: String,
+        user_id: String,
         typing: bool,
     },
-    PeerProfileChanged {
+    UserProfileChanged {
         fingerprint: String,
     },
     SelfProfileChanged,
-    PeerConnected(Peer),
-    PeerDisconnected(Peer),
-    PairingStarted(PairingStart),
-    PairingCompleted {
-        peer_id: String,
-        fingerprint: String,
-    },
-    PairingFailed(String),
+    UserConnected(User),
+    UserDisconnected(User),
     PolicyChanged {
-        peer_id: String,
-        policy: PeerPolicy,
+        user_id: String,
+        policy: UserPolicy,
     },
     SettingsChanged(String),
     SyncCompleted {
-        peer_id: String,
+        user_id: String,
         count: u32,
     },
     TransferProgress {
@@ -281,6 +296,12 @@ pub enum DaemonEvent {
         session_id: String,
         visible: bool,
     },
+    WatchPartyRequested(WatchParty),
+    WatchPartyChanged(WatchParty),
+    WatchPartyEnded {
+        party_id: String,
+        reason: String,
+    },
 }
 
 pub fn parse_identity(values: &HashMap<String, OwnedVariant>) -> Result<Identity> {
@@ -297,24 +318,53 @@ pub fn parse_status(values: &HashMap<String, OwnedVariant>) -> Result<Status> {
         transport_state: optional_string(values, STATUS_TRANSPORT_STATE),
         active_sessions: optional_u64(values, STATUS_ACTIVE_SESSIONS) as u32,
         outbox_depth: optional_u64(values, STATUS_OUTBOX_DEPTH) as u32,
-        peer_count: optional_u64(values, STATUS_PEER_COUNT) as u32,
+        user_count: optional_u64(values, STATUS_USER_COUNT) as u32,
     })
 }
 
-pub fn parse_peers(values: &[HashMap<String, OwnedVariant>]) -> Result<Vec<Peer>> {
-    values.iter().map(parse_peer).collect()
+pub fn parse_users(values: &[HashMap<String, OwnedVariant>]) -> Result<Vec<User>> {
+    values.iter().map(parse_user).collect()
 }
 
-pub fn parse_peer(values: &HashMap<String, OwnedVariant>) -> Result<Peer> {
-    Ok(Peer {
-        id: required_string(values, PEER_ID)?,
-        fingerprint: required_string(values, PEER_FINGERPRINT)?,
-        display_name: optional_string(values, PEER_DISPLAY_NAME),
-        avatar_hash: optional_string(values, PEER_AVATAR_HASH),
-        policy: PeerPolicy::parse(&optional_string(values, PEER_POLICY)),
-        trusted_at: optional_u64(values, PEER_TRUSTED_AT),
-        last_seen: optional_u64(values, PEER_LAST_SEEN),
-        connected: optional_bool(values, PEER_CONNECTED),
+pub fn parse_user(values: &HashMap<String, OwnedVariant>) -> Result<User> {
+    Ok(User {
+        id: required_string(values, USER_ID)?,
+        fingerprint: required_string(values, USER_FINGERPRINT)?,
+        display_name: optional_string(values, USER_DISPLAY_NAME),
+        avatar_hash: optional_string(values, USER_AVATAR_HASH),
+        policy: UserPolicy::parse(&optional_string(values, USER_POLICY)),
+        trusted_at: optional_u64(values, USER_TRUSTED_AT),
+        last_seen: optional_u64(values, USER_LAST_SEEN),
+        connected: optional_bool(values, USER_CONNECTED),
+    })
+}
+
+pub fn parse_watch_party(values: &HashMap<String, OwnedVariant>) -> Result<WatchParty> {
+    Ok(WatchParty {
+        party_id: required_string(values, WATCH_PARTY_ID)?,
+        user_id: optional_string(values, WATCH_PARTY_USER_ID),
+        video_id: optional_string(values, WATCH_PARTY_VIDEO_ID),
+        role: optional_string(values, WATCH_PARTY_ROLE),
+        state: optional_string(values, WATCH_PARTY_STATE),
+        position_ms: optional_u64(values, WATCH_PARTY_POSITION_MS),
+        playing: optional_bool(values, WATCH_PARTY_PLAYING),
+        revision: optional_u64(values, WATCH_PARTY_REVISION),
+        actor: optional_string(values, WATCH_PARTY_ACTOR),
+        updated_at: optional_u64(values, WATCH_PARTY_UPDATED_AT),
+    })
+}
+
+pub fn parse_user_details(values: &HashMap<String, OwnedVariant>) -> Result<UserDetails> {
+    Ok(UserDetails {
+        user: parse_user(values)?,
+        addresses: optional_string(values, USER_ADDRESSES),
+        port: optional_u64(values, USER_PORT) as u16,
+        source: optional_string(values, USER_SOURCE),
+        mac: optional_string(values, USER_MAC),
+        os: optional_string(values, USER_OS),
+        desktop: optional_string(values, USER_DESKTOP),
+        display_server: optional_string(values, USER_DISPLAY_SERVER),
+        app_version: optional_string(values, USER_APP_VERSION),
     })
 }
 
@@ -334,7 +384,7 @@ pub fn parse_conversation_summary(
 ) -> Result<ConversationSummary> {
     Ok(ConversationSummary {
         conversation_id: required_string(values, CONVERSATION_ID)?,
-        peer_id: required_string(values, CONVERSATION_PEER_ID)?,
+        user_id: required_string(values, CONVERSATION_USER_ID)?,
         last_message_id: optional_string(values, CONVERSATION_LAST_MESSAGE_ID),
         last_sender_id: optional_string(values, CONVERSATION_LAST_SENDER_ID),
         last_body: optional_string(values, CONVERSATION_LAST_BODY),
@@ -352,7 +402,7 @@ pub fn parse_message(
     Ok(Message {
         id: required_string(values, MESSAGE_ID)?,
         conversation_id: required_string(values, MESSAGE_CONVERSATION_ID)?,
-        peer_id: optional_string(values, MESSAGE_PEER_ID),
+        user_id: optional_string(values, MESSAGE_USER_ID),
         sender_id,
         local_sender,
         seq: optional_u64(values, MESSAGE_SEQ),
@@ -372,7 +422,7 @@ pub fn parse_message(
 pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<RemoteSession> {
     Ok(RemoteSession {
         session_id: required_string(values, REMOTE_SESSION_ID)?,
-        peer_id: optional_string(values, REMOTE_PEER_ID),
+        user_id: optional_string(values, REMOTE_USER_ID),
         fingerprint: optional_string(values, REMOTE_FINGERPRINT),
         role: optional_string(values, REMOTE_ROLE),
         state: optional_string(values, REMOTE_STATE),
@@ -385,7 +435,7 @@ pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<Re
 pub fn parse_call(values: &HashMap<String, OwnedVariant>) -> Result<Call> {
     Ok(Call {
         id: required_string(values, CALL_ID)?,
-        peer_id: optional_string(values, CALL_PEER_ID),
+        user_id: optional_string(values, CALL_USER_ID),
         direction: optional_string(values, CALL_DIRECTION),
         state: optional_string(values, CALL_STATE),
         started_at: optional_u64(values, CALL_STARTED_AT),
@@ -396,22 +446,12 @@ pub fn parse_call(values: &HashMap<String, OwnedVariant>) -> Result<Call> {
 pub fn parse_transfer(values: &HashMap<String, OwnedVariant>) -> Result<Transfer> {
     Ok(Transfer {
         hash: required_string(values, TRANSFER_HASH)?,
-        peer_id: optional_string(values, TRANSFER_PEER_ID),
+        user_id: optional_string(values, TRANSFER_USER_ID),
         name: optional_string(values, TRANSFER_NAME),
         size: optional_u64(values, TRANSFER_SIZE),
         bytes: optional_u64(values, TRANSFER_BYTES),
         phase: optional_string(values, TRANSFER_PHASE),
         reason: optional_string(values, TRANSFER_REASON),
-    })
-}
-
-pub fn parse_pairing(values: &HashMap<String, OwnedVariant>) -> Result<PairingStart> {
-    Ok(PairingStart {
-        pin: required_string(values, PAIRING_PIN)?,
-        qr: required_string(values, PAIRING_QR)?,
-        expires_at: optional_u64(values, PAIRING_EXPIRES_AT),
-        node_id: optional_string(values, PAIRING_NODE_ID),
-        port: optional_u64(values, PAIRING_PORT) as u32,
     })
 }
 
@@ -468,7 +508,7 @@ mod tests {
     #[test]
     fn policy_and_state_use_wire_names() {
         assert_eq!(
-            serde_json::to_string(&PeerPolicy::Accept).unwrap(),
+            serde_json::to_string(&UserPolicy::Accept).unwrap(),
             "\"accept\""
         );
         assert_eq!(
@@ -482,7 +522,7 @@ mod tests {
         let message = Message {
             id: "m1".to_owned(),
             conversation_id: "c1".to_owned(),
-            peer_id: "p1".to_owned(),
+            user_id: "p1".to_owned(),
             sender_id: "p1".to_owned(),
             local_sender: false,
             seq: 7,

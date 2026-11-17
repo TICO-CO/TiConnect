@@ -28,7 +28,7 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     })
     .await
     .expect("incoming call");
-    assert_eq!(incoming.peer_id, first.node_id().to_string());
+    assert_eq!(incoming.user_id, first.node_id().to_string());
     assert_eq!(incoming.state, CallState::Ringing);
 
     let accepted = second.calls.accept_call(call.id).await.expect("accept");
@@ -126,9 +126,9 @@ async fn ignore_policy_rejects_incoming_call_and_caller_can_cancel() {
     connect_pair(&first, &second).await;
     second
         .messaging
-        .set_peer_policy(
+        .set_user_policy(
             &first.node_id().to_string(),
-            ticonnect_daemon::storage::PeerPolicy::Ignore,
+            ticonnect_daemon::storage::UserPolicy::Ignore,
         )
         .await
         .expect("ignore caller");

@@ -5,7 +5,7 @@ use ticonnect_core::id::NodeId;
 use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::message::{MessageRecord, conversation_id};
 use ticonnect_daemon::storage::{
-    DatabaseHandle, InsertOutcome, MessageState, NewPeer, PeerPolicy, StorageError,
+    DatabaseHandle, InsertOutcome, MessageState, NewUser, StorageError, UserPolicy,
 };
 
 #[tokio::test]
@@ -15,31 +15,31 @@ async fn message_insert_history_and_state_are_transactional() {
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let identity = IdentityKeyPair::from_secret_bytes([81_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
+        .insert_user(NewUser {
+            id: user.to_string(),
             fingerprint: "fingerprint".to_owned(),
             public_key: Some(identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
+        .expect("user");
 
-    let conversation = conversation_id(local, peer);
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
-    let seq = database.allocate_seq(&peer.to_string()).await.expect("seq");
+    let seq = database.allocate_seq(&user.to_string()).await.expect("seq");
     assert_eq!(seq, 1);
     assert_eq!(
-        database.allocate_seq(&peer.to_string()).await.expect("seq"),
+        database.allocate_seq(&user.to_string()).await.expect("seq"),
         2
     );
 
@@ -112,48 +112,48 @@ async fn message_insert_history_and_state_are_transactional() {
 }
 
 #[tokio::test]
-async fn inbound_insert_advances_peer_state_and_outbox_expires() {
+async fn inbound_insert_advances_user_state_and_outbox_expires() {
     let dir = temp_dir();
     let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let identity = IdentityKeyPair::from_secret_bytes([82_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
+        .insert_user(NewUser {
+            id: user.to_string(),
             fingerprint: "fingerprint".to_owned(),
             public_key: Some(identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
-    let conversation = conversation_id(local, peer);
+        .expect("user");
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
-    let record = MessageRecord::text(&conversation, peer.to_string(), 5, 10, "incoming");
+    let record = MessageRecord::text(&conversation, user.to_string(), 5, 10, "incoming");
     let envelope = record.signed(&identity).expect("sign");
     database
         .insert_inbound(
             record.clone(),
             record.sent_at,
             envelope.signature().to_vec(),
-            &peer.to_string(),
+            &user.to_string(),
         )
         .await
         .expect("inbound");
     assert_eq!(
         database
-            .peer_state(&peer.to_string())
+            .user_state(&user.to_string())
             .await
-            .expect("peer state")
+            .expect("user state")
             .last_recv_seq,
         5
     );
@@ -165,7 +165,7 @@ async fn inbound_insert_advances_peer_state_and_outbox_expires() {
     assert_eq!(database.outbox_depth().await.expect("depth"), 1);
     assert!(
         database
-            .due_outbox(&peer.to_string(), 1)
+            .due_outbox(&user.to_string(), 1)
             .await
             .expect("due")
             .is_empty()
@@ -185,24 +185,24 @@ async fn records_between_filters_by_sender() {
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let local_identity = IdentityKeyPair::from_secret_bytes([83_u8; 32]);
-    let peer_identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
+    let user_identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
-            fingerprint: "peer-fingerprint".to_owned(),
-            public_key: Some(peer_identity.verifying_key().to_bytes()),
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "user-fingerprint".to_owned(),
+            public_key: Some(user_identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
-    let conversation = conversation_id(local, peer);
+        .expect("user");
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
@@ -243,18 +243,18 @@ async fn records_between_filters_by_sender() {
 
     let incoming = MessageRecord::text(
         conversation.clone(),
-        peer.to_string(),
+        user.to_string(),
         1,
         1_700_000_000_000,
         "incoming",
     );
-    let incoming_envelope = incoming.signed(&peer_identity).expect("sign incoming");
+    let incoming_envelope = incoming.signed(&user_identity).expect("sign incoming");
     database
         .insert_inbound(
             incoming,
             1_700_000_000_100,
             incoming_envelope.signature().to_vec(),
-            &peer.to_string(),
+            &user.to_string(),
         )
         .await
         .expect("insert incoming");
@@ -266,12 +266,12 @@ async fn records_between_filters_by_sender() {
     assert_eq!(local_records.len(), 1);
     assert_eq!(local_records[0].record.body.as_deref(), Some("outgoing"));
 
-    let peer_records = database
-        .records_between(&conversation, &peer.to_string(), 1, 1, 10)
+    let user_records = database
+        .records_between(&conversation, &user.to_string(), 1, 1, 10)
         .await
-        .expect("peer records");
-    assert_eq!(peer_records.len(), 1);
-    assert_eq!(peer_records[0].record.body.as_deref(), Some("incoming"));
+        .expect("user records");
+    assert_eq!(user_records.len(), 1);
+    assert_eq!(user_records[0].record.body.as_deref(), Some("incoming"));
 
     drop(database);
     let _ = fs::remove_dir_all(dir);

@@ -26,9 +26,9 @@ pub fn enqueue(
     Ok(())
 }
 
-pub fn due_for_peer(
+pub fn due_for_user(
     connection: &Connection,
-    peer_id: &str,
+    user_id: &str,
     now: i64,
 ) -> Result<Vec<OutboxEntry>, StorageError> {
     let mut statement = connection.prepare(
@@ -36,11 +36,11 @@ pub fn due_for_peer(
          FROM outbox o
          JOIN messages m ON m.id = o.message_id
          JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.peer_id = ?1 AND o.next_try <= ?2 AND o.expires_at > ?2
+         WHERE c.user_id = ?1 AND o.next_try <= ?2 AND o.expires_at > ?2
          ORDER BY m.seq
          LIMIT ?3",
     )?;
-    let rows = statement.query_map(params![peer_id, now, i64::from(OUTBOX_BATCH)], |row| {
+    let rows = statement.query_map(params![user_id, now, i64::from(OUTBOX_BATCH)], |row| {
         let attempts: i64 = row.get(1)?;
         Ok(OutboxEntry {
             message_id: row.get(0)?,

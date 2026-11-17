@@ -1,6 +1,6 @@
 [package]
 name = "ticonnect-core"
-description = "Shared protocol, identity, pairing, and crypto types for TiConnect"
+description = "Shared protocol, identity, trust, and crypto types for TiConnect"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

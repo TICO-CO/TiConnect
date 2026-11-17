@@ -7,7 +7,7 @@ pub const RECEIPT_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingAck {
-    pub peer_id: String,
+    pub user_id: String,
     pub target_id: MessageId,
     pub kind: AckKind,
     pub queued_at: Instant,
@@ -19,17 +19,17 @@ pub struct ReceiptCoalescer {
 }
 
 impl ReceiptCoalescer {
-    pub fn queue(&mut self, peer_id: impl Into<String>, target_id: MessageId, kind: AckKind) {
-        let peer_id = peer_id.into();
+    pub fn queue(&mut self, user_id: impl Into<String>, target_id: MessageId, kind: AckKind) {
+        let user_id = user_id.into();
         if self
             .pending
             .iter()
-            .any(|ack| ack.peer_id == peer_id && ack.target_id == target_id && ack.kind == kind)
+            .any(|ack| ack.user_id == user_id && ack.target_id == target_id && ack.kind == kind)
         {
             return;
         }
         self.pending.push(PendingAck {
-            peer_id,
+            user_id,
             target_id,
             kind,
             queued_at: Instant::now(),
@@ -62,8 +62,8 @@ mod tests {
     fn coalesces_duplicates_and_releases_after_delay() {
         let mut coalescer = ReceiptCoalescer::default();
         let target = MessageId::generate();
-        coalescer.queue("peer", target, AckKind::Delivered);
-        coalescer.queue("peer", target, AckKind::Delivered);
+        coalescer.queue("user", target, AckKind::Delivered);
+        coalescer.queue("user", target, AckKind::Delivered);
         assert_eq!(coalescer.pending.len(), 1);
 
         let now = Instant::now();

@@ -68,7 +68,7 @@ pub enum RemoteRole {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSession {
     pub id: RemoteSessionId,
-    pub peer_id: String,
+    pub user_id: String,
     pub fingerprint: String,
     pub role: RemoteRole,
     pub state: RemoteState,
@@ -150,7 +150,7 @@ mod tests {
     fn session(role: RemoteRole) -> RemoteSession {
         RemoteSession {
             id: RemoteSessionId::generate(),
-            peer_id: "peer".to_owned(),
+            user_id: "user".to_owned(),
             fingerprint: "fingerprint".to_owned(),
             role,
             state: RemoteState::Idle,

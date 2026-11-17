@@ -9,10 +9,8 @@ flowchart LR
   g_n_call_policy["CALL.policy"] -.->|gates| f_n_tx_datagrams["TX.datagrams"]
   g_n_call_policy["CALL.policy"] -.->|gates| f_n_tx_session["TX.session"]
   g_n_id_cert_binding["ID.cert-binding"] -.->|gates| f_n_tx_tls_cert["TX.tls-cert"]
-  g_n_id_trust_store["ID.trust-store"] -.->|gates| f_n_pair_dbus["PAIR.dbus"]
+  g_n_id_trust_store["ID.trust-store"] -.->|gates| f_n_trust_dbus["TRUST.dbus"]
   g_n_id_trust_store["ID.trust-store"] -.->|gates| f_n_tx_verifier["TX.verifier"]
-  g_n_pair_confirm["PAIR.confirm"] -.->|gates| f_n_pair_commit["PAIR.commit"]
-  g_n_pair_endpoint["PAIR.endpoint"] -.->|gates| f_n_tx_alpn["TX.alpn"]
   g_n_pol_inbound["POL.inbound"] -.->|gates| f_n_call_policy["CALL.policy"]
   g_n_pol_inbound["POL.inbound"] -.->|gates| f_n_msg_ingest["MSG.ingest"]
   g_n_pol_receipts["POL.receipts"] -.->|gates| f_n_msg_receipts["MSG.receipts"]
@@ -24,14 +22,16 @@ flowchart LR
   g_n_rd_consent["RD.consent"] -.->|gates| f_n_tx_streams["TX.streams"]
   g_n_rd_consent["RD.consent"] -.->|gates| f_n_vid_packetize["VID.packetize"]
   g_n_rd_consent["RD.consent"] -.->|gates| f_n_wire_input["WIRE.input"]
+  g_n_trust_confirm["TRUST.confirm"] -.->|gates| f_n_trust_commit["TRUST.commit"]
+  g_n_trust_endpoint["TRUST.endpoint"] -.->|gates| f_n_tx_alpn["TX.alpn"]
 ```
 
 | Gate | From | To | Edge | Contract |
 |---|---|---|---|---|
-| `PAIR.confirm` | `PAIR.commit` | `ID.trust-store` | `E091` | commit trusted peer |
+| `TRUST.confirm` | `TRUST.commit` | `ID.trust-store` | `E091` | commit trusted user |
 | `ID.trust-store` | `TX.verifier` | `ID.trust-store` | `E105` | pinned trust lookup |
 | `ID.cert-binding` | `TX.tls-cert` | `ID.cert-binding` | `E106` | certificate binding |
-| `PAIR.endpoint` | `TX.alpn` | `PAIR.endpoint` | `E107` | pairing ALPN |
+| `TRUST.endpoint` | `TX.alpn` | `TRUST.endpoint` | `E107` | trust ALPN |
 | `CALL.policy` | `TX.session` | `CALL.signaling` | `E114` | call signaling available |
 | `RD.consent` | `TX.session` | `RD.transport` | `E115` | remote session transport available |
 | `CALL.policy` | `TX.datagrams` | `AUD.decode` | `E116` | audio datagram |
@@ -49,5 +49,5 @@ flowchart LR
 | `RD.consent` | `RD.input` | `DT.input-router` | `E240` | inject input |
 | `RD.consent` | `RD.transport` | `TX.streams` | `E241` | remote frame stream |
 | `RD.consent` | `RD.transport` | `TX.datagrams` | `E242` | remote input datagram |
-| `POL.store` | `TRAY.policy` | `POL.store` | `E279` | set peer policy |
-| `ID.trust-store` | `PAIR.dbus` | `ID.trust-store` | `E308` | commit and forget peers |
+| `POL.store` | `TRAY.policy` | `POL.store` | `E279` | set user policy |
+| `ID.trust-store` | `TRUST.dbus` | `ID.trust-store` | `E308` | commit and forget users |

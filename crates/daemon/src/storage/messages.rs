@@ -78,7 +78,7 @@ pub enum InsertOutcome {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationSummary {
     pub conversation_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub last_message_id: Option<String>,
     pub last_sender_id: Option<String>,
     pub last_body: Option<String>,
@@ -90,14 +90,14 @@ pub fn conversation_summaries(
     connection: &Connection,
     local_node_id: &str,
 ) -> Result<Vec<ConversationSummary>, StorageError> {
-    let mut conversations = connection.prepare("SELECT id, peer_id FROM conversations")?;
+    let mut conversations = connection.prepare("SELECT id, user_id FROM conversations")?;
     let rows = conversations.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })?;
 
     let mut summaries = Vec::new();
     for row in rows {
-        let (conversation_id, peer_id) = row?;
+        let (conversation_id, user_id) = row?;
         let last = connection
             .query_row(
                 "SELECT id, sender_id, body, sent_at
@@ -126,7 +126,7 @@ pub fn conversation_summaries(
         )?;
         summaries.push(ConversationSummary {
             conversation_id,
-            peer_id,
+            user_id,
             last_message_id: last.as_ref().map(|item| item.0.clone()),
             last_sender_id: last.as_ref().map(|item| item.1.clone()),
             last_body: last.as_ref().and_then(|item| item.2.clone()),
@@ -209,12 +209,12 @@ pub fn insert_inbound(
     record: &MessageRecord,
     received_at: i64,
     signature: &[u8],
-    peer_id: &str,
+    user_id: &str,
 ) -> Result<InsertOutcome, StorageError> {
     let transaction = connection.unchecked_transaction()?;
     let outcome = insert(&transaction, record, received_at, signature, None)?;
     if outcome == InsertOutcome::Inserted {
-        super::peer_state::advance_recv(&transaction, peer_id, record.seq)?;
+        super::user_state::advance_recv(&transaction, user_id, record.seq)?;
     }
     transaction.commit()?;
     Ok(outcome)

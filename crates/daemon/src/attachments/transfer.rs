@@ -2,10 +2,10 @@ use std::fs::File;
 use std::io::{Seek, SeekFrom, Write};
 
 use ticonnect_net::transfer::{Chunk, ChunkError};
-use ticonnect_net::transport::PeerInfo;
+use ticonnect_net::transport::UserInfo;
 
 pub struct InboundTransfer {
-    pub peer: PeerInfo,
+    pub user: UserInfo,
     pub send: quinn::SendStream,
     pub recv: quinn::RecvStream,
     pub frame: ticonnect_net::transfer::TransferFrame,

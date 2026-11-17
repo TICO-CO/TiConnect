@@ -1,6 +1,23 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UserPlatform {
+    pub os: String,
+    pub desktop: String,
+    pub display_server: String,
+    pub app_version: String,
+}
+
+impl UserPlatform {
+    pub fn is_empty(&self) -> bool {
+        self.os.is_empty()
+            && self.desktop.is_empty()
+            && self.display_server.is_empty()
+            && self.app_version.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CandidateSource {
     Mdns,
@@ -22,6 +39,7 @@ pub struct Candidate {
     fingerprint: String,
     display_name: String,
     avatar_hash: Option<String>,
+    platform: UserPlatform,
     addresses: BTreeSet<String>,
     port: u16,
     protocol_version: u16,
@@ -47,6 +65,7 @@ impl Candidate {
             fingerprint,
             display_name,
             avatar_hash: None,
+            platform: UserPlatform::default(),
             addresses,
             port,
             protocol_version,
@@ -75,6 +94,15 @@ impl Candidate {
     pub(crate) fn with_avatar_hash(mut self, avatar_hash: Option<String>) -> Self {
         self.avatar_hash = avatar_hash;
         self
+    }
+
+    pub(crate) fn with_platform(mut self, platform: UserPlatform) -> Self {
+        self.platform = platform;
+        self
+    }
+
+    pub fn platform(&self) -> &UserPlatform {
+        &self.platform
     }
 
     pub fn addresses(&self) -> impl Iterator<Item = &str> {
@@ -113,6 +141,9 @@ impl Candidate {
         if other.avatar_hash.is_some() {
             self.avatar_hash = other.avatar_hash;
         }
+        if !other.platform.is_empty() {
+            self.platform = other.platform;
+        }
         if self.port == 0 {
             self.port = other.port;
         }
@@ -122,6 +153,7 @@ impl Candidate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum CandidateChange {
     Found(Candidate),
     Updated,

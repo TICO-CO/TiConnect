@@ -16,9 +16,9 @@ Progress:
 - [x] GTK4 WebKitGTK host, activation service, and single-instance forwarding.
 - [x] Old GTK views, libadwaita, relm4, qrcodegen, and UI stylesheet removed.
 - [x] Svelte 5 + TypeScript + Vite scaffold with typed bridge client.
-- [ ] Svelte routes, stores, and components (`crates/ui/web`).
+- [x] Svelte routes, stores, and components (`crates/ui/web`).
 - [x] Committed Vite dist and CI freshness gate.
-- [ ] Frontend tests and manual desktop matrix.
+- [x] Frontend tests; manual desktop matrix remains pending.
 
 ## Decision
 
@@ -62,7 +62,7 @@ a separate process that never reads keys, SQLite, or the network directly.
 Request:
 
 ```json
-{"id": 1, "method": "send_message", "params": {"peer_id": "...", "body": "hi"}}
+{"id": 1, "method": "send_message", "params": {"user_id": "...", "body": "hi"}}
 ```
 
 Reply:
@@ -82,13 +82,13 @@ Methods mirror `LinkHandle` plus host-only operations:
 
 - every current `crates/ui/src/client.rs` command
 - `settings_save`, `autostart_get`, `autostart_set`
-- `POST /attachment?peer_id=` uploads browser `<input type=file>` bytes and
+- `POST /attachment?user_id=` uploads browser `<input type=file>` bytes and
   returns the message id
 - `POST /avatar` uploads avatar bytes
 - `GET /attachment/{hash}?ticket=` and `GET /avatar/{fingerprint}?ticket=`
   download bytes; tickets are minted over JSON-RPC
 - `bootstrap` (identity, settings, appearance, version, connection state)
-- `activate` event push (`peers|chat|settings|pairing|chat:<node-id>`)
+- `activate` event push (`users|chat|settings|remote|chat:<node-id>`)
 
 Serialization: derive `serde::Serialize` and `serde::Deserialize` on the data
 types in `crates/core/src/ipc/events.rs`. Map `DaemonEvent` to an explicit
@@ -116,7 +116,7 @@ Rewrite/remove:
   forwarding currently near lines 1830–1930.
 - `crates/ui/src/client.rs` — replace `relm4::spawn` with a tokio `Handle`; keep
   the command set and reconnect/backoff behavior.
-- `crates/ui/src/model.rs` — keep `SettingsForm`, `BlockedPeer`, and `Backoff`;
+- `crates/ui/src/model.rs` — keep `SettingsForm`, `BlockedUser`, and `Backoff`;
   move presentation, sorting, and label logic to TypeScript.
 - Delete `crates/ui/src/views/*`, `crates/ui/resources/`, and the GTK texture
   parts of `avatar.rs` (keep PNG normalization).
@@ -127,20 +127,20 @@ Rewrite/remove:
 
 ## Frontend structure
 
-Routes/stores: `shell`, `peers`, `chat`, `pairing`, `settings`, `call`, `remote`.
+Routes/stores: `shell`, `users`, `chat`, `user`, `settings`, `call`, `remote`, `watch-party`.
 
 Port in this order:
 
 1. shell: header, connection banner, toasts, appearance
-2. peers: list, presence, unread count, mute badge, policy menu
+2. users: list, presence, unread count, mute badge, policy menu
 3. chat: messages, state badges, composer (Enter sends, Shift+Enter newline),
    scroll pagination, mark-read, typing indicator
 4. avatars and attachments (upload/download, progress)
-5. pairing: PIN countdown, PIN entry, QR rendered in JavaScript with a `qrcode`
-   library (drops `qrcodegen`)
-6. settings: every current field, blocked peers, DND, outbox TTL, autostart,
+5. user page: fingerprint, current addresses, optional MAC, OS, desktop,
+   display server, app version, policy, block/forget
+6. settings: every current field, blocked users, DND, outbox TTL, autostart,
    read receipts, discovery, ringtone path, appearance
-7. call/remote: current behavior parity; no video frame path exists today
+7. call/remote/watch-party: overlay notifications and YouTube player
 
 Webview hardening:
 
@@ -203,7 +203,7 @@ Integration:
 - update `tests/local/run.sh scenario_ui` for webview startup and
   `Activate` raising the window
 - manual matrix: X11, Weston, KWin, Hyprland, HiDPI, dark/light, IME,
-  keyboard-only, pairing PIN+QR, attachments, daemon restart
+  keyboard-only, automatic trust, attachments, daemon restart
 
 Verification:
 
@@ -225,7 +225,7 @@ tests/local/run.sh x11 ui
 3. Core serde derives, bridge command parity, attachments, settings, activation.
 4. Svelte scaffold: tokens from `style.css`, typed bridge client,
    reconnect/backoff.
-5. Port views: shell → peers → chat → avatars/attachments → pairing → settings
+5. Port views: shell → users → chat → avatars/attachments → user page → settings
    → call/remote.
 6. Rewrite `app.rs` host, harden the WebView, preserve activation and
    single-instance behavior, delete GTK views.
