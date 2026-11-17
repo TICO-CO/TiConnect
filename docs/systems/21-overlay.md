@@ -43,10 +43,6 @@ Client process. Subscribes to daemon signals and settings. Does not depend on UI
 
 | From | Kind | Mode | To | Contract | Gate | Limit |
 |---|---|---|---|---|---|---|
-| `OVL.client` | `calls` | `sync` | `IPC.client` | daemon signal proxy |  |  |
-| `OVL.wayland` | `calls` | `sync` | `OVL.card` | render card |  |  |
-| `OVL.x11` | `calls` | `sync` | `OVL.card` | render fallback card |  |  |
-| `OVL.card` | `calls` | `sync` | `OVL.activate` | card activation |  |  |
 | `OVL.activate` | `calls` | `sync` | `UI.activate` | Activate view |  |  |
 | `OVL.client` | `emits` | `event` | `OVL.router` | daemon event |  |  |
 | `OVL.router` | `emits` | `event` | `OVL.notify` | system notification |  |  |

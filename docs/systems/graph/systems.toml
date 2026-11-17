@@ -266,17 +266,17 @@ open_decisions = ["indicator process ownership", "session timeout default", "PIN
 
 [[systems]]
 id = "UI"
-name = "GTK4 user interface"
+name = "WebKitGTK user interface"
 owner = "ticonnect-ui"
 layer = "clients"
 stage = 7
 doc = "20-ui.md"
-purpose = "Own the GTK4 main window, peer list, conversations, composer, pairing dialog, settings pages, call view, remote view, attachment widgets, and accessibility."
+purpose = "Own the GTK4 and WebKitGTK host window, Svelte frontend, loopback HTTP/WebSocket bridge, D-Bus client, activation service, and accessibility."
 boundary = "Client process. Talks only over D-Bus and settings. Never reads keys, SQLite, or network directly."
 owned_state = ["view state", "window activation state"]
 interfaces = ["org.ticonnect.UI", "Activate view", "D-Bus client", "settings writes"]
 failure_semantics = ["daemon absence shows banner and retries", "no blocking I/O on GTK main thread", "signal replay after reconnect"]
-open_decisions = ["refresh coalesced through SyncCompleted reloads and scroll debounce", "QR rendered locally with qrcodegen and PNG", "accessibility covered by manual checklist and label tests"]
+open_decisions = ["refresh coalesced through SyncCompleted reloads and scroll debounce", "QR rendered in JavaScript", "accessibility covered by Vitest and axe-core smoke tests"]
 
 [[systems]]
 id = "OVL"

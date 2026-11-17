@@ -1,3 +1,4 @@
+# WebKitGTK 6.0 must come from org.gnome.Platform or be added as a module.
 app-id: org.ticonnect.TiConnect
 runtime: org.gnome.Platform
 runtime-version: '48'

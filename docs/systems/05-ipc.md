@@ -67,7 +67,6 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 | `RD.indicator` | `emits` | `event` | `IPC.signal-bus` | indicator visibility |  |  |
 | `UI.client` | `calls` | `sync` | `IPC.client` | daemon proxy |  |  |
 | `UI.client` | `consumes` | `event` | `IPC.signal-bus` | daemon signals |  |  |
-| `OVL.client` | `calls` | `sync` | `IPC.client` | daemon signal proxy |  |  |
 | `TRAY.item` | `emits` | `event` | `IPC.signal-bus` | tray status |  |  |
 | `CLI.daemon` | `calls` | `sync` | `IPC.client` | daemon proxy |  |  |
 | `PAIR.dbus` | `emits` | `event` | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  |

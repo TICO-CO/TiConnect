@@ -65,7 +65,7 @@ two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO`
 `security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
-sudo apt install libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols cmake
+sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols cmake
 ```
 
 Ubuntu 24.04 does not package `libgtk4-layer-shell-dev`; Ubuntu 25.04+, Debian
@@ -183,9 +183,10 @@ git push origin v0.1.0
 
 The UI runs as the internal `ticonnect ui` process. It never reads keys, the
 database, or the network directly. Closing the window stops only the UI; the daemon keeps
-receiving messages. Appearance follows the system by default; the Settings view
-can force light or dark through libadwaita's `AdwStyleManager`. `GTK_THEME` is
-not supported by libadwaita and overrides its styling.
+receiving messages. The window hosts a WebKitGTK 6.0 webview; the Svelte frontend
+talks to Rust through a loopback HTTP + WebSocket bridge. The frontend source lives
+in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded in
+the binary.
 
 The UI owns `org.ticonnect.UI` on the session bus and exposes
 `Activate(s view)`. Views are `peers`, `chat`, `settings`, and `pairing`; an
@@ -194,10 +195,10 @@ the tray and overlay use it for notification clicks. The tray uses
 `Activate("chat")`. Starting a second UI forwards activation to the running
 instance.
 
-The built-in stylesheet is `crates/ui/resources/style.css`. If
-`$XDG_CONFIG_HOME/ticonnect/style.css` exists, it is loaded at user priority
-after the built-in stylesheet. Custom CSS can override the bundled theme without
-changing the GTK4/libadwaita stack.
+Frontend styling lives in `crates/ui/web`. Build the bundle with `make
+web-build`. Set `TICONNECT_DEV_URL=http://127.0.0.1:5173` to load the Vite dev
+server instead of the embedded bundle; this disables bridge token checks and
+must not be used on a shared machine.
 
 Keyboard shortcuts:
 

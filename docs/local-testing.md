@@ -81,7 +81,7 @@ stops. Run the automated harness check with:
 make lab-smoke
 ```
 
-On Nix, `nix develop` supplies the ALSA, GTK, and libadwaita development
+On Nix, `nix develop` supplies the ALSA, GTK, WebKitGTK, Bun, and Node development
 outputs together with `pkg-config`, while keeping the Rust toolchain selected
 by `rust-toolchain.toml`:
 

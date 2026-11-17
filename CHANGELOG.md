@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Replace the GTK4/libadwaita/relm4 interface with a WebKitGTK 6.0 host and a
+  Svelte frontend.
+- Add the loopback HTTP + WebSocket bridge with token, origin, and host checks.
+- Remove the old GTK views, UI stylesheet, and relm4/libadwaita/qrcodegen
+  dependencies.
+
 ## 0.0.6 — 2026-11-14
 
 - LAN discovery, SPAKE2 pairing, pinned QUIC transport, and signed messaging.

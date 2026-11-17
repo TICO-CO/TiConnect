@@ -1,12 +1,13 @@
 #![forbid(unsafe_code)]
 
+pub mod activation;
 pub mod app;
 pub mod autostart;
 pub mod avatar;
+pub mod bridge;
 pub mod client;
 pub mod error;
 pub mod model;
-pub mod views;
 
 use anyhow::Context;
 

@@ -35,7 +35,7 @@ flowchart LR
     n_cli["CLI<br/>Command-line client 2"]
     n_ovl["OVL<br/>Overlay 8"]
     n_tray["TRAY<br/>Tray 6"]
-    n_ui["UI<br/>GTK4 user interface 7"]
+    n_ui["UI<br/>WebKitGTK user interface 7"]
   end
   subgraph assurance["Assurance"]
     n_asr["ASR<br/>Assurance and packaging 1"]
@@ -69,7 +69,6 @@ flowchart LR
   n_msg -->|calls / sync gate:POL.inbound, POL.receipts| n_pol
   n_msg -->|invokes / async| n_tx
   n_ovl -->|config-read, consumes / event, sync| n_cfg
-  n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
   n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
   n_pair -->|emits / event| n_ipc
@@ -143,7 +142,6 @@ flowchart LR
 | `MSG` | `POL` | calls | sync | POL.inbound, POL.receipts | 2 |
 | `MSG` | `TX` | invokes | async |  | 2 |
 | `OVL` | `CFG` | config-read, consumes | event, sync |  | 2 |
-| `OVL` | `IPC` | calls | sync |  | 1 |
 | `OVL` | `UI` | calls | sync |  | 1 |
 | `PAIR` | `ID` | calls | sync | ID.trust-store, PAIR.confirm | 3 |
 | `PAIR` | `IPC` | emits | event |  | 2 |

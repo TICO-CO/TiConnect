@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use zbus::OwnedVariant;
 
@@ -29,7 +30,8 @@ pub enum ParseError {
 
 pub type Result<T> = std::result::Result<T, ParseError>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum PeerPolicy {
     Accept,
     Mute,
@@ -54,7 +56,8 @@ impl PeerPolicy {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum MessageState {
     Queued,
     Sent,
@@ -91,7 +94,7 @@ impl MessageState {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Peer {
     pub id: String,
     pub fingerprint: String,
@@ -103,7 +106,7 @@ pub struct Peer {
     pub connected: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Candidate {
     pub node_id: String,
     pub fingerprint: String,
@@ -113,7 +116,7 @@ pub struct Candidate {
     pub source: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConversationSummary {
     pub conversation_id: String,
     pub peer_id: String,
@@ -124,7 +127,7 @@ pub struct ConversationSummary {
     pub unread_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Message {
     pub id: String,
     pub conversation_id: String,
@@ -150,7 +153,7 @@ impl Message {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteSession {
     pub session_id: String,
     pub peer_id: String,
@@ -162,7 +165,7 @@ pub struct RemoteSession {
     pub expires_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Call {
     pub id: String,
     pub peer_id: String,
@@ -172,7 +175,7 @@ pub struct Call {
     pub connected_at: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Transfer {
     pub hash: String,
     pub peer_id: String,
@@ -183,7 +186,7 @@ pub struct Transfer {
     pub reason: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Identity {
     pub node_id: String,
     pub fingerprint: String,
@@ -191,7 +194,7 @@ pub struct Identity {
     pub avatar_hash: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub transport_state: String,
     pub active_sessions: u32,
@@ -199,7 +202,7 @@ pub struct Status {
     pub peer_count: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PairingStart {
     pub pin: String,
     pub qr: String,
@@ -208,7 +211,8 @@ pub struct PairingStart {
     pub port: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum DaemonEvent {
     Connected,
     Disconnected(String),
@@ -455,4 +459,60 @@ pub fn optional_bool(values: &HashMap<String, OwnedVariant>, key: &str) -> bool 
         .get(key)
         .and_then(|value| bool::try_from(value).ok())
         .unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn policy_and_state_use_wire_names() {
+        assert_eq!(
+            serde_json::to_string(&PeerPolicy::Accept).unwrap(),
+            "\"accept\""
+        );
+        assert_eq!(
+            serde_json::to_string(&MessageState::Delivered).unwrap(),
+            "\"delivered\""
+        );
+    }
+
+    #[test]
+    fn message_serializes_for_the_bridge() {
+        let message = Message {
+            id: "m1".to_owned(),
+            conversation_id: "c1".to_owned(),
+            peer_id: "p1".to_owned(),
+            sender_id: "p1".to_owned(),
+            local_sender: false,
+            seq: 7,
+            sent_at: 10,
+            received_at: 11,
+            body: "hi".to_owned(),
+            attachment_hash: String::new(),
+            attachment_name: String::new(),
+            attachment_size: 0,
+            attachment_mime: String::new(),
+            attachment_path: String::new(),
+            state: MessageState::Sent,
+            notify: true,
+        };
+        let value = serde_json::to_value(&message).unwrap();
+        assert_eq!(value["id"], "m1");
+        assert_eq!(value["state"], "sent");
+        assert_eq!(value["local_sender"], false);
+    }
+
+    #[test]
+    fn daemon_events_round_trip() {
+        let event = DaemonEvent::MessageStateChanged {
+            message_id: "m1".to_owned(),
+            state: MessageState::Read,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            json,
+            r#"{"message_state_changed":{"message_id":"m1","state":"read"}}"#
+        );
+    }
 }

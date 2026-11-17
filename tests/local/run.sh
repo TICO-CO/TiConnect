@@ -373,6 +373,7 @@ scenario_ui() {
     [ -x "$ROOT/target/debug/ticonnect-ui" ] || fail "ticonnect-ui binary missing"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 \
     TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect-ui" >"$WORK/ui.log" 2>&1 &
     UI_PID=$!
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \

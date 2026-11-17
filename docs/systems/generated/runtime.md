@@ -37,7 +37,7 @@ flowchart LR
     n_cli["CLI<br/>Command-line client 2"]
     n_ovl["OVL<br/>Overlay 8"]
     n_tray["TRAY<br/>Tray 6"]
-    n_ui["UI<br/>GTK4 user interface 7"]
+    n_ui["UI<br/>WebKitGTK user interface 7"]
   end
   subgraph assurance["Assurance"]
     n_asr["ASR<br/>Assurance and packaging 1"]
@@ -71,7 +71,6 @@ flowchart LR
   n_msg -->|calls / sync gate:POL.inbound, POL.receipts| n_pol
   n_msg -->|invokes / async| n_tx
   n_ovl -->|config-read, consumes / event, sync| n_cfg
-  n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
   n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
   n_pair -->|emits / event| n_ipc
@@ -204,7 +203,6 @@ flowchart LR
 | `UI.settings` | `CFG.file-store` | calls | sync | direct settings write |  |  | 7 |
 | `UI.client` | `IPC.signal-bus` | consumes | event | daemon signals |  |  | 7 |
 | `UI.settings` | `CFG.watch` | consumes | event | SettingsChanged |  |  | 7 |
-| `OVL.client` | `IPC.client` | calls | sync | daemon signal proxy |  |  | 8 |
 | `OVL.activate` | `UI.activate` | calls | sync | Activate view |  |  | 8 |
 | `OVL.client` | `CFG.file-store` | config-read | sync | overlay enabled and timeout |  |  | 8 |
 | `TRAY.policy` | `POL.store` | calls | sync | set peer policy | POL.store |  | 6 |

@@ -12,7 +12,7 @@ use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
 
 use crate::error::{Error, Result};
-use crate::model::{BlockedPeer, PeerPresentation, SettingsForm, short_id};
+use crate::model::{BlockedPeer, SettingsForm};
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
@@ -143,6 +143,13 @@ pub struct LinkHandle {
 }
 
 impl LinkHandle {
+    #[doc(hidden)]
+    pub fn offline() -> Self {
+        let (commands, receiver) = mpsc::unbounded_channel();
+        drop(receiver);
+        Self { commands }
+    }
+
     pub async fn identity(&self) -> Result<Identity> {
         self.request(Command::GetIdentity).await
     }
@@ -369,7 +376,7 @@ impl LinkHandle {
 
 pub fn spawn_link(events: mpsc::UnboundedSender<DaemonEvent>) -> LinkHandle {
     let (commands, receiver) = mpsc::unbounded_channel();
-    relm4::spawn(run_link(receiver, events));
+    tokio::spawn(run_link(receiver, events));
     LinkHandle { commands }
 }
 
@@ -422,7 +429,7 @@ fn spawn_listener(
     events: mpsc::UnboundedSender<DaemonEvent>,
     lost: mpsc::UnboundedSender<String>,
 ) {
-    relm4::spawn(async move {
+    tokio::spawn(async move {
         if let Err(error) = listen(connection, events, lost.clone()).await {
             let _ = lost.send(error.to_string());
         }
@@ -1010,10 +1017,6 @@ fn variant_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {
     crate::model::pairing_view(value)
-}
-
-pub fn peer_error_label(peer: &Peer) -> String {
-    format!("{} ({})", peer.display_label(), short_id(&peer.id))
 }
 
 #[cfg(test)]

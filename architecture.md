@@ -108,7 +108,7 @@ startup step and let `anyhow` aggregate crate errors. Only `src/main.rs` uses
 | Screen capture | `ashpd` RemoteDesktop portal + `pipewire-rs` |
 | Input injection | `reis` (libei) on Wayland, `x11rb` XTEST on X11 |
 | Ringtone | `rodio` + `symphonia` decoders |
-| UI | `gtk4`, `libadwaita`, `relm4` |
+| UI | `gtk4`, `webkit6`, `axum`, Svelte 5 |
 | Toast overlay | `gtk4-layer-shell` |
 | Notifications | `notify-rust` |
 | Tray | `ksni` (StatusNotifierItem) |
@@ -288,12 +288,24 @@ visible indicator, and the kill switch are all mandatory, not optional.
 
 ### Main window
 
-- Peers and presence.
-- Chat threads with text, images, audio, and file attachments.
-- Call view: voice controls plus remote-desktop viewer.
-- Settings: per-peer mute/ignore, ringtone file, discovery, autostart,
-  overlay enable/disable.
-- Pairing dialog (PIN or QR).
+The UI process hosts one WebKitGTK 6.0 webview. Svelte renders the peer list,
+chat, pairing, settings, call, and remote screens. The Rust host keeps the
+`org.ticonnect.UI` activation service, single-instance forwarding, settings and
+autostart handling, and the daemon client.
+
+JavaScript never talks to D-Bus. A loopback HTTP + WebSocket bridge wraps the
+existing daemon client:
+
+- `GET /` and `GET /assets/*` serve the embedded Vite build.
+- `GET /ws` carries JSON-RPC requests and daemon events.
+- `POST /attachment?peer_id=` uploads bytes from a file input.
+- `GET /attachment/{hash}` and `GET /avatar/{fingerprint}` use short-lived
+  tickets minted over JSON-RPC.
+- The bridge binds `127.0.0.1` on an ephemeral port, requires a 128-bit token in
+  the URL fragment, and validates `Origin` and `Host`.
+
+The old GTK4/libadwaita/relm4 views are removed. There is no fallback desktop
+UI.
 
 ### Corner overlay
 

@@ -155,9 +155,7 @@ notifier must be provided by the host desktop.
 Dependencies on Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential cmake pkg-config libgtk-4-dev libadwaita-1-dev \
-  libasound2-dev libwayland-dev wayland-protocols libxkbcommon-dev \
-  libx11-dev libxi-dev libxtst-dev
+sudo apt install build-essential cmake pkg-config libgtk-4-dev   libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols   libxkbcommon-dev libx11-dev libxi-dev libxtst-dev
 ```
 
 `gtk4-layer-shell` is required by the overlay. Build it from source when it is

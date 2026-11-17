@@ -7,7 +7,7 @@ METAINFO_DIR ?= $(DATADIR)/metainfo
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
 
-.PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test
+.PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test web-install web-dev web-build web-check
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
@@ -69,3 +69,21 @@ check-user-surface: target/release/ticonnect
 
 lan-test:
 	tests/lan/run.sh
+
+WEB_DIR ?= crates/ui/web
+UI_ASSETS ?= crates/ui/assets
+
+web-install:
+	cd $(WEB_DIR) && bun install --frozen-lockfile
+
+web-dev:
+	cd $(WEB_DIR) && bun run dev
+
+web-build:
+	cd $(WEB_DIR) && bun run build
+	rm -rf $(UI_ASSETS)
+	mkdir -p $(UI_ASSETS)
+	cp -R $(WEB_DIR)/dist/. $(UI_ASSETS)/
+
+web-check:
+	cd $(WEB_DIR) && bun run check && bun run test

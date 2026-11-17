@@ -3,8 +3,21 @@
 Migration of the TiConnect desktop interface from GTK4/libadwaita/relm4 widgets
 to a WebKitGTK webview with a Svelte frontend.
 
-Status: planned. This document is the implementation plan; check items off as
-they land and keep the file current.
+Status: in progress. The Rust host, bridge, and old-GTK removal are landed; the
+Svelte frontend is in progress. Check items off as they land and keep the file
+current.
+
+Progress:
+
+- [x] Core serde derives and JSON shape tests.
+- [x] `LinkHandle` moved to tokio tasks; relm4 removed from the UI crate.
+- [x] Loopback HTTP + WebSocket bridge with token, origin, and host checks.
+- [x] JSON-RPC dispatch, event fanout, upload and ticket download endpoints.
+- [x] GTK4 WebKitGTK host, activation service, and single-instance forwarding.
+- [x] Old GTK views, libadwaita, relm4, qrcodegen, and UI stylesheet removed.
+- [ ] Svelte routes, stores, and components (`crates/ui/web`).
+- [ ] Committed Vite dist and CI freshness gate.
+- [ ] Frontend tests and manual desktop matrix.
 
 ## Decision
 
@@ -35,8 +48,8 @@ ticonnect-ui process
     ├─ bridge: axum on 127.0.0.1:<ephemeral> + token
     │    ├─ GET /            embedded Svelte dist
     │    ├─ GET /assets/*    embedded assets
-    │    ├─ GET /ws?token=   bidirectional JSON-RPC + server events
-    │    └─ GET /attachment/{hash}?token=  download endpoint
+    │    ├─ GET /ws           bidirectional JSON-RPC + server events
+    │    └─ GET /attachment/{hash}?ticket=  ticketed download endpoint
     └─ event fanout: DaemonEvent → WS; ActivationEvent → WS + window raise
 ```
 
@@ -68,8 +81,11 @@ Methods mirror `LinkHandle` plus host-only operations:
 
 - every current `crates/ui/src/client.rs` command
 - `settings_save`, `autostart_get`, `autostart_set`
-- `send_attachment_bytes` (browser `<input type=file>` provides bytes, not paths)
-- `save_attachment` via the HTTP download endpoint, not JSON
+- `POST /attachment?peer_id=` uploads browser `<input type=file>` bytes and
+  returns the message id
+- `POST /avatar` uploads avatar bytes
+- `GET /attachment/{hash}?ticket=` and `GET /avatar/{fingerprint}?ticket=`
+  download bytes; tickets are minted over JSON-RPC
 - `bootstrap` (identity, settings, appearance, version, connection state)
 - `activate` event push (`peers|chat|settings|pairing|chat:<node-id>`)
 
@@ -101,8 +117,8 @@ Rewrite/remove:
   the command set and reconnect/backoff behavior.
 - `crates/ui/src/model.rs` — keep `SettingsForm`, `BlockedPeer`, and `Backoff`;
   move presentation, sorting, and label logic to TypeScript.
-- Delete `crates/ui/src/views/*`, the GTK texture parts of `avatar.rs` (keep PNG
-  normalization), and `crates/ui/resources/style.css` (port its tokens to CSS).
+- Delete `crates/ui/src/views/*`, `crates/ui/resources/`, and the GTK texture
+  parts of `avatar.rs` (keep PNG normalization).
 - `crates/ui/Cargo.toml` — add `webkit6 = "0.6"`,
   `axum = { version = "0.8", features = ["ws"] }`, `serde_json`, and
   `include_dir`; remove `relm4`, `libadwaita`, and `qrcodegen`. Verify that

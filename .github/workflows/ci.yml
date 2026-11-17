@@ -14,7 +14,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libadwaita-1-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake xvfb desktop-file-utils appstream systemd
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config git cmake xvfb desktop-file-utils appstream systemd
 
       - name: Build gtk4-layer-shell
         run: |
@@ -108,7 +108,32 @@ jobs:
       - name: Test
         run: dbus-run-session -- cargo test --workspace --all-targets
 
+      - name: Set up Bun
+        if: hashFiles('crates/ui/web/package.json') != ''
+        uses: oven-sh/setup-bun@v2
+
+      - name: Web dependencies
+        if: hashFiles('crates/ui/web/package.json') != ''
+        working-directory: crates/ui/web
+        run: bun install --frozen-lockfile
+
+      - name: Web check
+        if: hashFiles('crates/ui/web/package.json') != ''
+        working-directory: crates/ui/web
+        run: bun run check && bun run test
+
+      - name: Web build
+        if: hashFiles('crates/ui/web/package.json') != ''
+        working-directory: crates/ui/web
+        run: bun run build
+
+      - name: Web assets freshness
+        if: hashFiles('crates/ui/web/package.json') != ''
+        run: git diff --exit-code crates/ui/assets
+
       - name: Local X11 integration
+        env:
+          WEBKIT_DISABLE_DMABUF_RENDERER: "1"
         run: |
           Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
           export DISPLAY=:99

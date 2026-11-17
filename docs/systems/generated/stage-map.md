@@ -148,17 +148,17 @@
 
 ## Stage 7
 
-- `UI.a11y` — Accessibility (UI)
 - `UI.activate` — Activation service (UI)
+- `UI.assets` — Embedded assets (UI)
+- `UI.bridge` — HTTP and WebSocket bridge (UI)
 - `UI.client` — D-Bus client (UI)
-- `UI.composer` — Composer (UI)
-- `UI.conversation` — Conversation model (UI)
-- `UI.pairing` — Pairing view (UI)
-- `UI.peers` — Peer list model (UI)
+- `UI.events` — Daemon event mapping (UI)
+- `UI.protocol` — JSON-RPC protocol (UI)
 - `UI.reconnect` — Reconnect handling (UI)
-- `UI.settings` — Settings view (UI)
-- `UI.shell` — Application shell (UI)
-- `UI.state-view` — Message state view (UI)
+- `UI.security` — Bridge security (UI)
+- `UI.settings` — Settings writes (UI)
+- `UI.shell` — WebKitGTK host (UI)
+- `UI.web` — Svelte frontend (UI)
 
 ## Stage 8
 
@@ -185,7 +185,6 @@
 - `DB.attachments` — Attachments repository (DB)
 - `DB.transfer-partials` — Transfer partials repository (DB)
 - `DOM.attachment-ref` — Attachment reference (DOM)
-- `UI.attachments` — Attachment widgets (UI)
 - `WIRE.transfer` — Transfer frames (WIRE)
 
 ## Stage 10
@@ -206,7 +205,6 @@
 - `CALL.ringtone` — Ringtone coordinator (CALL)
 - `CALL.signaling` — Call signaling (CALL)
 - `CALL.state` — Call state machine (CALL)
-- `UI.call` — Call view (UI)
 - `WIRE.audio` — Audio datagrams (WIRE)
 - `WIRE.call` — Call signals (WIRE)
 
@@ -228,7 +226,6 @@
 - `RD.state` — Remote session state (RD)
 - `RD.teardown` — Session teardown (RD)
 - `RD.transport` — Remote transport routing (RD)
-- `UI.remote` — Remote view (UI)
 - `VID.config` — Encoder config (VID)
 - `VID.decoder` — H264 decoder (VID)
 - `VID.encoder` — H264 encoder (VID)

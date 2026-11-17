@@ -16,9 +16,6 @@ pub enum Error {
 
     #[error("pairing error: {0}")]
     Pairing(String),
-
-    #[error("qr code error: {0}")]
-    Qr(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

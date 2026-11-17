@@ -35,9 +35,9 @@
             pkgs.gdk-pixbuf
             pkgs.gtk4
             pkgs.gtk4-layer-shell
-            pkgs.libadwaita
             pkgs.sqlite
             pkgs.wayland
+            pkgs.webkitgtk_6_0
           ];
 
           doCheck = false;
@@ -73,9 +73,11 @@
             pkgs.gdk-pixbuf
             pkgs.gtk4
             pkgs.gtk4-layer-shell
-            pkgs.libadwaita
+            pkgs.bun
+            pkgs.nodejs
             pkgs.sqlite
             pkgs.wayland
+            pkgs.webkitgtk_6_0
           ];
         };
       });
