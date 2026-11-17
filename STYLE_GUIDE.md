@@ -58,10 +58,10 @@ Konkhmer Sleokchher is display only, weight 400. Istok Web carries UI and data a
 | Role | Family | Size | Weight |
 |---|---|---|---|
 | Wordmark | Konkhmer | `--step-1` | 400 |
-| View / user heading | Konkhmer | `--step-3` | 400 |
+| View / user heading | Konkhmer | 23–27px | 400 |
 | Settings / overlay heading | Konkhmer | `--step-2` | 400 |
 | Section label | Istok Web | 12px uppercase, 0.08em | 700 |
-| User name | Istok Web | 15px | 700 |
+| User name (rail) | Istok Web | 14px | 700 |
 | Message body | Istok Web | `--step-0` | 400 |
 | Body secondary | Istok Web | `--step-xs` | 400 |
 | Button | Istok Web | `--step-xs` sentence case | 700 |
@@ -76,7 +76,7 @@ Window 1440 × 900, full-bleed. Minimum 1024 × 720.
 
 | Region | Size | Notes |
 |---|---|---|
-| Users rail | 320px | `--rail`, 12px inset, 6px gaps, no divider rule |
+| Users rail | 320px, collapsible to 72px | `--rail`, 12px inset, 6px gaps, no divider rule |
 | Right pane | fluid | Conversation or user profile; both occupy the same 1120 × 836 area |
 | Top bar | 64px | Logo, LAN pill, daemon status, circle actions |
 | Conversation header | 88px | Monogram, display name, presence, actions only |
@@ -88,11 +88,13 @@ Window 1440 × 900, full-bleed. Minimum 1024 × 720.
 
 Profile replaces the right pane, not the whole window. Users rail and top bar stay. Clicking the conversation header opens profile; back returns to chat; clicking another user switches conversation.
 
+The users rail collapses from 320px to 72px with a chevron control at its top. Expanded: search, full user cards, and a square, edge-to-edge footer pinned to the bottom of the rail holding only the 34px logo and the no-background settings button. Collapsed: monogram-only tiles with presence dots, selected user in cream, logo and settings at the bottom, chat pane expands to fill the space.
+
 ## Users
 
 ### Rail user card
 
-64px, `--radius-m`, 32px monogram, name, preview, time, optional unread pill, 6–7px presence dot.
+64px, `--radius-m`, 32px monogram, 14px name, preview, time, optional unread pill. Presence dot follows the name. Address changes are stated in the preview line, never as a second dot.
 
 States: rest, hover (`--surface`), selected (`--ink`, `--base`, square full-width), focus, unread, muted (hollow dot), blocked (strike), offline, address changed (amber dot after name), connecting (45% dot).
 
@@ -113,7 +115,7 @@ MAC is shown only when available; never infer or fabricate it. Address change is
 
 ## Chat
 
-- Header shows name and presence only.
+- Header shows name and presence plus Call / Remote / Watch party only. No settings button.
 - Messages: text, file, voice, YouTube card. No call or remote panels.
 - 1-to-1 messages have no avatar or sender name. Incoming blocks align left; outgoing blocks align right.
 - Block order: message text first, then attachments/media (file, voice, YouTube card, watch party), then a bottom meta row with time. Outgoing adds the receipt after the time.
@@ -165,6 +167,7 @@ Bottom-right, max three, stack above the video player. Call, remote, and party r
 - Ink on base 12.0:1; ink on surface 10.4:1; ink-2 8.0:1; ink-3 6.0:1 base and 5.2:1 surface.
 - Status text: error 5.6:1, success 5.7:1, info 6.6:1, warning 7.4:1.
 - Focus: 2px accent ring at 2px offset; user cards use a 2px accent border.
+- Scrollbars are custom: 4px pill thumb, transparent track, `--line-strong` idle, `--ink-2` hover, `--accent` while dragging. Used on the message stream and profile pane; never the native scrollbar.
 - Autoplay: video starts muted if audio autoplay is not permitted; provide visible unmute.
 - Ignore-incoming toggle must be reachable from the player and Settings.
 - Requests always name the action; never color-only.
@@ -190,7 +193,7 @@ Never in this system:
 
 | Page | Artboards |
 |---|---|
-| Screens | `01 — Chat`, `02 — User profile`, `03 — Settings`, `04 — Watch party` |
+| Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `04 — Watch party` |
 | Overlays | `05 — In-app requests`, `06 — In-app active`, `07 — Desktop requests`, `08 — YouTube player`, `09 — Message toasts` |
 | Components | Masters and every state |
 

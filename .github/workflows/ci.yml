@@ -120,7 +120,7 @@ jobs:
       - name: Web check
         if: hashFiles('crates/ui/web/package.json') != ''
         working-directory: crates/ui/web
-        run: bun run check && bun run test
+        run: bun run format:check && bun run lint && bun run check && bun run test
 
       - name: Web build
         if: hashFiles('crates/ui/web/package.json') != ''

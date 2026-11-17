@@ -15,8 +15,9 @@ Progress:
 - [x] JSON-RPC dispatch, event fanout, upload and ticket download endpoints.
 - [x] GTK4 WebKitGTK host, activation service, and single-instance forwarding.
 - [x] Old GTK views, libadwaita, relm4, qrcodegen, and UI stylesheet removed.
+- [x] Svelte 5 + TypeScript + Vite scaffold with typed bridge client.
 - [ ] Svelte routes, stores, and components (`crates/ui/web`).
-- [ ] Committed Vite dist and CI freshness gate.
+- [x] Committed Vite dist and CI freshness gate.
 - [ ] Frontend tests and manual desktop matrix.
 
 ## Decision

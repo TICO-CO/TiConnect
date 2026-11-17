@@ -79,7 +79,8 @@ async fn asset_requests_require_the_loopback_host() {
     assert!(response.starts_with("HTTP/1.1 403"), "{response}");
     let response = http_get(bridge.port, &format!("127.0.0.1:{}", bridge.port)).await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
-    assert!(response.contains("TiConnect UI bundle missing"));
+    assert!(response.contains("<title>TiConnect</title>"), "{response}");
+    assert!(!response.contains("bundle missing"), "{response}");
 }
 
 #[tokio::test]

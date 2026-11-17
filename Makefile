@@ -86,4 +86,4 @@ web-build:
 	cp -R $(WEB_DIR)/dist/. $(UI_ASSETS)/
 
 web-check:
-	cd $(WEB_DIR) && bun run check && bun run test
+	cd $(WEB_DIR) && bun run format:check && bun run lint && bun run check && bun run test

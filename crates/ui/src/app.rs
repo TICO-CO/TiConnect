@@ -110,7 +110,9 @@ pub fn run() -> anyhow::Result<()> {
         .build();
     app.connect_startup(move |_| apply_appearance(appearance));
 
-    let url = bridge::Bridge::dev_url().unwrap_or_else(|| bridge.url());
+    let url = bridge::Bridge::dev_url()
+        .map(|dev| format!("{dev}?bridge=127.0.0.1:{}", bridge.port))
+        .unwrap_or_else(|| bridge.url());
     let origins = Origins::new(bridge.port);
     let window: Rc<RefCell<Option<gtk::ApplicationWindow>>> = Rc::new(RefCell::new(None));
 

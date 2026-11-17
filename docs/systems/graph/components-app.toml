@@ -82,7 +82,7 @@ components = [
   { id = "UI.assets", system = "UI", name = "Embedded assets", owner = "crates/ui/src/bridge/assets.rs", kind = "module", stage = 7, state = [], contract = "docs/systems/20-ui.md#components", test = "crates/ui/tests/bridge.rs" },
   { id = "UI.security", system = "UI", name = "Bridge security", owner = "crates/ui/src/bridge/security.rs", kind = "module", stage = 7, state = ["bridge origins"], contract = "docs/systems/20-ui.md#components", test = "crates/ui/tests/bridge.rs" },
   { id = "UI.settings", system = "UI", name = "Settings writes", owner = "crates/ui/src/model.rs", kind = "module", stage = 7, state = ["settings form state"], contract = "docs/systems/20-ui.md#components", test = "crates/ui/tests/settings.rs" },
-  { id = "UI.web", system = "UI", name = "Svelte frontend", owner = "crates/ui/web/", kind = "module", stage = 7, state = ["view state"], contract = "docs/systems/20-ui.md#components", test = "planned: crates/ui/web tests" },
+  { id = "UI.web", system = "UI", name = "Svelte frontend", owner = "crates/ui/web/", kind = "module", stage = 7, state = ["view state"], contract = "docs/systems/20-ui.md#components", test = "crates/ui/web/src/lib/bridge.test.ts" },
 
   { id = "OVL.client", system = "OVL", name = "Signal client", owner = "crates/overlay/src/client.rs", kind = "module", stage = 8, state = ["connection state"], contract = "docs/systems/21-overlay.md#components", test = "crates/overlay/tests/smoke.rs" },
   { id = "OVL.router", system = "OVL", name = "Card router", owner = "crates/overlay/src/card.rs", kind = "module", stage = 8, state = ["card queue"], contract = "docs/systems/21-overlay.md#components", test = "crates/overlay/tests/card.rs" },

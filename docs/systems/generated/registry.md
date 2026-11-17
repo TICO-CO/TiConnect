@@ -217,7 +217,7 @@
 | `UI.security` | `UI` | Bridge security | `module` | `crates/ui/src/bridge/security.rs` | 7 | bridge origins | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
 | `UI.settings` | `UI` | Settings writes | `module` | `crates/ui/src/model.rs` | 7 | settings form state | docs/systems/20-ui.md#components | crates/ui/tests/settings.rs |
 | `UI.shell` | `UI` | WebKitGTK host | `module` | `crates/ui/src/app.rs` | 7 | window state | docs/systems/20-ui.md#components | planned: tests/local/run.sh ui |
-| `UI.web` | `UI` | Svelte frontend | `module` | `crates/ui/web/` | 7 | view state | docs/systems/20-ui.md#components | planned: crates/ui/web tests |
+| `UI.web` | `UI` | Svelte frontend | `module` | `crates/ui/web/` | 7 | view state | docs/systems/20-ui.md#components | crates/ui/web/src/lib/bridge.test.ts |
 | `VID.config` | `VID` | Encoder config | `module` | `crates/media/src/h264/mod.rs` | 11 | encoder config | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.decoder` | `VID` | H264 decoder | `module` | `crates/media/src/h264/decoder.rs` | 11 | decoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.encoder` | `VID` | H264 encoder | `module` | `crates/media/src/h264/encoder.rs` | 11 | encoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
