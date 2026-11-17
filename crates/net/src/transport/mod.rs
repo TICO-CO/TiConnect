@@ -26,6 +26,8 @@ pub const SESSION_REJECTED: u32 = 1;
 pub const SHUTDOWN: u32 = 2;
 pub const RECONNECT_ATTEMPTS: usize = 5;
 pub const RECONNECT_BASE_DELAY: Duration = Duration::from_millis(100);
+const BIND_RETRY_ATTEMPTS: u32 = 20;
+const BIND_RETRY_DELAY: Duration = Duration::from_millis(500);
 
 #[derive(Debug, Error)]
 pub enum TransportError {
@@ -143,8 +145,25 @@ impl Transport {
             return Err(TransportError::IdentityMismatch);
         }
         let server = tls::server_config(&certificate)?;
-        let endpoint = quinn::Endpoint::server(server, config.bind_addr)
-            .map_err(|error| TransportError::Bind(error.to_string()))?;
+        let mut attempt = 0;
+        let endpoint = loop {
+            match quinn::Endpoint::server(server.clone(), config.bind_addr) {
+                Ok(endpoint) => break endpoint,
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::AddrInUse
+                        && attempt < BIND_RETRY_ATTEMPTS =>
+                {
+                    attempt += 1;
+                    tracing::warn!(
+                        %error,
+                        attempt,
+                        "transport address in use; retrying bind"
+                    );
+                    tokio::time::sleep(BIND_RETRY_DELAY).await;
+                }
+                Err(error) => return Err(TransportError::Bind(error.to_string())),
+            }
+        };
         let (events, _receiver) = broadcast::channel(64);
         let transport = Self {
             endpoint,

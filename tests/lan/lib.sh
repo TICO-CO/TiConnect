@@ -59,9 +59,16 @@ dump_state() {
     "${COMPOSE[@]}" logs --no-color --tail=200 || true
 
     local node
+    local id
     for node in node-a node-b; do
         log "--- $node daemon log ---"
-        "${COMPOSE[@]}" exec -T "$node" tail -n 300 /data/ticonnect.log || true
+        id="$("${COMPOSE[@]}" ps -a -q "$node" 2>/dev/null || true)"
+        if [ -n "$id" ]; then
+            docker cp "$id:/data/ticonnect.log" - 2>/dev/null \
+                | tar -xO 2>/dev/null | tail -n 300 || true
+        else
+            "${COMPOSE[@]}" exec -T "$node" tail -n 300 /data/ticonnect.log || true
+        fi
         log "--- $node status ---"
         cli "$node" status || true
         log "--- $node discover status ---"
@@ -111,8 +118,27 @@ reset_nodes() {
 }
 
 start_node() {
-    "${COMPOSE[@]}" start "$1" >/dev/null
-    wait_for 90 daemon_ready "$1" || fail "$1 daemon did not start"
+    local node="$1"
+    local attempt
+
+    for attempt in 1 2 3; do
+        "${COMPOSE[@]}" start "$node" >/dev/null
+
+        local deadline=$((SECONDS + 90))
+        while [ "$SECONDS" -lt "$deadline" ]; do
+            daemon_ready "$node" && return 0
+            container_running "$node" || break
+            sleep 1
+        done
+
+        if container_running "$node"; then
+            fail "$node daemon did not start"
+        fi
+        "${COMPOSE[@]}" stop "$node" >/dev/null 2>&1 || true
+        sleep 1
+    done
+
+    fail "$node daemon did not start"
 }
 
 stop_node() {
@@ -133,6 +159,13 @@ restart_nodes() {
 
 container_id() {
     "${COMPOSE[@]}" ps -q "$1"
+}
+
+container_running() {
+    local id
+    id="$(container_id "$1" 2>/dev/null || true)"
+    [ -n "$id" ] || return 1
+    [ "$(docker inspect -f '{{.State.Running}}' "$id" 2>/dev/null || true)" = "true" ]
 }
 
 network_name() {
