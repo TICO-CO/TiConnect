@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -14,12 +19,15 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - name: Install GTK dependencies
         run: |
@@ -42,14 +50,14 @@ jobs:
 
       - name: Package
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          TAG="${TAG_NAME}"
           mkdir -p dist
           tar -czf "dist/ticonnect-${TAG}-linux-x86_64.tar.gz" -C target/release ticonnect
           ls -lh dist/
 
       - name: Validate user surface
         run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          TAG_VERSION="${TAG_NAME#v}"
           WORKSPACE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="ticonnect") | .version')"
           echo "tag version:       ${TAG_VERSION}"
           echo "workspace version: ${WORKSPACE_VERSION}"
@@ -80,7 +88,7 @@ jobs:
         env:
           APPIMAGETOOL: /tmp/appimagetool
           APPIMAGETOOL_EXTRACT_RUN: "1"
-        run: scripts/package-appimage.sh target/release/ticonnect "${GITHUB_REF_NAME}" dist
+        run: scripts/package-appimage.sh target/release/ticonnect "${TAG_NAME}" dist
 
       - name: Validate AppImage
         run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
@@ -109,7 +117,7 @@ jobs:
 
       - name: Build and validate Arch package
         env:
-          TAG: ${{ github.ref_name }}
+          TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           docker run --rm --entrypoint /bin/bash \
             -e TAG="$TAG" \
@@ -135,7 +143,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ticonnect-${{ github.ref_name }}-linux
+          name: ticonnect-${{ inputs.tag || github.ref_name }}-linux
           path: |
             dist/*.AppImage
             dist/*.pkg.tar.zst
@@ -148,7 +156,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: ticonnect-${{ github.ref_name }}-linux
+          pattern: ticonnect-${{ inputs.tag || github.ref_name }}-linux
           merge-multiple: true
 
       - name: Checksums
