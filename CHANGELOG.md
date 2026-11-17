@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0 — 2026-11-14
+## 0.0.6 — 2026-11-14
 
 - LAN discovery, SPAKE2 pairing, pinned QUIC transport, and signed messaging.
 - Replica history, outbox expiry, gap sync, receipts, policy, tray, GTK4 UI.

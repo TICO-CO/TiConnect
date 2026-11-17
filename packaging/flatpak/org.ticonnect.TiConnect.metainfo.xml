@@ -15,6 +15,6 @@
   </description>
   <launchable type="desktop-id">org.ticonnect.TiConnect.desktop</launchable>
   <releases>
-    <release version="0.1.0" date="2026-11-14"/>
+    <release version="0.0.6" date="2026-11-14"/>
   </releases>
 </component>

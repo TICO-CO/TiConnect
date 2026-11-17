@@ -51,7 +51,12 @@ jobs:
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           WORKSPACE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name=="ticonnect") | .version')"
-          [ "$TAG_VERSION" = "$WORKSPACE_VERSION" ]
+          echo "tag version:       ${TAG_VERSION}"
+          echo "workspace version: ${WORKSPACE_VERSION}"
+          if [ "$TAG_VERSION" != "$WORKSPACE_VERSION" ]; then
+            echo "version mismatch: tag ${TAG_VERSION} vs Cargo ${WORKSPACE_VERSION}" >&2
+            exit 1
+          fi
           target/release/ticonnect --version
           target/release/ticonnect --help
           desktop-file-validate packaging/flatpak/org.ticonnect.TiConnect.desktop
