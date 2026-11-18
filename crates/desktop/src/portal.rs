@@ -48,16 +48,17 @@ impl PortalSession {
             .map_err(portal_error)?
             .response()
             .map_err(portal_error)?;
-        let (width, height) = response
-            .streams()
-            .first()
-            .and_then(|stream| stream.size())
-            .map_or((1920, 1080), |size| {
-                (
-                    u32::try_from(size.0).unwrap_or(1920),
-                    u32::try_from(size.1).unwrap_or(1080),
-                )
-            });
+        let (width, height) = match response.streams().first().and_then(|stream| stream.size()) {
+            None => (1920, 1080),
+            Some(size) => (
+                u32::try_from(size.0).map_err(|_| {
+                    PortalError::Portal("capture stream width is out of range".to_owned())
+                })?,
+                u32::try_from(size.1).map_err(|_| {
+                    PortalError::Portal("capture stream height is out of range".to_owned())
+                })?,
+            ),
+        };
         let eis = remote
             .connect_to_eis(&session, Default::default())
             .await

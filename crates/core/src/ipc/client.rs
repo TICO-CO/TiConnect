@@ -33,8 +33,10 @@ pub trait Daemon {
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_conversation_summaries(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn get_message(&self, message_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn count_messages(&self, conversation_id: &str) -> zbus::Result<u32>;
     fn mark_read(&self, conversation_id: &str, message_ids: &[&str]) -> zbus::Result<()>;
+    fn mark_conversation_read(&self, conversation_id: &str) -> zbus::Result<()>;
     fn set_typing(&self, user_id: &str, typing: bool) -> zbus::Result<()>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;

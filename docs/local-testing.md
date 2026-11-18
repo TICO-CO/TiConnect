@@ -38,6 +38,12 @@ portals, and notifications. The original pane stays attached to the lab
 supervisor. Closing the lab tab, running `lab-stop` in either pane, or pressing
 Ctrl-C in the supervisor pane stops both nodes.
 
+Interactive labs start the Vite dev server at `http://127.0.0.1:5173` and point
+both UIs at it. Edits under `crates/ui/web` hot-reload without rebuilding the
+Rust binary. The Vite log is `$LAB_DIR/vite.log`. Port `5173` must be free. Use
+`LAB_HOT_RELOAD=0 make lab` to load the embedded bundle instead. Automated
+`make lab-smoke` always uses the embedded bundle.
+
 Pane commands:
 
 ```text
@@ -79,6 +85,9 @@ by `rust-toolchain.toml`:
 nix develop
 make lab
 ```
+
+Lab binary builds disable `sccache` by default. Set
+`LAB_RUSTC_WRAPPER=sccache` if you want the wrapper back.
 
 On Nix hosts that mix a host Rust toolchain with Nix GTK libraries, the link
 step can report unresolved `GLIBC_2.43` math symbols from `graphene`. `make

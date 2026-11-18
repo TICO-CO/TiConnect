@@ -81,18 +81,21 @@
     }
 </script>
 
-<section class="settings">
-    <aside class="settings-rail">
-        <div class="settings-top">
-            <button class="icon-button small" onclick={() => app.backToChat()} aria-label="Back">
+<section class="flex h-full min-w-0 flex-1 bg-base">
+    <aside class="flex h-full w-80 shrink-0 flex-col gap-1.5 bg-rail p-3">
+        <div class="flex h-[30px] items-center px-1">
+            <button
+                class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                onclick={() => app.backToChat()}
+                aria-label="Back"
+            >
                 <Icon name="back" size={16} />
             </button>
         </div>
-        <nav aria-label="Settings sections">
+        <nav class="mt-3.5 flex flex-col gap-0.5" aria-label="Settings sections">
             {#each SETTINGS_SECTIONS as item (item.id)}
                 <button
-                    class="settings-tab"
-                    class:active={section === item.id}
+                    class="flex h-[42px] shrink-0 items-center rounded-sm px-3.5 text-left text-[15px] font-bold text-ink-2 hover:bg-surface hover:text-ink aria-[current=page]:-mx-3 aria-[current=page]:w-80 aria-[current=page]:rounded-none aria-[current=page]:bg-ink aria-[current=page]:px-[26px] aria-[current=page]:text-base aria-[current=page]:hover:bg-ink aria-[current=page]:hover:text-base"
                     onclick={() => app.navigate({ kind: 'settings', section: item.id })}
                     aria-current={section === item.id ? 'page' : undefined}
                 >
@@ -101,18 +104,24 @@
             {/each}
         </nav>
     </aside>
-    <div class="settings-content">
-        <header class="settings-head">
-            <h1 class="display">{sectionLabel}</h1>
-            <p>{subtitle}</p>
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden px-8 pt-6 pb-8">
+        <header class="mb-4 shrink-0">
+            <h1 class="m-0 font-display text-step-3 leading-[34px] font-normal tracking-[-0.01em]">
+                {sectionLabel}
+            </h1>
+            <p class="m-0 mt-1 text-xs tracking-[0.06em] text-ink-3 uppercase">{subtitle}</p>
         </header>
-        <div class="settings-scroll scroll">
+        <div class="flex scroll min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             {#if section === 'user'}
-                <section class="panel profile-card">
-                    <h2 class="label">Profile card</h2>
-                    <div class="profile-body">
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Profile card
+                    </h2>
+                    <div class="flex items-stretch gap-5">
                         <button
-                            class="avatar-upload"
+                            class="relative size-[196px] shrink-0 overflow-hidden rounded-md border border-line-strong bg-surface-2 p-0"
                             onclick={() => avatarInput?.click()}
                             aria-label="Change avatar"
                         >
@@ -122,7 +131,10 @@
                                 name={app.bootstrap?.identity.display_name ?? 'You'}
                                 size={196}
                             />
-                            <span class="avatar-overlay">Change</span>
+                            <span
+                                class="absolute inset-x-0 top-auto bottom-0 bg-backdrop/78 p-2 text-xs tracking-[0.06em] text-ink uppercase"
+                                >Change</span
+                            >
                         </button>
                         <input
                             class="sr-only"
@@ -131,22 +143,32 @@
                             bind:this={avatarInput}
                             onchange={uploadAvatar}
                         />
-                        <div class="profile-copy">
-                            <h3 class="display">
+                        <div class="flex min-w-0 flex-1 flex-col justify-center gap-2">
+                            <h3
+                                class="m-0 font-display text-step-2 leading-[1.15] font-normal tracking-[-0.01em]"
+                            >
                                 {app.bootstrap?.identity.display_name || 'TiConnect device'}
                             </h3>
-                            <p class="presence">
-                                <span class="dot"></span>Online · visible on the network
+                            <p
+                                class="m-0 flex items-center gap-1.5 text-xs tracking-[0.06em] text-ink-3 uppercase"
+                            >
+                                <span class="size-1.5 rounded-full bg-success"></span>Online ·
+                                visible on the network
                             </p>
-                            <p class="profile-description">
+                            <p
+                                class="m-0 mt-1 max-w-[340px] text-step-xs leading-[1.45] text-ink-2"
+                            >
                                 {preferencesDraft.userDescription || 'No description yet.'}
                             </p>
                         </div>
-                        <div class="profile-fields">
-                            <label class="stack">
-                                <span class="label">Username</span>
+                        <div class="flex w-[390px] shrink-0 flex-col justify-center gap-3">
+                            <label class="flex flex-col gap-1.5">
+                                <span
+                                    class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                                    >Username</span
+                                >
                                 <input
-                                    class="field"
+                                    class="min-h-9 w-full rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                                     value={value('identity.display_name')}
                                     oninput={(event) =>
                                         setValue(
@@ -155,10 +177,13 @@
                                         )}
                                 />
                             </label>
-                            <label class="stack">
-                                <span class="label">Description</span>
+                            <label class="flex flex-col gap-1.5">
+                                <span
+                                    class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                                    >Description</span
+                                >
                                 <textarea
-                                    class="field"
+                                    class="min-h-9 w-full rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                                     rows="3"
                                     value={preferencesDraft.userDescription}
                                     oninput={(event) =>
@@ -170,17 +195,25 @@
                         </div>
                     </div>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Presence</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Default presence</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Presence
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Default presence</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Holds until you change it from the shell</span
                             >
                         </div>
-                        <div class="segmented">
+                        <div class="inline-flex shrink-0 gap-1">
                             {#each ['online', 'away', 'dnd'] as presence (presence)}
                                 <button
+                                    class="min-h-8 rounded-pill border border-line bg-transparent px-3.5 text-xs font-bold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-base"
                                     aria-pressed={preferencesDraft.presence === presence}
                                     onclick={() => setPreference('presence', presence)}
                                 >
@@ -193,9 +226,12 @@
                             {/each}
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Read receipts</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Read receipts</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Lets contacts see when you have read a message</span
                             >
                         </div>
@@ -210,9 +246,12 @@
                                 )}
                         ></button>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Typing indicators</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Typing indicators</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Shows when you are composing a reply</span
                             >
                         </div>
@@ -225,32 +264,54 @@
                         ></button>
                     </div>
                 </section>
-                <section class="panel">
-                    <div class="row header-row">
-                        <h2 class="label">Identity key</h2>
-                        <span class="label">Read-only</span>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 pb-[9px]"
+                    >
+                        <h2
+                            class="m-0 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                        >
+                            Identity key
+                        </h2>
+                        <span
+                            class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                            >Read-only</span
+                        >
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Stable identity</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Stable identity</span></div>
                         <strong
                             >{fingerprintLabel(app.bootstrap?.identity.fingerprint ?? '')}</strong
                         >
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Key</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Key</span></div>
                         <strong>{app.bootstrap?.identity.fingerprint.slice(0, 8) ?? ''}</strong>
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>First seen</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>First seen</span></div>
                         <strong>12 Oct</strong>
                     </div>
                 </section>
             {:else if section === 'notifications'}
-                <section class="panel">
-                    <h2 class="label">Notifications</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Do not disturb</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Notifications
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Do not disturb</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Incoming messages and calls stay quiet</span
                             >
                         </div>
@@ -261,9 +322,12 @@
                             onclick={() => setEnabled('dnd.enabled', !enabled('dnd.enabled'))}
                         ></button>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Desktop overlay</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Desktop overlay</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Corner cards while the window is closed</span
                             >
                         </div>
@@ -275,14 +339,17 @@
                                 setEnabled('overlay.enabled', !enabled('overlay.enabled', true))}
                         ></button>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Overlay timeout</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Overlay timeout</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Seconds before a corner card dismisses</span
                             >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="1"
                             max="60"
@@ -294,9 +361,14 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Message sounds</strong><span>Soft chime for new messages</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Message sounds</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Soft chime for new messages</span
+                            >
                         </div>
                         <button
                             class="toggle"
@@ -307,16 +379,23 @@
                     </div>
                 </section>
             {:else if section === 'calls'}
-                <section class="panel">
-                    <h2 class="label">Calls</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Ringing timeout</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Calls
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Ringing timeout</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Seconds before an unanswered call ends</span
                             >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="5"
                             max="300"
@@ -328,14 +407,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Input device</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Input device</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Leave empty for the system default</span
                             >
                         </div>
                         <input
-                            class="field text"
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             value={value('calls.input_device')}
                             oninput={(event) =>
                                 setValue(
@@ -344,14 +426,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Output device</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Output device</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Leave empty for the system default</span
                             >
                         </div>
                         <input
-                            class="field text"
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             value={value('calls.output_device')}
                             oninput={(event) =>
                                 setValue(
@@ -360,12 +445,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Ringtone path</strong><span>Empty uses the bundled tone</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Ringtone path</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Empty uses the bundled tone</span
+                            >
                         </div>
                         <input
-                            class="field text"
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             value={value('ringtone.path')}
                             oninput={(event) =>
                                 setValue(
@@ -376,15 +466,23 @@
                     </div>
                 </section>
             {:else if section === 'remote'}
-                <section class="panel">
-                    <h2 class="label">Remote desktop</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Session timeout</strong><span>0 disables automatic timeout</span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Remote desktop
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Session timeout</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >0 disables automatic timeout</span
                             >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="0"
                             value={value('remote.session_timeout_secs', '0')}
@@ -395,14 +493,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Request expiry</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Request expiry</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Seconds a consent request stays valid</span
                             >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="30"
                             max="3600"
@@ -414,16 +515,27 @@
                                 )}
                         />
                     </div>
-                    <p class="hint">Accepting a request is the full consent grant.</p>
+                    <p class="m-0 mt-3 text-step-xs text-ink-3">
+                        Accepting a request is the full consent grant.
+                    </p>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Video quality</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Bitrate</strong><span>Kilobits per second</span>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Video quality
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Bitrate</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Kilobits per second</span
+                            >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="256"
                             max="20000"
@@ -435,12 +547,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Frame rate</strong><span>Frames per second</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Frame rate</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Frames per second</span
+                            >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="5"
                             max="60"
@@ -452,12 +569,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Keyframe interval</strong><span>Frames between keyframes</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Keyframe interval</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Frames between keyframes</span
+                            >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="1"
                             max="600"
@@ -471,11 +593,18 @@
                     </div>
                 </section>
             {:else if section === 'media'}
-                <section class="panel">
-                    <h2 class="label">Playback</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Autoplay YouTube links</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Playback
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Autoplay YouTube links</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Sent and received links open the player immediately</span
                             >
                         </div>
@@ -486,15 +615,19 @@
                             onclick={() => setPreference('autoplay', !preferencesDraft.autoplay)}
                         ></button>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Queue limit</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Queue limit</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >New links queue behind the current video</span
                             >
                         </div>
-                        <div class="segmented">
+                        <div class="inline-flex shrink-0 gap-1">
                             {#each [1, 3, 5] as limit (limit)}
                                 <button
+                                    class="min-h-8 rounded-pill border border-line bg-transparent px-3.5 text-xs font-bold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-base"
                                     aria-pressed={preferencesDraft.queueLimit === limit}
                                     onclick={() => setPreference('queueLimit', limit)}
                                     >{limit}</button
@@ -502,20 +635,30 @@
                             {/each}
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Player position</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Player position</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Bottom-right, above message toasts</span
                             >
                         </div>
-                        <span class="row-value">Fixed</span>
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase">Fixed</span>
                     </div>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Incoming videos</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Ignore all incoming videos</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Incoming videos
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Ignore all incoming videos</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Links stay in chat until you reactivate</span
                             >
                         </div>
@@ -527,26 +670,39 @@
                                 setPreference('ignoreIncoming', !preferencesDraft.ignoreIncoming)}
                         ></button>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Dismiss player</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Dismiss player</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Closing keeps the video in chat and queue</span
                             >
                         </div>
-                        <span class="row-value">{preferencesDraft.dismissPlayer}</span>
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
+                            >{preferencesDraft.dismissPlayer}</span
+                        >
                     </div>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Watch parties</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Playback control</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Watch parties
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Playback control</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Anyone in the party can play, pause and seek</span
                             >
                         </div>
-                        <div class="segmented">
+                        <div class="inline-flex shrink-0 gap-1">
                             {#each ['Everyone', 'Host'] as control (control)}
                                 <button
+                                    class="min-h-8 rounded-pill border border-line bg-transparent px-3.5 text-xs font-bold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-base"
                                     aria-pressed={preferencesDraft.partyControl === control}
                                     onclick={() => setPreference('partyControl', control)}
                                     >{control}</button
@@ -554,9 +710,12 @@
                             {/each}
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Accept party invites</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Accept party invites</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Invites appear top-right</span
                             >
                         </div>
@@ -570,16 +729,23 @@
                     </div>
                 </section>
             {:else if section === 'storage'}
-                <section class="panel">
-                    <h2 class="label">Storage</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Outbox retention</strong><span
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Storage
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Outbox retention</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Days before undelivered records expire</span
                             >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="1"
                             max="365"
@@ -591,12 +757,17 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Attachment limit</strong><span>Maximum size in MiB</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Attachment limit</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Maximum size in MiB</span
+                            >
                         </div>
                         <input
-                            class="field number"
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
                             type="number"
                             min="1"
                             max="102400"
@@ -608,15 +779,19 @@
                                 )}
                         />
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Local history</strong><span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Local history</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Keep messages and attachments for</span
                             >
                         </div>
-                        <div class="segmented">
+                        <div class="inline-flex shrink-0 gap-1">
                             {#each [7, 30, 90] as days (days)}
                                 <button
+                                    class="min-h-8 rounded-pill border border-line bg-transparent px-3.5 text-xs font-bold text-ink-2 aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-base"
                                     aria-pressed={preferencesDraft.storageRetention === days}
                                     onclick={() => setPreference('storageRetention', days)}
                                     >{days} d</button
@@ -624,342 +799,123 @@
                             {/each}
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Local usage</strong><span>Attachments and message database</span
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Local usage</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Attachments and message database</span
                             >
                         </div>
-                        <span class="row-value">Placeholder · not measured</span>
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
+                            >Placeholder · not measured</span
+                        >
                     </div>
                     <button
-                        class="btn btn-danger wide"
+                        class="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
                         onclick={() => (app.notice = 'Clearing local history is not wired yet.')}
                         >Clear local history</button
                     >
                 </section>
             {:else}
-                <section class="panel">
-                    <h2 class="label">About TiConnect</h2>
-                    <div class="row">
-                        <div class="row-copy"><span>Version</span></div>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        About TiConnect
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Version</span></div>
                         <strong>{app.bootstrap?.version ?? '0.0.6'}</strong>
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Protocol</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Protocol</span></div>
                         <strong>ticonnect/1</strong>
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Identity</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Identity</span></div>
                         <strong
                             >{fingerprintLabel(app.bootstrap?.identity.fingerprint ?? '')}</strong
                         >
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Network</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Network</span></div>
                         <strong
                             >{app.users.filter((user) => user.connected).length} online · LAN only</strong
                         >
                     </div>
-                    <div class="row">
-                        <div class="row-copy"><span>Licence</span></div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5"><span>Licence</span></div>
                         <strong>GPL-3.0-or-later</strong>
                     </div>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Discovery</h2>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>mDNS</strong><span>_ticonnect._udp.local.</span>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Discovery
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">mDNS</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >_ticonnect._udp.local.</span
+                            >
                         </div>
-                        <span class="row-value"
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
                             >{enabled('discovery.mdns', true) ? 'On' : 'Off'}</span
                         >
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Broadcast fallback</strong><span>UDP beacon on the LAN</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Broadcast fallback</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >UDP beacon on the LAN</span
+                            >
                         </div>
-                        <span class="row-value"
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
                             >{enabled('discovery.broadcast', true) ? 'On' : 'Off'}</span
                         >
                     </div>
-                    <div class="row">
-                        <div class="row-copy">
-                            <strong>Beacon interval</strong><span>Seconds</span>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Beacon interval</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase">Seconds</span
+                            >
                         </div>
-                        <span class="row-value">{value('discovery.beacon_interval_secs', '5')}</span
+                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
+                            >{value('discovery.beacon_interval_secs', '5')}</span
                         >
                     </div>
                 </section>
             {/if}
         </div>
-        <footer class="settings-actions">
-            <button class="btn" onclick={revert}>Revert</button>
-            <button class="btn btn-accent" onclick={save}>Save changes</button>
+        <footer class="flex shrink-0 justify-end gap-2.5 pt-5">
+            <button
+                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                onclick={revert}>Revert</button
+            >
+            <button
+                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
+                onclick={save}>Save changes</button
+            >
         </footer>
     </div>
 </section>
-
-<style>
-    .settings {
-        display: flex;
-        height: 100%;
-        min-width: 0;
-        flex: 1;
-        background: var(--base);
-    }
-
-    .settings-rail {
-        display: flex;
-        flex-direction: column;
-        width: 320px;
-        flex-shrink: 0;
-        height: 100%;
-        padding: 12px;
-        gap: 6px;
-        background: var(--rail);
-    }
-
-    .settings-top {
-        display: flex;
-        align-items: center;
-        height: 30px;
-        padding-inline: 4px;
-    }
-
-    nav {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        margin-top: 14px;
-    }
-
-    .settings-tab {
-        display: flex;
-        align-items: center;
-        height: 42px;
-        flex-shrink: 0;
-        padding-inline: 14px;
-        border: 0;
-        border-radius: var(--radius-s);
-        background: transparent;
-        color: var(--ink-2);
-        font-size: 15px;
-        font-weight: 700;
-        text-align: left;
-    }
-
-    .settings-tab:hover {
-        background: var(--surface);
-        color: var(--ink);
-    }
-
-    .settings-tab.active {
-        width: 320px;
-        margin-inline: -12px;
-        padding-inline: 26px;
-        border-radius: 0;
-        background: var(--ink);
-        color: var(--base);
-    }
-
-    .settings-content {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-        padding: 24px 32px 32px;
-        overflow: hidden;
-    }
-
-    .settings-head {
-        flex-shrink: 0;
-        margin-bottom: 16px;
-    }
-
-    .settings-head h1 {
-        margin: 0;
-        font-size: var(--step-3);
-        line-height: 34px;
-    }
-
-    .settings-head p {
-        margin: 4px 0 0;
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .settings-scroll {
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        flex: 1;
-        gap: 16px;
-        overflow-y: auto;
-        padding-right: 4px;
-    }
-
-    .panel {
-        padding: 16px 20px;
-    }
-
-    .panel h2 {
-        margin: 0 0 12px;
-    }
-
-    .profile-body {
-        display: flex;
-        align-items: stretch;
-        gap: 20px;
-    }
-
-    .avatar-upload {
-        position: relative;
-        width: 196px;
-        height: 196px;
-        flex-shrink: 0;
-        overflow: hidden;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius-m);
-        background: var(--surface-2);
-        padding: 0;
-    }
-
-    .avatar-overlay {
-        position: absolute;
-        inset: auto 0 0;
-        padding: 8px;
-        background: rgba(15, 31, 34, 0.78);
-        color: var(--ink);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .profile-copy {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        gap: 8px;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .profile-copy h3 {
-        margin: 0;
-        font-size: var(--step-2);
-    }
-
-    .presence {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin: 0;
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--success);
-    }
-
-    .profile-description {
-        max-width: 340px;
-        margin: 4px 0 0;
-        color: var(--ink-2);
-        font-size: 13px;
-        line-height: 1.45;
-    }
-
-    .profile-fields {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        width: 390px;
-        flex-shrink: 0;
-        justify-content: center;
-    }
-
-    .stack {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-    }
-
-    .row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 24px;
-        padding: 9px 0;
-        border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
-    }
-
-    .row:last-child {
-        border-bottom: 0;
-    }
-
-    .row-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .row-copy strong {
-        font-size: 14px;
-    }
-
-    .row-copy span {
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    .row-value {
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .number {
-        width: 96px;
-        flex-shrink: 0;
-    }
-
-    .text {
-        width: 320px;
-        flex-shrink: 0;
-    }
-
-    .header-row {
-        padding-top: 0;
-    }
-
-    .hint {
-        margin: 12px 0 0;
-        color: var(--ink-3);
-        font-size: 13px;
-    }
-
-    .wide {
-        width: 100%;
-        margin-top: 12px;
-    }
-
-    .settings-actions {
-        display: flex;
-        justify-content: flex-end;
-        flex-shrink: 0;
-        gap: 10px;
-        padding-top: 20px;
-    }
-</style>

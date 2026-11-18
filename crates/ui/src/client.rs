@@ -45,6 +45,10 @@ enum Command {
         fingerprint: String,
         reply: Reply<()>,
     },
+    GetMessage {
+        message_id: String,
+        reply: Reply<Message>,
+    },
     ListMessages {
         conversation_id: String,
         limit: u32,
@@ -77,6 +81,10 @@ enum Command {
     MarkRead {
         conversation_id: String,
         message_ids: Vec<String>,
+        reply: Reply<()>,
+    },
+    MarkConversationRead {
+        conversation_id: String,
         reply: Reply<()>,
     },
     SetUserPolicy {
@@ -241,6 +249,11 @@ impl LinkHandle {
         .await
     }
 
+    pub async fn get_message(&self, message_id: String) -> Result<Message> {
+        self.request(|reply| Command::GetMessage { message_id, reply })
+            .await
+    }
+
     pub async fn count_messages(&self, conversation_id: String) -> Result<u32> {
         self.request(|reply| Command::CountMessages {
             conversation_id,
@@ -285,6 +298,14 @@ impl LinkHandle {
         self.request(|reply| Command::MarkRead {
             conversation_id,
             message_ids,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn mark_conversation_read(&self, conversation_id: String) -> Result<()> {
+        self.request(|reply| Command::MarkConversationRead {
+            conversation_id,
             reply,
         })
         .await
@@ -552,29 +573,48 @@ async fn listen(
         tokio::select! {
             signal = messages.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(message) = events::parse_message(&args.message, None) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(message) =
+                    parse_event(events::parse_message(&args.message, None), "message_received")
+                {
                     let _ = events.send(DaemonEvent::MessageReceived(message));
                 }
             }
             signal = states.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let Some(state) =
+                    parse_event(MessageState::parse(args.state), "message_state_changed")
+                else {
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::MessageStateChanged {
                     message_id: args.message_id.to_owned(),
-                    state: MessageState::parse(args.state),
+                    state,
                 });
             }
             signal = conversation_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::ConversationChanged {
                     user_id: args.user_id.to_owned(),
                 });
             }
             signal = typing_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TypingChanged {
                     user_id: args.user_id.to_owned(),
                     typing: args.typing,
@@ -582,7 +622,10 @@ async fn listen(
             }
             signal = user_profile_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::UserProfileChanged {
                     fingerprint: args.fingerprint.to_owned(),
                 });
@@ -593,41 +636,69 @@ async fn listen(
             }
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(user) = events::parse_user(&args.user) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_connected")
+                {
                     let _ = events.send(DaemonEvent::UserConnected(user));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(user) = events::parse_user(&args.user) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_disconnected")
+                {
                     let _ = events.send(DaemonEvent::UserDisconnected(user));
                 }
             }
             signal = policy_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let Some(policy) = parse_event(UserPolicy::parse(args.policy), "policy_changed")
+                else {
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::PolicyChanged {
                     user_id: args.user_id.to_owned(),
-                    policy: UserPolicy::parse(args.policy),
+                    policy,
                 });
             }
             signal = settings_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::SettingsChanged(args.key.to_owned()));
             }
             signal = incoming_call.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(call) = events::parse_call(&args.call) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(call) =
+                    parse_event(events::parse_call(&args.call), "incoming_call")
+                {
                     let _ = events.send(DaemonEvent::IncomingCall(call));
                 }
             }
             signal = call_state_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CallStateChanged {
                     call_id: args.call_id.to_owned(),
                     state: args.state.to_owned(),
@@ -635,7 +706,10 @@ async fn listen(
             }
             signal = call_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CallEnded {
                     call_id: args.call_id.to_owned(),
                     reason: args.reason.to_owned(),
@@ -643,19 +717,31 @@ async fn listen(
             }
             signal = remote_requested.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(session) = events::parse_remote_session(&args.session) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(session) = parse_event(
+                    events::parse_remote_session(&args.session),
+                    "remote_session_requested",
+                ) {
                     let _ = events.send(DaemonEvent::RemoteSessionRequested(session));
                 }
             }
             signal = remote_started.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteSessionStarted(args.session_id.to_owned()));
             }
             signal = remote_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteSessionEnded {
                     session_id: args.session_id.to_owned(),
                     reason: args.reason.to_owned(),
@@ -663,7 +749,10 @@ async fn listen(
             }
             signal = remote_indicator.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteIndicatorChanged {
                     session_id: args.session_id.to_owned(),
                     visible: args.visible,
@@ -671,7 +760,10 @@ async fn listen(
             }
             signal = transfer_progress.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferProgress {
                     hash: args.hash.to_owned(),
                     bytes: args.bytes,
@@ -680,21 +772,36 @@ async fn listen(
             }
             signal = watch_party_requested.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(party) = events::parse_watch_party(&args.party) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_requested",
+                ) {
                     let _ = events.send(DaemonEvent::WatchPartyRequested(party));
                 }
             }
             signal = watch_party_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(party) = events::parse_watch_party(&args.party) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_changed",
+                ) {
                     let _ = events.send(DaemonEvent::WatchPartyChanged(party));
                 }
             }
             signal = watch_party_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::WatchPartyEnded {
                     party_id: args.party_id.to_owned(),
                     reason: args.reason.to_owned(),
@@ -702,12 +809,18 @@ async fn listen(
             }
             signal = transfer_done.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferDone(args.hash.to_owned()));
             }
             signal = transfer_failed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferFailed {
                     hash: args.hash.to_owned(),
                     reason: args.reason.to_owned(),
@@ -715,7 +828,10 @@ async fn listen(
             }
             signal = sync_completed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::SyncCompleted {
                     user_id: args.user_id.to_owned(),
                     count: args.count,
@@ -723,20 +839,32 @@ async fn listen(
             }
             signal = candidate_found.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(candidate) = events::parse_candidate(&args.candidate) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(candidate) = parse_event(
+                    events::parse_candidate(&args.candidate),
+                    "candidate_found",
+                ) {
                     let _ = events.send(DaemonEvent::Candidates(vec![candidate]));
                 }
             }
             signal = candidate_lost.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CandidateLost(args.fingerprint.to_owned()));
                 tracing::debug!(fingerprint = %args.fingerprint, "candidate lost");
             }
             signal = owner_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if args.name == ipc::DAEMON_BUS_NAME {
                     let _ = lost.send("daemon restarting".to_owned());
                     return Ok(());
@@ -814,14 +942,14 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         }
         Command::ListSettings(reply) => {
             let result = match proxy.list_settings().await {
-                Ok(values) => Ok(parse_settings(&values)),
+                Ok(values) => parse_settings(&values),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
         Command::ListBlockedUsers(reply) => {
             let result = match proxy.list_blocked_users().await {
-                Ok(values) => Ok(parse_blocked_users(&values)),
+                Ok(values) => parse_blocked_users(&values),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
@@ -840,6 +968,13 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .await
                 .map(|_| ())
                 .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::GetMessage { message_id, reply } => {
+            let result = match proxy.get_message(&message_id).await {
+                Ok(values) => events::parse_message(&values, None).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
             let _ = reply.send(result);
         }
         Command::ListMessages {
@@ -909,6 +1044,16 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let ids: Vec<&str> = message_ids.iter().map(String::as_str).collect();
             let result = proxy
                 .mark_read(&conversation_id, &ids)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::MarkConversationRead {
+            conversation_id,
+            reply,
+        } => {
+            let result = proxy
+                .mark_conversation_read(&conversation_id)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -1060,31 +1205,35 @@ fn payload_error(error: events::ParseError) -> Error {
     Error::InvalidResponse(error.to_string())
 }
 
-fn parse_settings(values: &HashMap<String, OwnedVariant>) -> SettingsForm {
-    SettingsForm::new(events::settings_map(values))
+fn parse_settings(values: &HashMap<String, OwnedVariant>) -> Result<SettingsForm> {
+    events::settings_map(values)
+        .map(SettingsForm::new)
+        .map_err(payload_error)
 }
 
-fn parse_blocked_users(values: &[HashMap<String, OwnedVariant>]) -> Vec<BlockedUser> {
+fn parse_blocked_users(values: &[HashMap<String, OwnedVariant>]) -> Result<Vec<BlockedUser>> {
     values
         .iter()
-        .map(|user| BlockedUser {
-            fingerprint: variant_string(user, ipc::USER_FINGERPRINT),
-            node_id: variant_string(user, ipc::USER_ID),
-            display_name: variant_string(user, ipc::USER_DISPLAY_NAME),
-            blocked_at: user
-                .get(ipc::BLOCKED_AT)
-                .and_then(|value| u64::try_from(value).ok())
-                .unwrap_or_default(),
+        .map(|user| {
+            Ok(BlockedUser {
+                fingerprint: events::required_string(user, ipc::USER_FINGERPRINT)?,
+                node_id: events::required_string(user, ipc::USER_ID)?,
+                display_name: events::optional_string(user, ipc::USER_DISPLAY_NAME)?,
+                blocked_at: events::optional_u64(user, ipc::BLOCKED_AT)?,
+            })
         })
-        .collect()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(payload_error)
 }
 
-fn variant_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
-    values
-        .get(key)
-        .and_then(|value| <&str>::try_from(value).ok())
-        .unwrap_or_default()
-        .to_owned()
+fn parse_event<T>(result: events::Result<T>, name: &'static str) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(%error, %name, "failed to parse daemon event");
+            None
+        }
+    }
 }
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {
@@ -1118,7 +1267,13 @@ mod tests {
         let mut values = HashMap::new();
         values.insert("x".to_owned(), OwnedVariant::from(true));
         values.insert("y".to_owned(), OwnedVariant::from(7_u32));
-        assert_eq!(events::display_value(&values["x"]), "true");
-        assert_eq!(events::display_value(&values["y"]), "7");
+        assert_eq!(
+            events::display_value(&values["x"], "x").expect("bool"),
+            "true"
+        );
+        assert_eq!(
+            events::display_value(&values["y"], "y").expect("integer"),
+            "7"
+        );
     }
 }

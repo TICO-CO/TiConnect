@@ -551,7 +551,9 @@ impl RemoteService {
                 y: packet.y,
             },
             InputKind::Button => InputEvent::PointerButton {
-                button: u8::try_from(packet.x).unwrap_or(u8::MAX),
+                button: u8::try_from(packet.x).map_err(|_| {
+                    RemoteError::Input(format!("button code out of range: {}", packet.x))
+                })?,
                 pressed: packet.pressed,
             },
             InputKind::Axis => InputEvent::PointerAxis {
@@ -559,7 +561,9 @@ impl RemoteService {
                 vertical: packet.y,
             },
             InputKind::Key => InputEvent::Key {
-                keysym: u32::try_from(packet.x).unwrap_or_default(),
+                keysym: u32::try_from(packet.x).map_err(|_| {
+                    RemoteError::Input(format!("keysym out of range: {}", packet.x))
+                })?,
                 pressed: packet.pressed,
             },
         };

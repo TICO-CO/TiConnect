@@ -50,28 +50,34 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="app-shell">
+<div class="flex h-full w-full min-w-0 overflow-hidden bg-base text-ink">
     {#if showRail}
         <UsersRail {app} />
     {/if}
-    <main class="main-pane">
+    <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
         {#if app.connection !== 'online'}
-            <div class="connection-banner" class:offline={app.connection === 'offline'}>
+            <div
+                class="absolute top-3 left-1/2 z-40 flex max-w-[680px] -translate-x-1/2 items-center gap-2.5 rounded-pill border border-warning bg-surface px-3.5 py-2 text-xs text-warning data-offline:border-error data-offline:text-error"
+                data-offline={app.connection === 'offline' ? '' : undefined}
+            >
                 <span>
                     {app.connection === 'connecting'
                         ? 'Connecting to the daemon…'
                         : 'Daemon unavailable — retrying'}
                 </span>
                 {#if app.errorMessage}
-                    <span class="banner-copy">{app.errorMessage}</span>
+                    <span class="truncate text-ink-3">{app.errorMessage}</span>
                 {/if}
             </div>
         {/if}
         {#if app.notice}
-            <div class="notice" role="status">
+            <div
+                class="absolute top-4 left-1/2 z-[35] flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-line-strong bg-surface-2 py-2 pr-2.5 pl-4 text-[13px] text-ink shadow-soft"
+                role="status"
+            >
                 <span>{app.notice}</span>
                 <button
-                    class="icon-button small"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
                     onclick={() => app.dismissNotice()}
                     aria-label="Dismiss notice"
                 >
@@ -95,73 +101,3 @@
     </main>
     <OverlayLayer {app} />
 </div>
-
-<style>
-    .app-shell {
-        display: flex;
-        width: 100%;
-        height: 100%;
-        min-width: 0;
-        overflow: hidden;
-        background: var(--base);
-        color: var(--ink);
-    }
-
-    .main-pane {
-        position: relative;
-        display: flex;
-        min-width: 0;
-        flex: 1;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    .connection-banner {
-        position: absolute;
-        top: 12px;
-        left: 50%;
-        z-index: 40;
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        transform: translateX(-50%);
-        padding: 8px 14px;
-        border: 1px solid var(--warning);
-        border-radius: var(--radius-pill);
-        background: var(--surface);
-        color: var(--warning);
-        font-size: 12px;
-        max-width: 680px;
-    }
-
-    .connection-banner.offline {
-        border-color: var(--error);
-        color: var(--error);
-    }
-
-    .banner-copy {
-        overflow: hidden;
-        color: var(--ink-3);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .notice {
-        position: absolute;
-        top: 16px;
-        left: 50%;
-        z-index: 35;
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        transform: translateX(-50%);
-        padding: 8px 10px 8px 16px;
-        border: 1px solid var(--line-strong);
-        border-radius: var(--radius-pill);
-        background: var(--surface-2);
-        color: var(--ink);
-        box-shadow: var(--shadow-soft);
-        font-size: 13px;
-        max-width: 720px;
-    }
-</style>

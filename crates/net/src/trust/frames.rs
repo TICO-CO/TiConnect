@@ -103,7 +103,7 @@ mod tests {
         let mut state = 0x1234_5678_u32;
         for _ in 0..512 {
             state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-            let length = usize::try_from(state % 512).unwrap_or_default();
+            let length = usize::try_from(state % 512).expect("frame length always fits usize");
             let bytes: Vec<u8> = (0..length)
                 .map(|index| {
                     state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);

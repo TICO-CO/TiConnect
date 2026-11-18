@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use ticonnect_core::id::NodeId;
 use ticonnect_core::message::{MessageKind, MessageRecord};
-use ticonnect_daemon::storage::{DatabaseHandle, NewUser, UserPolicy};
+use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewUser, UserPolicy};
 
 #[tokio::test]
 async fn database_opens_creates_private_files_and_reports_integrity() {
@@ -80,12 +80,116 @@ async fn conversation_summaries_track_unread_until_marked_read() {
         .mark_messages_read("conversation-1", &[record.message_id.to_string()], 110)
         .await
         .expect("mark read");
-    assert_eq!(updated, 1);
+    assert_eq!(updated, vec![record.message_id.to_string()]);
     let summaries = database
         .list_conversation_summaries(&NodeId::generate().to_string())
         .await
         .expect("summaries");
     assert_eq!(summaries[0].unread_count, 0);
+
+    let second = MessageRecord::new(
+        "conversation-1",
+        user_id.clone(),
+        2,
+        200,
+        MessageKind::Text,
+        Some("again".to_owned()),
+    );
+    database
+        .insert_inbound(second.clone(), 200, vec![0_u8; 64], &user_id)
+        .await
+        .expect("second message");
+    let updated = database
+        .mark_messages_read(
+            "conversation-1",
+            &[record.message_id.to_string(), second.message_id.to_string()],
+            210,
+        )
+        .await
+        .expect("mark mixed read");
+    assert_eq!(updated, vec![second.message_id.to_string()]);
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn mark_conversation_read_marks_only_unread_inbound() {
+    let dir = temp_dir();
+    let path = dir.join("ticonnect.db");
+    let database = DatabaseHandle::spawn(&path).await.expect("database");
+    let local_id = NodeId::generate().to_string();
+    let user_id = NodeId::generate().to_string();
+    database
+        .insert_user(user(&user_id, "fingerprint-1"))
+        .await
+        .expect("insert");
+    database
+        .ensure_conversation("conversation-1", &user_id, 1)
+        .await
+        .expect("conversation");
+    let first = MessageRecord::new(
+        "conversation-1",
+        user_id.clone(),
+        1,
+        100,
+        MessageKind::Text,
+        Some("first".to_owned()),
+    );
+    let second = MessageRecord::new(
+        "conversation-1",
+        user_id.clone(),
+        2,
+        200,
+        MessageKind::Text,
+        Some("second".to_owned()),
+    );
+    database
+        .insert_inbound(first.clone(), 100, vec![0_u8; 64], &user_id)
+        .await
+        .expect("first message");
+    database
+        .insert_inbound(second.clone(), 200, vec![0_u8; 64], &user_id)
+        .await
+        .expect("second message");
+    let outgoing = MessageRecord::new(
+        "conversation-1",
+        local_id.clone(),
+        1,
+        150,
+        MessageKind::Text,
+        Some("outgoing".to_owned()),
+    );
+    database
+        .insert_message(
+            outgoing.clone(),
+            150,
+            vec![0_u8; 64],
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("outgoing message");
+
+    let mut updated = database
+        .mark_conversation_read("conversation-1", &local_id, 300)
+        .await
+        .expect("mark conversation read");
+    updated.sort();
+    let mut expected = vec![first.message_id.to_string(), second.message_id.to_string()];
+    expected.sort();
+    assert_eq!(updated, expected);
+    assert!(!updated.contains(&outgoing.message_id.to_string()));
+    let summaries = database
+        .list_conversation_summaries(&local_id)
+        .await
+        .expect("summaries");
+    assert_eq!(summaries[0].unread_count, 0);
+
+    let updated = database
+        .mark_conversation_read("conversation-1", &local_id, 310)
+        .await
+        .expect("mark conversation read again");
+    assert!(updated.is_empty());
 
     drop(database);
     let _ = fs::remove_dir_all(dir);

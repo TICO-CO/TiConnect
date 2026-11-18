@@ -20,142 +20,203 @@
     );
 </script>
 
-<section class="remote-pane">
-    <header class="remote-head">
-        <button class="icon-button small" onclick={() => app.backToChat()} aria-label="Back">
+<section class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-base">
+    <header class="flex h-[88px] shrink-0 items-center gap-3.5 bg-rail px-7">
+        <button
+            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+            onclick={() => app.backToChat()}
+            aria-label="Back"
+        >
             <Icon name="back" size={16} />
         </button>
-        <div class="head-copy">
-            <h1 class="display">
+        <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+            <h1 class="m-0 font-display text-step-3 leading-[34px] font-normal tracking-[-0.01em]">
                 {#if user}
                     {host ? `Sharing with ${shortName(user)}` : `${shortName(user)} is sharing`}
                 {:else}
                     Remote desktop
                 {/if}
             </h1>
-            <p>Monitor 1 · Encrypted · LAN</p>
+            <p class="m-0 text-[13px] text-ink-3">Monitor 1 · Encrypted · LAN</p>
         </div>
-        <span class="live-pill"
-            ><span class="dot"></span>Live · {sessionClock(Math.max(0, elapsed))}</span
+        <span
+            class="flex h-[34px] items-center gap-1.5 rounded-pill border border-line px-3.5 text-xs tracking-[0.06em] text-ink-2 uppercase"
+            ><span class="size-[7px] rounded-full bg-error"></span>Live · {sessionClock(
+                Math.max(0, elapsed),
+            )}</span
         >
     </header>
     {#if waiting}
-        <div class="waiting">
-            <span class="wait-monogram"><Icon name="remote" size={28} color="var(--ink-2)" /></span>
-            <h2 class="display">{host ? 'Waiting for the request' : 'Waiting for consent'}</h2>
-            <p class="empty">
+        <div class="flex flex-1 flex-col items-center justify-center gap-2.5 text-center">
+            <span class="flex size-[88px] items-center justify-center rounded-full bg-surface"
+                ><Icon name="remote" size={28} color="var(--color-ink-2)" /></span
+            >
+            <h2
+                class="mt-2 mb-0 font-display text-step-2 leading-[1.15] font-normal tracking-[-0.01em]"
+            >
+                {host ? 'Waiting for the request' : 'Waiting for consent'}
+            </h2>
+            <p class="m-0 text-step-xs text-ink-3">
                 {host
                     ? 'The request stays open until you accept or it expires.'
                     : 'Capture starts only after the other side accepts.'}
             </p>
-            <div class="wait-actions">
+            <div class="mt-2 flex gap-2.5">
                 <button
-                    class="btn btn-danger"
+                    class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
                     onclick={() => (host ? void app.denyRemote() : void app.endRemote())}
                 >
                     Cancel request
                 </button>
                 {#if host && session}
-                    <button class="btn btn-accent" onclick={() => void app.acceptRemote()}
-                        >Accept</button
+                    <button
+                        class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
+                        onclick={() => void app.acceptRemote()}>Accept</button
                     >
                 {/if}
             </div>
         </div>
     {:else}
-        <div class="remote-body">
-            <div class="viewer-column">
-                <div class="stage">
-                    <div class="stage-bar">
-                        <span class="share-label"
-                            ><span class="lamp"></span>Sharing screen · {user
-                                ? shortName(user)
-                                : ''}</span
+        <div class="flex min-h-0 flex-1 gap-5 overflow-hidden px-7 py-5">
+            <div class="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto">
+                <div class="flex flex-col gap-2.5 rounded-md border border-line bg-surface p-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-xs tracking-[0.06em] text-ink uppercase"
+                            ><span class="mr-1.5 inline-block size-[7px] rounded-full bg-error"
+                            ></span>Sharing screen · {user ? shortName(user) : ''}</span
                         >
-                        <span class="quality">LAN · 1080p · 24 fps</span>
+                        <span class="text-xs text-ink-3">LAN · 1080p · 24 fps</span>
                     </div>
-                    <div class="mock-screen">
-                        <div class="mock-app">
-                            <div class="mock-top">
-                                <span></span><span></span><span></span>
-                                <span class="mock-file">ticonnect — release-notes.md</span>
+                    <div
+                        class="flex aspect-video min-h-[300px] items-stretch overflow-hidden rounded-sm bg-backdrop"
+                    >
+                        <div class="flex flex-1 flex-col gap-2.5 p-3 text-[11px] text-ink-3">
+                            <div class="flex items-center gap-[5px] border-b border-line pb-2">
+                                <span class="size-1.5 rounded-full bg-line-strong"></span>
+                                <span class="size-1.5 rounded-full bg-line-strong"></span>
+                                <span class="size-1.5 rounded-full bg-line-strong"></span>
+                                <span class="ml-2 text-ink-3">ticonnect — release-notes.md</span>
                             </div>
-                            <div class="mock-columns">
-                                <div class="mock-side">
-                                    <span class="label">Explorer</span>
-                                    <strong>TICONNECT</strong>
+                            <div class="grid min-h-0 flex-1 grid-cols-[140px_1fr_150px] gap-[18px]">
+                                <div class="flex flex-col gap-[7px] border-r border-line pr-3">
+                                    <span
+                                        class="mt-1.5 font-text text-[9px] leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                                        >Explorer</span
+                                    >
+                                    <strong class="text-[11px] font-bold text-ink-2"
+                                        >TICONNECT</strong
+                                    >
                                     <span>crates/</span><span>docs/</span><span
-                                        class="mock-selected">release-notes.md</span
+                                        class="rounded-[4px] bg-surface-2 px-1.5 py-0.5 text-ink"
+                                        >release-notes.md</span
                                     >
                                     <span>ux-review.md</span><span>CHANGELOG.md</span>
                                 </div>
-                                <div class="mock-main">
-                                    <h3 class="display">TiConnect 0.9.2</h3>
-                                    <p>Quiet Grove release · LAN-only</p>
-                                    <ul>
+                                <div>
+                                    <h3
+                                        class="mt-0 mb-1 font-display text-[23px] leading-[1.15] font-normal tracking-[-0.01em] text-ink"
+                                    >
+                                        TiConnect 0.9.2
+                                    </h3>
+                                    <p class="mt-0 mb-4 text-ink-3">
+                                        Quiet Grove release · LAN-only
+                                    </p>
+                                    <ul
+                                        class="m-0 flex list-disc flex-col gap-[7px] pl-[18px] text-ink-2"
+                                    >
                                         <li>Messages, calls, and sharing stay on the LAN</li>
                                         <li>No accounts, no relays, no cloud storage</li>
                                         <li>Remote desktop requires fresh host consent</li>
                                         <li>48 tests passing · 0 warnings</li>
                                     </ul>
                                 </div>
-                                <div class="mock-meta">
-                                    <span class="label">Build</span><strong class="success"
+                                <div class="flex flex-col gap-1 border-l border-line pl-3">
+                                    <span
+                                        class="mt-1.5 font-text text-[9px] leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                                        >Build</span
+                                    >
+                                    <strong class="text-[11px] font-bold text-success!"
                                         >Passing</strong
                                     >
                                     <span>cargo test · workspace</span>
-                                    <span class="label">Branch</span><strong>main</strong>
+                                    <span
+                                        class="mt-1.5 font-text text-[9px] leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                                        >Branch</span
+                                    >
+                                    <strong class="text-[11px] font-bold text-ink-2">main</strong>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-                <p class="monitor-note">
-                    <span class="lamp"></span>Monitor 1 · 2560 × 1440 · indicator stays visible
-                    while sharing
+                <p class="m-0 text-xs text-ink-3">
+                    <span class="mr-1.5 inline-block size-[7px] rounded-full bg-error"
+                    ></span>Monitor 1 · 2560 × 1440 · indicator stays visible while sharing
                 </p>
                 {#if host}
-                    <section class="session-log">
-                        <h2 class="label">This session</h2>
-                        <div>
-                            <span>09:38</span><span>Sharing started</span><span>Monitor 1</span>
+                    <section class="rounded-md border border-line bg-surface p-4">
+                        <h2
+                            class="mt-0 mb-2.5 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                        >
+                            This session
+                        </h2>
+                        <div
+                            class="grid grid-cols-[70px_1fr_110px] gap-2.5 py-[7px] text-[13px] text-ink-2"
+                        >
+                            <span>09:38</span><span>Sharing started</span><span
+                                class="text-right text-ink-3">Monitor 1</span
+                            >
                         </div>
-                        <div>
+                        <div
+                            class="grid grid-cols-[70px_1fr_110px] gap-2.5 py-[7px] text-[13px] text-ink-2"
+                        >
                             <span>09:40</span><span>{user ? shortName(user) : 'Guest'} joined</span
-                            ><span>Encrypted</span>
+                            ><span class="text-right text-ink-3">Encrypted</span>
                         </div>
-                        <div>
+                        <div
+                            class="grid grid-cols-[70px_1fr_110px] gap-2.5 py-[7px] text-[13px] text-ink-2"
+                        >
                             <span>09:41</span><span>Keyboard control enabled</span><span
+                                class="text-right text-ink-3"
                                 >{inputAllowed ? 'Allowed' : 'Blocked'}</span
                             >
                         </div>
                     </section>
                 {/if}
             </div>
-            <aside class="side">
+            <aside class="w-[300px] shrink-0 overflow-y-auto">
                 {#if host}
-                    <section class="side-card">
-                        <div class="side-head">
-                            <h2 class="label">Sharing</h2>
+                    <section class="rounded-md border border-line bg-surface p-[18px]">
+                        <div class="flex items-center justify-between text-xs text-ink-3">
+                            <h2
+                                class="m-0 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                            >
+                                Sharing
+                            </h2>
                             <span>{sessionClock(Math.max(0, elapsed))}</span>
                         </div>
-                        <p class="share-title"><span class="lamp"></span>Sharing screen</p>
-                        <div class="peer-row">
+                        <p class="mt-2.5 mb-3.5 text-[19px] text-ink">
+                            <span class="mr-1.5 inline-block size-[7px] rounded-full bg-error"
+                            ></span>Sharing screen
+                        </p>
+                        <div class="flex items-center gap-2.5 border-b border-line py-2.5">
                             {#if user}<Avatar
                                     {user}
                                     image={app.avatarUrl(user.fingerprint)}
                                     size={32}
                                 />{/if}
-                            <div>
-                                <strong>{user ? shortName(user) : 'Remote viewer'}</strong><span
-                                    >Encrypted · LAN</span
-                                >
+                            <div class="flex flex-col gap-0.5">
+                                <strong class="text-sm"
+                                    >{user ? shortName(user) : 'Remote viewer'}</strong
+                                ><span class="text-xs text-ink-3">Encrypted · LAN</span>
                             </div>
                         </div>
-                        <div class="option-row">
-                            <div>
-                                <strong>Allow pointer and keyboard</strong><span
-                                    >Control stops when sharing ends</span
+                        <div
+                            class="flex items-center justify-between gap-4 border-b border-line py-3.5"
+                        >
+                            <div class="flex flex-col gap-0.5">
+                                <strong class="text-[13px]">Allow pointer and keyboard</strong><span
+                                    class="text-xs text-ink-3">Control stops when sharing ends</span
                                 >
                             </div>
                             <button
@@ -165,433 +226,63 @@
                                 onclick={() => (inputAllowed = !inputAllowed)}
                             ></button>
                         </div>
-                        <p class="side-note">
+                        <p class="my-3.5 text-[13px] leading-normal text-ink-3">
                             Stop sharing ends capture and input immediately. The indicator
                             disappears only after teardown.
                         </p>
-                        <button class="btn btn-danger wide" onclick={() => void app.endRemote()}
-                            >Stop sharing</button
+                        <button
+                            class="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
+                            onclick={() => void app.endRemote()}>Stop sharing</button
                         >
                     </section>
                 {:else}
-                    <section class="side-card">
-                        <h2 class="label">Session</h2>
-                        <div class="peer-row">
+                    <section class="rounded-md border border-line bg-surface p-[18px]">
+                        <h2
+                            class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                        >
+                            Session
+                        </h2>
+                        <div class="flex items-center gap-2.5 border-b border-line py-2.5">
                             {#if user}<Avatar
                                     {user}
                                     image={app.avatarUrl(user.fingerprint)}
                                     size={32}
                                 />{/if}
-                            <div>
-                                <strong>{user ? shortName(user) : 'Host'}</strong><span
-                                    >Encrypted · LAN</span
-                                >
+                            <div class="flex flex-col gap-0.5">
+                                <strong class="text-sm">{user ? shortName(user) : 'Host'}</strong
+                                ><span class="text-xs text-ink-3">Encrypted · LAN</span>
                             </div>
                         </div>
-                        <p class="side-note">
+                        <p class="my-3.5 text-[13px] leading-normal text-ink-3">
                             You are viewing this screen. Input is controlled by the host.
                         </p>
-                        <button class="btn btn-danger wide" onclick={() => void app.endRemote()}
-                            >Leave session</button
+                        <button
+                            class="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
+                            onclick={() => void app.endRemote()}>Leave session</button
                         >
                     </section>
                 {/if}
             </aside>
         </div>
         {#if !host}
-            <div class="viewer-controls">
-                <button class="btn btn-small"><Icon name="pointer" size={14} />Pointer</button>
-                <button class="btn btn-small"><Icon name="keyboard" size={14} />Keyboard</button>
-                <button class="btn btn-small"><Icon name="fullscreen" size={14} />Fullscreen</button
+            <div class="flex shrink-0 justify-center gap-2 pb-5">
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    ><Icon name="pointer" size={14} />Pointer</button
                 >
-                <button class="btn btn-small btn-danger" onclick={() => void app.endRemote()}
-                    >End session</button
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    ><Icon name="keyboard" size={14} />Keyboard</button
+                >
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    ><Icon name="fullscreen" size={14} />Fullscreen</button
+                >
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
+                    onclick={() => void app.endRemote()}>End session</button
                 >
             </div>
         {/if}
     {/if}
 </section>
-
-<style>
-    .remote-pane {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-        height: 100%;
-        background: var(--base);
-        overflow: hidden;
-    }
-
-    .remote-head {
-        display: flex;
-        align-items: center;
-        height: 88px;
-        flex-shrink: 0;
-        padding-inline: 28px;
-        gap: 14px;
-        background: var(--rail);
-    }
-
-    .head-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .head-copy h1 {
-        margin: 0;
-        font-size: var(--step-3);
-        line-height: 34px;
-    }
-
-    .head-copy p {
-        margin: 0;
-        color: var(--ink-3);
-        font-size: 13px;
-    }
-
-    .live-pill {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        height: 34px;
-        padding-inline: 14px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-pill);
-        color: var(--ink-2);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .dot,
-    .lamp {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: var(--error);
-    }
-
-    .lamp {
-        display: inline-block;
-        margin-right: 6px;
-    }
-
-    .waiting {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        flex: 1;
-        gap: 10px;
-        text-align: center;
-    }
-
-    .wait-monogram {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 88px;
-        height: 88px;
-        border-radius: 50%;
-        background: var(--surface);
-    }
-
-    .waiting h2 {
-        margin: 8px 0 0;
-        font-size: var(--step-2);
-    }
-
-    .wait-actions {
-        display: flex;
-        gap: 10px;
-        margin-top: 8px;
-    }
-
-    .remote-body {
-        display: flex;
-        min-height: 0;
-        flex: 1;
-        gap: 20px;
-        padding: 20px 28px;
-        overflow: hidden;
-    }
-
-    .viewer-column {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-        gap: 12px;
-        overflow-y: auto;
-    }
-
-    .stage {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .stage-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-    }
-
-    .share-label {
-        color: var(--ink);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .quality {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .mock-screen {
-        display: flex;
-        aspect-ratio: 16 / 9;
-        min-height: 300px;
-        align-items: stretch;
-        border-radius: var(--radius-s);
-        background: var(--backdrop);
-        overflow: hidden;
-    }
-
-    .mock-app {
-        display: flex;
-        flex-direction: column;
-        flex: 1;
-        padding: 12px;
-        gap: 10px;
-        color: var(--ink-3);
-        font-size: 11px;
-    }
-
-    .mock-top {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid var(--line);
-    }
-
-    .mock-top > span:not(.mock-file) {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--line-strong);
-    }
-
-    .mock-file {
-        margin-left: 8px;
-        color: var(--ink-3);
-    }
-
-    .mock-columns {
-        display: grid;
-        grid-template-columns: 140px 1fr 150px;
-        gap: 18px;
-        min-height: 0;
-        flex: 1;
-    }
-
-    .mock-side {
-        display: flex;
-        flex-direction: column;
-        gap: 7px;
-        padding-right: 12px;
-        border-right: 1px solid var(--line);
-    }
-
-    .mock-side strong,
-    .mock-meta strong {
-        color: var(--ink-2);
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .mock-side .label,
-    .mock-meta .label {
-        margin-top: 6px;
-        color: var(--ink-3);
-        font-size: 9px;
-    }
-
-    .mock-selected {
-        padding: 2px 6px;
-        border-radius: 4px;
-        background: var(--surface-2);
-        color: var(--ink);
-    }
-
-    .mock-main h3 {
-        margin: 0 0 4px;
-        color: var(--ink);
-        font-size: 23px;
-    }
-
-    .mock-main p {
-        margin: 0 0 16px;
-        color: var(--ink-3);
-    }
-
-    .mock-main ul {
-        display: flex;
-        flex-direction: column;
-        gap: 7px;
-        margin: 0;
-        padding-left: 18px;
-        color: var(--ink-2);
-    }
-
-    .mock-meta {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        padding-left: 12px;
-        border-left: 1px solid var(--line);
-    }
-
-    .success {
-        color: var(--success) !important;
-    }
-
-    .monitor-note {
-        margin: 0;
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .session-log {
-        padding: 16px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .session-log h2 {
-        margin: 0 0 10px;
-    }
-
-    .session-log div {
-        display: grid;
-        grid-template-columns: 70px 1fr 110px;
-        gap: 10px;
-        padding: 7px 0;
-        color: var(--ink-2);
-        font-size: 13px;
-    }
-
-    .session-log div span:last-child {
-        color: var(--ink-3);
-        text-align: right;
-    }
-
-    .side {
-        width: 300px;
-        flex-shrink: 0;
-        overflow-y: auto;
-    }
-
-    .side-card {
-        padding: 18px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .side-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .side-head h2 {
-        margin: 0;
-    }
-
-    .share-title {
-        margin: 10px 0 14px;
-        color: var(--ink);
-        font-size: 19px;
-    }
-
-    .peer-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--line);
-    }
-
-    .peer-row div {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .peer-row strong {
-        font-size: 14px;
-    }
-
-    .peer-row span {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .option-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 14px 0;
-        border-bottom: 1px solid var(--line);
-    }
-
-    .option-row div {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .option-row strong {
-        font-size: 13px;
-    }
-
-    .option-row span {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .side-note {
-        margin: 14px 0;
-        color: var(--ink-3);
-        font-size: 13px;
-        line-height: 1.5;
-    }
-
-    .wide {
-        width: 100%;
-    }
-
-    .viewer-controls {
-        display: flex;
-        justify-content: center;
-        flex-shrink: 0;
-        gap: 8px;
-        padding-bottom: 20px;
-    }
-</style>

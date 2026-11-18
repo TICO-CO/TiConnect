@@ -6,6 +6,7 @@ ICON_DIR ?= $(DATADIR)/icons/hicolor/scalable/apps
 METAINFO_DIR ?= $(DATADIR)/metainfo
 SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
+LAB_RUSTC_WRAPPER ?=
 
 .PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test web-install web-dev web-build web-check
 
@@ -33,20 +34,29 @@ build-bin:
 	@if [ -n "$(TICONNECT_BIN)" ]; then \
 		test -x "$(TICONNECT_BIN)" || { echo "TICONNECT_BIN is not executable: $(TICONNECT_BIN)" >&2; exit 1; }; \
 		echo "using TICONNECT_BIN=$(TICONNECT_BIN)"; \
+		echo "warning: embedded UI freshness depends on the external binary" >&2; \
 	else \
 		allow="$(TICONNECT_ALLOW_UNDEFINED)"; \
 		if [ -z "$$allow" ] && [ -n "$${NIX_LD:-}" ]; then allow=1; fi; \
 		if [ "$$allow" = "1" ]; then \
-			CARGO_PROFILE_DEV_DEBUG=0 cargo rustc -p ticonnect --bin ticonnect -- -C link-arg=-Wl,--allow-shlib-undefined; \
+			RUSTC_WRAPPER="$(LAB_RUSTC_WRAPPER)" CARGO_PROFILE_DEV_DEBUG=0 cargo rustc -p ticonnect --bin ticonnect -- -C link-arg=-Wl,--allow-shlib-undefined; \
 		else \
-			CARGO_PROFILE_DEV_DEBUG=0 cargo build --bin ticonnect; \
+			RUSTC_WRAPPER="$(LAB_RUSTC_WRAPPER)" CARGO_PROFILE_DEV_DEBUG=0 cargo build --bin ticonnect; \
 		fi; \
 	fi
 
-lab: build-bin
+lab:
+	@if [ "$${LAB_HOT_RELOAD:-1}" = "1" ]; then \
+		$(MAKE) build-bin; \
+	else \
+		$(MAKE) web-build; \
+		$(MAKE) build-bin; \
+	fi
 	TICONNECT_BIN="$(TICONNECT_BIN)" tests/local/lab.sh
 
-lab-smoke: build-bin
+lab-smoke:
+	$(MAKE) web-build
+	$(MAKE) build-bin
 	TICONNECT_BIN="$(TICONNECT_BIN)" tests/local/lab.sh --smoke
 
 uninstall-user:
@@ -81,9 +91,13 @@ web-dev:
 
 web-build:
 	cd $(WEB_DIR) && bun run build
-	rm -rf $(UI_ASSETS)
-	mkdir -p $(UI_ASSETS)
-	cp -R $(WEB_DIR)/dist/. $(UI_ASSETS)/
+	@if command -v rsync >/dev/null 2>&1; then \
+		rsync -rlpgoD --checksum --delete $(WEB_DIR)/dist/ $(UI_ASSETS)/; \
+	else \
+		rm -rf $(UI_ASSETS); \
+		mkdir -p $(UI_ASSETS); \
+		cp -R $(WEB_DIR)/dist/. $(UI_ASSETS)/; \
+	fi
 
 web-check:
 	cd $(WEB_DIR) && bun run format:check && bun run lint && bun run check && bun run test

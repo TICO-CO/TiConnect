@@ -204,9 +204,11 @@ uses `Activate("chat")`. Starting a second UI forwards activation to the running
 instance.
 
 Frontend styling lives in `crates/ui/web`. Build the bundle with `make
-web-build`. Set `TICONNECT_DEV_URL=http://127.0.0.1:5173` to load the Vite dev
-server instead of the embedded bundle; this disables bridge token checks and
-must not be used on a shared machine.
+web-build`. Interactive `make lab` starts Vite automatically and hot-reloads
+frontend edits; set `LAB_HOT_RELOAD=0` to use the embedded bundle instead. Set
+`TICONNECT_DEV_URL=http://127.0.0.1:5173` manually to load the Vite dev server
+outside the lab; this disables bridge token checks and must not be used on a
+shared machine.
 
 Keyboard shortcuts:
 
@@ -380,7 +382,8 @@ Settings keys:
   for 500 ms, and sent through the outbox. Mute suppresses delivered receipts;
   ignore suppresses all receipts.
 - `MarkRead` always records local read state in `messages.read_at`, even when
-  read receipts are disabled. `ListConversationSummaries` returns the last
+  read receipts are disabled. `MarkConversationRead` marks every unread inbound
+  message in one conversation. `ListConversationSummaries` returns the last
   message, unread count, and conversation id for sidebar previews.
 - Outgoing message state is rendered as clock, single check, double check, and
   blue double check for queued, sent, delivered, and read.
@@ -397,8 +400,9 @@ Settings keys:
   daemon continues headless.
 
 D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
-`GetMessageState`, `SetUserPolicy`, and `SetDnd`. Signals are `MessageReceived`,
-`MessageStateChanged`, `SyncCompleted`, and `PolicyChanged`.
+`MarkConversationRead`, `GetMessageState`, `SetUserPolicy`, and `SetDnd`.
+Signals are `MessageReceived`, `MessageStateChanged`, `SyncCompleted`, and
+`PolicyChanged`.
 
 ## Attachments
 

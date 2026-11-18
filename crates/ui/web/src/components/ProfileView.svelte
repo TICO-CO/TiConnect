@@ -65,10 +65,10 @@
     }
 </script>
 
-<section class="profile">
-    <div class="back-row">
+<section class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-base">
+    <div class="flex h-[60px] shrink-0 items-center px-7">
         <button
-            class="icon-button small"
+            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
             onclick={() => app.backToChat()}
             aria-label="Back to conversation"
         >
@@ -76,128 +76,253 @@
         </button>
     </div>
     {#if details && user}
-        <header class="profile-head">
+        <header class="flex shrink-0 items-center gap-4 px-7 pt-0 pb-5">
             <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={64} />
-            <div class="identity">
-                <h1 class="display">{shortName(user)}</h1>
-                <p class="presence">
-                    <span class="dot" class:online={user.connected}></span>
+            <div class="flex min-w-0 flex-1 flex-col gap-[3px]">
+                <h1
+                    class="m-0 font-display text-step-3 leading-[34px] font-normal tracking-[-0.01em]"
+                >
+                    {shortName(user)}
+                </h1>
+                <p
+                    class="m-0 flex items-center gap-1.5 text-xs tracking-[0.06em] text-ink-2 uppercase"
+                >
+                    <span
+                        class="size-1.5 rounded-full border border-line-strong data-online:border-success data-online:bg-success"
+                        data-online={user.connected ? '' : undefined}
+                    ></span>
                     {user.connected ? 'Online' : 'Offline'}
-                    <span class="separator">·</span>
+                    <span class="text-ink-3">·</span>
                     Stable identity {fingerprintLabel(user.fingerprint)}
                 </p>
-                <p class="subtle">First seen {firstSeen(user.trusted_at)}</p>
+                <p class="m-0 text-step-xs text-ink-3">First seen {firstSeen(user.trusted_at)}</p>
             </div>
-            <div class="actions">
+            <div class="flex shrink-0 gap-2.5">
                 <button
-                    class="btn btn-accent"
+                    class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
                     onclick={() => app.navigate({ kind: 'chat', id: user.id })}
                 >
                     Message
                 </button>
-                <button class="btn" onclick={startCall}>
+                <button
+                    class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={startCall}
+                >
                     Call
                     <Icon name="call" size={15} />
                 </button>
-                <button class="btn" onclick={startRemote}>
+                <button
+                    class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={startRemote}
+                >
                     Remote
                     <Icon name="remote" size={15} />
                 </button>
-                <button class="btn" onclick={watchTogether}>
+                <button
+                    class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={watchTogether}
+                >
                     Watch party
                     <Icon name="chevron-right" size={13} />
                 </button>
             </div>
         </header>
-        <div class="grid scroll">
-            <div class="column">
-                <section class="panel">
-                    <h2 class="label">Connection</h2>
-                    <dl>
-                        <div>
-                            <dt>Status</dt>
-                            <dd class="online">{user.connected ? 'Online' : 'Offline'}</dd>
+        <div
+            class="grid scroll min-h-0 flex-1 grid-cols-2 items-start gap-5 overflow-y-auto px-7 pt-0 pb-6"
+        >
+            <div class="flex flex-col gap-4">
+                <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Connection
+                    </h2>
+                    <dl class="m-0 flex flex-col gap-0">
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Status</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink data-online:text-success"
+                                data-online={user.connected ? '' : undefined}
+                            >
+                                {user.connected ? 'Online' : 'Offline'}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>Current IP</dt>
-                            <dd>{details.addresses || 'Not available'}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Current IP</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.addresses || 'Not available'}
+                            </dd>
                         </div>
                         {#if app.addressChanged}
-                            <div class="warning-row">
-                                <dt>Previous IP</dt>
-                                <dd>{app.preferences.previousAddresses[user.id] ?? 'Unknown'}</dd>
+                            <div
+                                class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                            >
+                                <dt class="text-step-xs text-ink-3">Previous IP</dt>
+                                <dd
+                                    class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-warning"
+                                >
+                                    {app.preferences.previousAddresses[user.id] ?? 'Unknown'}
+                                </dd>
                             </div>
-                            <p class="warning">Address changed recently</p>
+                            <p class="m-0 mt-1.5 text-xs tracking-[0.04em] text-warning uppercase">
+                                Address changed recently
+                            </p>
                         {/if}
-                        <div>
-                            <dt>MAC</dt>
-                            <dd>{details.mac || 'Not exposed'}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">MAC</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.mac || 'Not exposed'}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>Connected since</dt>
-                            <dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Connected since</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
                                 {app.connectedSince[user.id]
                                     ? clock(app.connectedSince[user.id] ?? 0)
                                     : 'Unknown'}
                             </dd>
                         </div>
-                        <div>
-                            <dt>Last seen</dt>
-                            <dd>{relativeSeen(user.last_seen, user.connected)}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Last seen</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {relativeSeen(user.last_seen, user.connected)}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>Transport</dt>
-                            <dd>Encrypted · QUIC</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Transport</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                Encrypted · QUIC
+                            </dd>
                         </div>
                     </dl>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Device</h2>
-                    <dl>
-                        <div>
-                            <dt>OS</dt>
-                            <dd>{details.os || 'Unknown'}</dd>
+                <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Device
+                    </h2>
+                    <dl class="m-0 flex flex-col gap-0">
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">OS</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.os || 'Unknown'}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>Display server</dt>
-                            <dd>{details.display_server || 'Unknown'}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Display server</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.display_server || 'Unknown'}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>App</dt>
-                            <dd>{details.app_version || 'Unknown'}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">App</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.app_version || 'Unknown'}
+                            </dd>
                         </div>
-                        <div>
-                            <dt>Protocol</dt>
-                            <dd>ticonnect/1</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Protocol</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                ticonnect/1
+                            </dd>
                         </div>
                     </dl>
                 </section>
             </div>
-            <div class="column">
-                <section class="panel">
-                    <h2 class="label">Activity</h2>
-                    <dl>
-                        <div>
-                            <dt>Session</dt>
-                            <dd>{activityText()}</dd>
+            <div class="flex flex-col gap-4">
+                <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Activity
+                    </h2>
+                    <dl class="m-0 flex flex-col gap-0">
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Session</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {activityText()}
+                            </dd>
                         </div>
                         {#each app.callLogs
                             .filter((log) => log.userId === user.id)
                             .slice(-3) as log (log.id)}
-                            <div>
-                                <dt>{log.reason === 'missed' ? 'Missed call' : 'Call'}</dt>
-                                <dd>{clock(log.at)}</dd>
+                            <div
+                                class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                            >
+                                <dt class="text-step-xs text-ink-3">
+                                    {log.reason === 'missed' ? 'Missed call' : 'Call'}
+                                </dt>
+                                <dd
+                                    class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                                >
+                                    {clock(log.at)}
+                                </dd>
                             </div>
                         {/each}
-                        <div>
-                            <dt>Source</dt>
-                            <dd>{details.source || 'LAN'}</dd>
+                        <div
+                            class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
+                        >
+                            <dt class="text-step-xs text-ink-3">Source</dt>
+                            <dd
+                                class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
+                            >
+                                {details.source || 'LAN'}
+                            </dd>
                         </div>
                     </dl>
                 </section>
-                <section class="panel">
-                    <h2 class="label">Policies</h2>
-                    <div class="policy-row">
+                <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Policies
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-4 border-b border-line/55 py-2.5"
+                    >
                         <span>Mute user</span>
                         <button
                             class="toggle"
@@ -210,7 +335,9 @@
                                 )}
                         ></button>
                     </div>
-                    <div class="policy-row">
+                    <div
+                        class="flex items-center justify-between gap-4 border-b border-line/55 py-2.5"
+                    >
                         <span>Ignore messages</span>
                         <button
                             class="toggle"
@@ -224,203 +351,19 @@
                         ></button>
                     </div>
                     <button
-                        class="text-action"
+                        class="mt-3 border-0 bg-transparent p-0 text-sm font-bold text-ink"
                         onclick={() => (app.notice = 'Local history clearing is not wired yet.')}
                     >
                         Clear local history
                     </button>
-                    <button class="btn btn-danger block" onclick={() => void app.blockUser(user.id)}
-                        >Block user</button
+                    <button
+                        class="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
+                        onclick={() => void app.blockUser(user.id)}>Block user</button
                     >
                 </section>
             </div>
         </div>
     {:else}
-        <p class="empty">User details are not available.</p>
+        <p class="m-0 p-8 text-step-xs text-ink-3">User details are not available.</p>
     {/if}
 </section>
-
-<style>
-    .profile {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        height: 100%;
-        flex: 1;
-        background: var(--base);
-        overflow: hidden;
-    }
-
-    .back-row {
-        display: flex;
-        align-items: center;
-        height: 60px;
-        flex-shrink: 0;
-        padding-inline: 28px;
-    }
-
-    .profile-head {
-        display: flex;
-        align-items: center;
-        gap: 16px;
-        padding: 0 28px 20px;
-        flex-shrink: 0;
-    }
-
-    .identity {
-        display: flex;
-        flex-direction: column;
-        gap: 3px;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .identity h1 {
-        margin: 0;
-        font-size: var(--step-3);
-        line-height: 34px;
-    }
-
-    .presence {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin: 0;
-        color: var(--ink-2);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .presence .separator {
-        color: var(--ink-3);
-    }
-
-    .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        border: 1px solid var(--line-strong);
-    }
-
-    .dot.online {
-        background: var(--success);
-        border-color: var(--success);
-    }
-
-    .identity .subtle {
-        margin: 0;
-        font-size: 13px;
-    }
-
-    .actions {
-        display: flex;
-        gap: 10px;
-        flex-shrink: 0;
-    }
-
-    .grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        align-items: start;
-        gap: 20px;
-        padding: 0 28px 24px;
-        min-height: 0;
-        flex: 1;
-        overflow-y: auto;
-    }
-
-    .column {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-    }
-
-    .panel {
-        padding: 18px 20px;
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-    }
-
-    .panel h2 {
-        margin: 0 0 12px;
-    }
-
-    dl {
-        display: flex;
-        flex-direction: column;
-        gap: 0;
-        margin: 0;
-    }
-
-    dl > div {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 9px 0;
-        border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
-    }
-
-    dl > div:last-child {
-        border-bottom: 0;
-    }
-
-    dt {
-        color: var(--ink-3);
-        font-size: 13px;
-    }
-
-    dd {
-        margin: 0;
-        color: var(--ink);
-        font-size: 13px;
-        text-align: right;
-        overflow-wrap: anywhere;
-    }
-
-    dd.online {
-        color: var(--success);
-    }
-
-    .warning-row dd {
-        color: var(--warning);
-    }
-
-    .warning {
-        margin: 6px 0 0;
-        color: var(--warning);
-        font-size: 12px;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-    }
-
-    .policy-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 10px 0;
-        border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
-    }
-
-    .text-action {
-        margin-top: 12px;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--ink);
-        font-size: 14px;
-        font-weight: 700;
-    }
-
-    .block {
-        width: 100%;
-        margin-top: 12px;
-    }
-
-    .empty {
-        padding: 32px;
-    }
-</style>

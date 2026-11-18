@@ -85,7 +85,7 @@ fn settings_map_renders_values() {
         ("overlay.timeout_secs".to_owned(), OwnedVariant::from(5_u32)),
         ("identity.display_name".to_owned(), text("Ada")),
     ]);
-    let settings = events::settings_map(&values);
+    let settings = events::settings_map(&values).expect("settings");
     assert_eq!(settings["dnd.enabled"], "true");
     assert_eq!(settings["overlay.timeout_secs"], "5");
     assert_eq!(settings["identity.display_name"], "Ada");
@@ -93,10 +93,19 @@ fn settings_map_renders_values() {
 
 #[test]
 fn policy_and_state_parse_stably() {
-    assert_eq!(UserPolicy::parse("accept").as_str(), "accept");
-    assert_eq!(UserPolicy::parse("mute").as_str(), "mute");
-    assert_eq!(UserPolicy::parse("ignore").as_str(), "ignore");
-    assert_eq!(UserPolicy::parse("unknown"), UserPolicy::Accept);
-    assert_eq!(MessageState::parse("read").as_str(), "read");
-    assert_eq!(MessageState::parse("unknown"), MessageState::Unknown);
+    assert_eq!(
+        UserPolicy::parse("accept").expect("accept").as_str(),
+        "accept"
+    );
+    assert_eq!(UserPolicy::parse("mute").expect("mute").as_str(), "mute");
+    assert_eq!(
+        UserPolicy::parse("ignore").expect("ignore").as_str(),
+        "ignore"
+    );
+    assert!(UserPolicy::parse("unknown").is_err());
+    assert_eq!(MessageState::parse("read").expect("read").as_str(), "read");
+    assert_eq!(
+        MessageState::parse("unknown").expect("unknown"),
+        MessageState::Unknown
+    );
 }

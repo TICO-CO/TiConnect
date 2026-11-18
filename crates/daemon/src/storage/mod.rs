@@ -54,6 +54,7 @@ enum Command {
         reply: Reply<Conversation>,
     },
     ConversationByUser(String, Reply<Option<Conversation>>),
+    ConversationById(String, Reply<Option<Conversation>>),
     AllocateSeq(String, Reply<u64>),
     InsertMessage(
         Box<MessageRecord>,
@@ -90,7 +91,13 @@ enum Command {
         conversation_id: String,
         message_ids: Vec<String>,
         read_at: i64,
-        reply: Reply<u32>,
+        reply: Reply<Vec<String>>,
+    },
+    MarkConversationRead {
+        conversation_id: String,
+        local_sender_id: String,
+        read_at: i64,
+        reply: Reply<Vec<String>>,
     },
     MessageState(String, Reply<Option<MessageState>>),
     GetUserState(String, Reply<UserState>),
@@ -298,6 +305,15 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
+    pub async fn conversation_by_id(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Conversation>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ConversationById(conversation_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
     pub async fn allocate_seq(&self, user_id: &str) -> Result<u64, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::AllocateSeq(user_id.to_owned(), reply))?;
@@ -409,11 +425,27 @@ impl DatabaseHandle {
         conversation_id: &str,
         message_ids: &[String],
         read_at: i64,
-    ) -> Result<u32, StorageError> {
+    ) -> Result<Vec<String>, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::MarkMessagesRead {
             conversation_id: conversation_id.to_owned(),
             message_ids: message_ids.to_vec(),
+            read_at,
+            reply,
+        })?;
+        receive(receiver).await
+    }
+
+    pub async fn mark_conversation_read(
+        &self,
+        conversation_id: &str,
+        local_sender_id: &str,
+        read_at: i64,
+    ) -> Result<Vec<String>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::MarkConversationRead {
+            conversation_id: conversation_id.to_owned(),
+            local_sender_id: local_sender_id.to_owned(),
             read_at,
             reply,
         })?;
@@ -635,6 +667,9 @@ fn dispatch(connection: &Connection, command: Command) {
         Command::ConversationByUser(user_id, reply) => {
             let _ = reply.send(conversations::by_user(connection, &user_id));
         }
+        Command::ConversationById(conversation_id, reply) => {
+            let _ = reply.send(conversations::by_id(connection, &conversation_id));
+        }
         Command::AllocateSeq(user_id, reply) => {
             let _ = reply.send(user_state::allocate_seq(connection, &user_id));
         }
@@ -705,6 +740,19 @@ fn dispatch(connection: &Connection, command: Command) {
                 connection,
                 &conversation_id,
                 &message_ids,
+                read_at,
+            ));
+        }
+        Command::MarkConversationRead {
+            conversation_id,
+            local_sender_id,
+            read_at,
+            reply,
+        } => {
+            let _ = reply.send(messages::mark_conversation_read(
+                connection,
+                &conversation_id,
+                &local_sender_id,
                 read_at,
             ));
         }

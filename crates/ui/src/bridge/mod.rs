@@ -259,6 +259,7 @@ async fn handle_socket(state: Arc<BridgeState>, socket: WebSocket) {
     }
 
     let mut events = state.events.subscribe();
+    let (reply_sender, mut reply_receiver) = mpsc::unbounded_channel::<Reply>();
     let _ = sender
         .send(Message::Text(WsEvent::Ready.encode().into()))
         .await;
@@ -268,13 +269,31 @@ async fn handle_socket(state: Arc<BridgeState>, socket: WebSocket) {
             incoming = receiver.next() => {
                 let Some(Ok(message)) = incoming else { break };
                 if let Message::Text(text) = message {
-                    let reply = match serde_json::from_str::<Request>(text.as_str()) {
-                        Ok(request) => protocol::dispatch(&state, request).await,
-                        Err(error) => Reply::error(Value::Null, RpcError::invalid_params(error.to_string())),
-                    };
-                    if sender.send(Message::Text(reply.encode().into())).await.is_err() {
-                        break;
+                    match serde_json::from_str::<Request>(text.as_str()) {
+                        Ok(request) => {
+                            let state = state.clone();
+                            let reply_sender = reply_sender.clone();
+                            tokio::spawn(async move {
+                                let reply = protocol::dispatch(&state, request).await;
+                                let _ = reply_sender.send(reply);
+                            });
+                        }
+                        Err(error) => {
+                            let reply = Reply::error(
+                                Value::Null,
+                                RpcError::invalid_params(error.to_string()),
+                            );
+                            if sender.send(Message::Text(reply.encode().into())).await.is_err() {
+                                break;
+                            }
+                        }
                     }
+                }
+            }
+            reply = reply_receiver.recv() => {
+                let Some(reply) = reply else { continue };
+                if sender.send(Message::Text(reply.encode().into())).await.is_err() {
+                    break;
                 }
             }
             event = events.recv() => {

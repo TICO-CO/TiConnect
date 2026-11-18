@@ -30,17 +30,10 @@
         color?: string;
     }
 
-    let { name, size = 16, color = 'var(--ink)' }: Props = $props();
+    let { name, size = 16, color = 'var(--color-ink)' }: Props = $props();
 </script>
 
-<svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    aria-hidden="true"
-    style={`--icon-color:${color}`}
->
+<svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
     {#if name === 'search'}
         <circle cx="11" cy="11" r="6.5" stroke={color} stroke-width="1.7" />
         <path d="m16 16 4 4" stroke={color} stroke-width="1.7" stroke-linecap="round" />

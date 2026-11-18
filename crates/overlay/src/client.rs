@@ -73,7 +73,7 @@ async fn run(events: UnboundedSender<Event>, mut commands: UnboundedReceiver<Com
                 let settings = load_settings().await;
                 let _ = events.send(settings);
                 if let Ok(values) = proxy.list_users().await
-                    && let Ok(users) = events::parse_users(&values)
+                    && let Some(users) = parse_event(events::parse_users(&values), "users")
                 {
                     let _ = events.send(Event::Users(users));
                 }
@@ -138,6 +138,16 @@ fn default_settings_event() -> Event {
     }
 }
 
+fn parse_event<T>(result: events::Result<T>, name: &'static str) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(%error, %name, "failed to parse daemon event");
+            None
+        }
+    }
+}
+
 fn spawn_listener(
     connection: zbus::Connection,
     events: UnboundedSender<Event>,
@@ -178,118 +188,183 @@ async fn listen(
         tokio::select! {
             signal = messages.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(message) = events::parse_message(&args.message, None) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(message) =
+                    parse_event(events::parse_message(&args.message, None), "message_received")
+                {
                     let _ = events.send(Event::Message(message));
                 }
             }
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(user) = events::parse_user(&args.user) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_event")
+                {
                     let _ = events.send(Event::User(user));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(user) = events::parse_user(&args.user) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_event")
+                {
                     let _ = events.send(Event::User(user));
                 }
             }
             signal = incoming_call.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(call) = events::parse_call(&args.call) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(call) =
+                    parse_event(events::parse_call(&args.call), "incoming_call")
+                {
                     let _ = events.send(Event::IncomingCall(call));
                 }
             }
             signal = call_state_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(_args) = signal.args() else { continue };
+                let Ok(_args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if let Ok(proxy) = DaemonProxy::new(&connection).await
                     && let Ok(values) = proxy.get_call_state().await
                 {
-                    let call = if values.is_empty() {
-                        None
-                    } else {
-                        events::parse_call(&values).ok()
-                    };
-                    let _ = events.send(Event::CallState(call));
+                    if values.is_empty() {
+                        let _ = events.send(Event::CallState(None));
+                    } else if let Some(call) =
+                        parse_event(events::parse_call(&values), "call_state")
+                    {
+                        let _ = events.send(Event::CallState(Some(call)));
+                    }
                 }
             }
             signal = remote_requested.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(session) = events::parse_remote_session(&args.session) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(session) = parse_event(
+                    events::parse_remote_session(&args.session),
+                    "remote_session_requested",
+                ) {
                     let _ = events.send(Event::RemoteSessionRequested(session));
                 }
             }
             signal = remote_started.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(_args) = signal.args() else { continue };
+                let Ok(_args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if let Ok(proxy) = DaemonProxy::new(&connection).await
                     && let Ok(values) = proxy.get_remote_session().await
                 {
-                    let session = if values.is_empty() {
-                        None
-                    } else {
-                        events::parse_remote_session(&values).ok()
-                    };
-                    let _ = events.send(Event::RemoteState(session));
+                    if values.is_empty() {
+                        let _ = events.send(Event::RemoteState(None));
+                    } else if let Some(session) =
+                        parse_event(events::parse_remote_session(&values), "remote_state")
+                    {
+                        let _ = events.send(Event::RemoteState(Some(session)));
+                    }
                 }
             }
             signal = remote_indicator.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(_args) = signal.args() else { continue };
+                let Ok(_args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if let Ok(proxy) = DaemonProxy::new(&connection).await
                     && let Ok(values) = proxy.get_remote_session().await
                 {
-                    let session = if values.is_empty() {
-                        None
-                    } else {
-                        events::parse_remote_session(&values).ok()
-                    };
-                    let _ = events.send(Event::RemoteState(session));
+                    if values.is_empty() {
+                        let _ = events.send(Event::RemoteState(None));
+                    } else if let Some(session) =
+                        parse_event(events::parse_remote_session(&values), "remote_state")
+                    {
+                        let _ = events.send(Event::RemoteState(Some(session)));
+                    }
                 }
             }
             signal = watch_party_requested.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(party) = events::parse_watch_party(&args.party) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_requested",
+                ) {
                     let _ = events.send(Event::WatchPartyRequested(party));
                 }
             }
             signal = watch_party_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(party) = events::parse_watch_party(&args.party) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_changed",
+                ) {
                     let _ = events.send(Event::WatchPartyChanged(party));
                 }
             }
             signal = watch_party_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(Event::WatchPartyEnded(args.party_id.to_owned()));
             }
             signal = call_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(Event::CallEnded(args.call_id.to_owned()));
             }
             signal = remote_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(Event::RemoteSessionEnded(args.session_id.to_owned()));
             }
             signal = settings_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(_args) = signal.args() else { continue };
+                let Ok(_args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(load_settings().await);
             }
             signal = owner_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if args.name == ipc::DAEMON_BUS_NAME {
                     let _ = lost.send("daemon restarting".to_owned());
                     return Ok(());

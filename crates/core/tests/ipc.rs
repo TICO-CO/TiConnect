@@ -18,6 +18,7 @@ fn methods_and_signals_match_the_documented_contract() {
     assert_eq!(ipc::methods::LIST_SETTINGS, "ListSettings");
     assert_eq!(ipc::methods::LIST_USERS, "ListUsers");
     assert_eq!(ipc::methods::COUNT_MESSAGES, "CountMessages");
+    assert_eq!(ipc::methods::MARK_CONVERSATION_READ, "MarkConversationRead");
     assert_eq!(ipc::methods::FORGET_USER, "ForgetUser");
     assert_eq!(ipc::methods::SHUTDOWN, "Shutdown");
 

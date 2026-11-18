@@ -29,6 +29,18 @@ use super::{
 pub enum ParseError {
     #[error("missing field: {0}")]
     MissingField(String),
+
+    #[error("field {field} has invalid type: expected {expected}")]
+    InvalidType {
+        field: String,
+        expected: &'static str,
+    },
+
+    #[error("field {field} has invalid value: {value}")]
+    InvalidValue { field: String, value: String },
+
+    #[error("field {field} value is out of range")]
+    OutOfRange { field: String },
 }
 
 pub type Result<T> = std::result::Result<T, ParseError>;
@@ -42,11 +54,15 @@ pub enum UserPolicy {
 }
 
 impl UserPolicy {
-    pub fn parse(value: &str) -> Self {
+    pub fn parse(value: &str) -> Result<Self> {
         match value {
-            "mute" => Self::Mute,
-            "ignore" => Self::Ignore,
-            _ => Self::Accept,
+            "accept" => Ok(Self::Accept),
+            "mute" => Ok(Self::Mute),
+            "ignore" => Ok(Self::Ignore),
+            other => Err(ParseError::InvalidValue {
+                field: "policy".to_owned(),
+                value: other.to_owned(),
+            }),
         }
     }
 
@@ -72,15 +88,19 @@ pub enum MessageState {
 }
 
 impl MessageState {
-    pub fn parse(value: &str) -> Self {
+    pub fn parse(value: &str) -> Result<Self> {
         match value {
-            "queued" => Self::Queued,
-            "sent" => Self::Sent,
-            "delivered" => Self::Delivered,
-            "read" => Self::Read,
-            "failed" => Self::Failed,
-            "expired" => Self::Expired,
-            _ => Self::Unknown,
+            "queued" => Ok(Self::Queued),
+            "sent" => Ok(Self::Sent),
+            "delivered" => Ok(Self::Delivered),
+            "read" => Ok(Self::Read),
+            "failed" => Ok(Self::Failed),
+            "expired" => Ok(Self::Expired),
+            "unknown" => Ok(Self::Unknown),
+            other => Err(ParseError::InvalidValue {
+                field: "message state".to_owned(),
+                value: other.to_owned(),
+            }),
         }
     }
 
@@ -307,17 +327,17 @@ pub fn parse_identity(values: &HashMap<String, OwnedVariant>) -> Result<Identity
     Ok(Identity {
         node_id: required_string(values, IDENTITY_NODE_ID)?,
         fingerprint: required_string(values, IDENTITY_FINGERPRINT)?,
-        display_name: optional_string(values, IDENTITY_DISPLAY_NAME),
-        avatar_hash: optional_string(values, IDENTITY_AVATAR_HASH),
+        display_name: optional_string(values, IDENTITY_DISPLAY_NAME)?,
+        avatar_hash: optional_string(values, IDENTITY_AVATAR_HASH)?,
     })
 }
 
 pub fn parse_status(values: &HashMap<String, OwnedVariant>) -> Result<Status> {
     Ok(Status {
-        transport_state: optional_string(values, STATUS_TRANSPORT_STATE),
-        active_sessions: optional_u64(values, STATUS_ACTIVE_SESSIONS) as u32,
-        outbox_depth: optional_u64(values, STATUS_OUTBOX_DEPTH) as u32,
-        user_count: optional_u64(values, STATUS_USER_COUNT) as u32,
+        transport_state: optional_string(values, STATUS_TRANSPORT_STATE)?,
+        active_sessions: optional_u32(values, STATUS_ACTIVE_SESSIONS)?,
+        outbox_depth: optional_u32(values, STATUS_OUTBOX_DEPTH)?,
+        user_count: optional_u32(values, STATUS_USER_COUNT)?,
     })
 }
 
@@ -329,41 +349,45 @@ pub fn parse_user(values: &HashMap<String, OwnedVariant>) -> Result<User> {
     Ok(User {
         id: required_string(values, USER_ID)?,
         fingerprint: required_string(values, USER_FINGERPRINT)?,
-        display_name: optional_string(values, USER_DISPLAY_NAME),
-        avatar_hash: optional_string(values, USER_AVATAR_HASH),
-        policy: UserPolicy::parse(&optional_string(values, USER_POLICY)),
-        trusted_at: optional_u64(values, USER_TRUSTED_AT),
-        last_seen: optional_u64(values, USER_LAST_SEEN),
-        connected: optional_bool(values, USER_CONNECTED),
+        display_name: optional_string(values, USER_DISPLAY_NAME)?,
+        avatar_hash: optional_string(values, USER_AVATAR_HASH)?,
+        policy: if values.contains_key(USER_POLICY) {
+            UserPolicy::parse(&optional_string(values, USER_POLICY)?)?
+        } else {
+            UserPolicy::Accept
+        },
+        trusted_at: optional_u64(values, USER_TRUSTED_AT)?,
+        last_seen: optional_u64(values, USER_LAST_SEEN)?,
+        connected: optional_bool(values, USER_CONNECTED)?,
     })
 }
 
 pub fn parse_watch_party(values: &HashMap<String, OwnedVariant>) -> Result<WatchParty> {
     Ok(WatchParty {
         party_id: required_string(values, WATCH_PARTY_ID)?,
-        user_id: optional_string(values, WATCH_PARTY_USER_ID),
-        video_id: optional_string(values, WATCH_PARTY_VIDEO_ID),
-        role: optional_string(values, WATCH_PARTY_ROLE),
-        state: optional_string(values, WATCH_PARTY_STATE),
-        position_ms: optional_u64(values, WATCH_PARTY_POSITION_MS),
-        playing: optional_bool(values, WATCH_PARTY_PLAYING),
-        revision: optional_u64(values, WATCH_PARTY_REVISION),
-        actor: optional_string(values, WATCH_PARTY_ACTOR),
-        updated_at: optional_u64(values, WATCH_PARTY_UPDATED_AT),
+        user_id: optional_string(values, WATCH_PARTY_USER_ID)?,
+        video_id: optional_string(values, WATCH_PARTY_VIDEO_ID)?,
+        role: optional_string(values, WATCH_PARTY_ROLE)?,
+        state: optional_string(values, WATCH_PARTY_STATE)?,
+        position_ms: optional_u64(values, WATCH_PARTY_POSITION_MS)?,
+        playing: optional_bool(values, WATCH_PARTY_PLAYING)?,
+        revision: optional_u64(values, WATCH_PARTY_REVISION)?,
+        actor: optional_string(values, WATCH_PARTY_ACTOR)?,
+        updated_at: optional_u64(values, WATCH_PARTY_UPDATED_AT)?,
     })
 }
 
 pub fn parse_user_details(values: &HashMap<String, OwnedVariant>) -> Result<UserDetails> {
     Ok(UserDetails {
         user: parse_user(values)?,
-        addresses: optional_string(values, USER_ADDRESSES),
-        port: optional_u64(values, USER_PORT) as u16,
-        source: optional_string(values, USER_SOURCE),
-        mac: optional_string(values, USER_MAC),
-        os: optional_string(values, USER_OS),
-        desktop: optional_string(values, USER_DESKTOP),
-        display_server: optional_string(values, USER_DISPLAY_SERVER),
-        app_version: optional_string(values, USER_APP_VERSION),
+        addresses: optional_string(values, USER_ADDRESSES)?,
+        port: optional_u16(values, USER_PORT)?,
+        source: optional_string(values, USER_SOURCE)?,
+        mac: optional_string(values, USER_MAC)?,
+        os: optional_string(values, USER_OS)?,
+        desktop: optional_string(values, USER_DESKTOP)?,
+        display_server: optional_string(values, USER_DISPLAY_SERVER)?,
+        app_version: optional_string(values, USER_APP_VERSION)?,
     })
 }
 
@@ -371,10 +395,10 @@ pub fn parse_candidate(values: &HashMap<String, OwnedVariant>) -> Result<Candida
     Ok(Candidate {
         node_id: required_string(values, CANDIDATE_NODE_ID)?,
         fingerprint: required_string(values, CANDIDATE_FINGERPRINT)?,
-        display_name: optional_string(values, CANDIDATE_DISPLAY_NAME),
-        avatar_hash: optional_string(values, CANDIDATE_AVATAR_HASH),
-        addresses: optional_string(values, CANDIDATE_ADDRESSES),
-        source: optional_string(values, CANDIDATE_SOURCE),
+        display_name: optional_string(values, CANDIDATE_DISPLAY_NAME)?,
+        avatar_hash: optional_string(values, CANDIDATE_AVATAR_HASH)?,
+        addresses: optional_string(values, CANDIDATE_ADDRESSES)?,
+        source: optional_string(values, CANDIDATE_SOURCE)?,
     })
 }
 
@@ -384,11 +408,11 @@ pub fn parse_conversation_summary(
     Ok(ConversationSummary {
         conversation_id: required_string(values, CONVERSATION_ID)?,
         user_id: required_string(values, CONVERSATION_USER_ID)?,
-        last_message_id: optional_string(values, CONVERSATION_LAST_MESSAGE_ID),
-        last_sender_id: optional_string(values, CONVERSATION_LAST_SENDER_ID),
-        last_body: optional_string(values, CONVERSATION_LAST_BODY),
-        last_sent_at: optional_u64(values, CONVERSATION_LAST_SENT_AT),
-        unread_count: optional_u64(values, CONVERSATION_UNREAD_COUNT) as u32,
+        last_message_id: optional_string(values, CONVERSATION_LAST_MESSAGE_ID)?,
+        last_sender_id: optional_string(values, CONVERSATION_LAST_SENDER_ID)?,
+        last_body: optional_string(values, CONVERSATION_LAST_BODY)?,
+        last_sent_at: optional_u64(values, CONVERSATION_LAST_SENT_AT)?,
+        unread_count: optional_u32(values, CONVERSATION_UNREAD_COUNT)?,
     })
 }
 
@@ -401,102 +425,159 @@ pub fn parse_message(
     Ok(Message {
         id: required_string(values, MESSAGE_ID)?,
         conversation_id: required_string(values, MESSAGE_CONVERSATION_ID)?,
-        user_id: optional_string(values, MESSAGE_USER_ID),
+        user_id: optional_string(values, MESSAGE_USER_ID)?,
         sender_id,
         local_sender,
-        seq: optional_u64(values, MESSAGE_SEQ),
-        sent_at: optional_u64(values, MESSAGE_SENT_AT),
-        received_at: optional_u64(values, MESSAGE_RECEIVED_AT),
-        body: optional_string(values, MESSAGE_BODY),
-        attachment_hash: optional_string(values, MESSAGE_ATTACHMENT_HASH),
-        attachment_name: optional_string(values, MESSAGE_ATTACHMENT_NAME),
-        attachment_size: optional_u64(values, MESSAGE_ATTACHMENT_SIZE),
-        attachment_mime: optional_string(values, MESSAGE_ATTACHMENT_MIME),
-        attachment_path: optional_string(values, MESSAGE_ATTACHMENT_PATH),
-        state: MessageState::parse(&optional_string(values, MESSAGE_STATE)),
-        notify: optional_bool(values, MESSAGE_NOTIFY),
+        seq: optional_u64(values, MESSAGE_SEQ)?,
+        sent_at: optional_u64(values, MESSAGE_SENT_AT)?,
+        received_at: optional_u64(values, MESSAGE_RECEIVED_AT)?,
+        body: optional_string(values, MESSAGE_BODY)?,
+        attachment_hash: optional_string(values, MESSAGE_ATTACHMENT_HASH)?,
+        attachment_name: optional_string(values, MESSAGE_ATTACHMENT_NAME)?,
+        attachment_size: optional_u64(values, MESSAGE_ATTACHMENT_SIZE)?,
+        attachment_mime: optional_string(values, MESSAGE_ATTACHMENT_MIME)?,
+        attachment_path: optional_string(values, MESSAGE_ATTACHMENT_PATH)?,
+        state: {
+            let state = optional_string(values, MESSAGE_STATE)?;
+            if state.is_empty() {
+                MessageState::Unknown
+            } else {
+                MessageState::parse(&state)?
+            }
+        },
+        notify: optional_bool(values, MESSAGE_NOTIFY)?,
     })
 }
 
 pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<RemoteSession> {
     Ok(RemoteSession {
         session_id: required_string(values, REMOTE_SESSION_ID)?,
-        user_id: optional_string(values, REMOTE_USER_ID),
-        fingerprint: optional_string(values, REMOTE_FINGERPRINT),
-        role: optional_string(values, REMOTE_ROLE),
-        state: optional_string(values, REMOTE_STATE),
-        indicator: optional_bool(values, REMOTE_INDICATOR),
-        expires_at: optional_u64(values, REMOTE_EXPIRES_AT),
+        user_id: optional_string(values, REMOTE_USER_ID)?,
+        fingerprint: optional_string(values, REMOTE_FINGERPRINT)?,
+        role: optional_string(values, REMOTE_ROLE)?,
+        state: optional_string(values, REMOTE_STATE)?,
+        indicator: optional_bool(values, REMOTE_INDICATOR)?,
+        expires_at: optional_u64(values, REMOTE_EXPIRES_AT)?,
     })
 }
 
 pub fn parse_call(values: &HashMap<String, OwnedVariant>) -> Result<Call> {
     Ok(Call {
         id: required_string(values, CALL_ID)?,
-        user_id: optional_string(values, CALL_USER_ID),
-        direction: optional_string(values, CALL_DIRECTION),
-        state: optional_string(values, CALL_STATE),
-        started_at: optional_u64(values, CALL_STARTED_AT),
-        connected_at: optional_u64(values, CALL_CONNECTED_AT),
+        user_id: optional_string(values, CALL_USER_ID)?,
+        direction: optional_string(values, CALL_DIRECTION)?,
+        state: optional_string(values, CALL_STATE)?,
+        started_at: optional_u64(values, CALL_STARTED_AT)?,
+        connected_at: optional_u64(values, CALL_CONNECTED_AT)?,
     })
 }
 
 pub fn parse_transfer(values: &HashMap<String, OwnedVariant>) -> Result<Transfer> {
     Ok(Transfer {
         hash: required_string(values, TRANSFER_HASH)?,
-        user_id: optional_string(values, TRANSFER_USER_ID),
-        name: optional_string(values, TRANSFER_NAME),
-        size: optional_u64(values, TRANSFER_SIZE),
-        bytes: optional_u64(values, TRANSFER_BYTES),
-        phase: optional_string(values, TRANSFER_PHASE),
-        reason: optional_string(values, TRANSFER_REASON),
+        user_id: optional_string(values, TRANSFER_USER_ID)?,
+        name: optional_string(values, TRANSFER_NAME)?,
+        size: optional_u64(values, TRANSFER_SIZE)?,
+        bytes: optional_u64(values, TRANSFER_BYTES)?,
+        phase: optional_string(values, TRANSFER_PHASE)?,
+        reason: optional_string(values, TRANSFER_REASON)?,
     })
 }
 
-pub fn settings_map(values: &HashMap<String, OwnedVariant>) -> BTreeMap<String, String> {
+pub fn settings_map(values: &HashMap<String, OwnedVariant>) -> Result<BTreeMap<String, String>> {
     values
         .iter()
-        .map(|(key, value)| (key.clone(), display_value(value)))
+        .map(|(key, value)| Ok((key.clone(), display_value(value, key)?)))
         .collect()
 }
 
-pub fn display_value(value: &OwnedVariant) -> String {
+pub fn display_value(value: &OwnedVariant, field: &str) -> Result<String> {
     if let Ok(value) = u64::try_from(value) {
-        value.to_string()
+        Ok(value.to_string())
     } else if let Ok(value) = u32::try_from(value) {
-        value.to_string()
+        Ok(value.to_string())
     } else if let Ok(value) = bool::try_from(value) {
-        value.to_string()
+        Ok(value.to_string())
     } else if let Ok(value) = <&str>::try_from(value) {
-        value.to_owned()
+        Ok(value.to_owned())
     } else {
-        String::new()
+        Err(ParseError::InvalidType {
+            field: field.to_owned(),
+            expected: "string, boolean, or unsigned integer",
+        })
     }
 }
 
 pub fn required_string(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<String> {
-    values
+    let value = values
         .get(key)
-        .map(display_value)
-        .ok_or_else(|| ParseError::MissingField(key.to_owned()))
+        .ok_or_else(|| ParseError::MissingField(key.to_owned()))?;
+    <&str>::try_from(value)
+        .map(str::to_owned)
+        .map_err(|_| ParseError::InvalidType {
+            field: key.to_owned(),
+            expected: "string",
+        })
 }
 
-pub fn optional_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
-    values.get(key).map(display_value).unwrap_or_default()
+pub fn optional_string(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<String> {
+    let Some(value) = values.get(key) else {
+        return Ok(String::new());
+    };
+    <&str>::try_from(value)
+        .map(str::to_owned)
+        .map_err(|_| ParseError::InvalidType {
+            field: key.to_owned(),
+            expected: "string",
+        })
 }
 
-pub fn optional_u64(values: &HashMap<String, OwnedVariant>, key: &str) -> u64 {
-    values
-        .get(key)
-        .and_then(|value| u64::try_from(value).ok())
-        .unwrap_or_default()
+pub fn optional_u64(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<u64> {
+    let Some(value) = values.get(key) else {
+        return Ok(0);
+    };
+    variant_u64(value, key)
 }
 
-pub fn optional_bool(values: &HashMap<String, OwnedVariant>, key: &str) -> bool {
-    values
-        .get(key)
-        .and_then(|value| bool::try_from(value).ok())
-        .unwrap_or_default()
+pub fn optional_u32(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<u32> {
+    let value = optional_u64(values, key)?;
+    u32::try_from(value).map_err(|_| ParseError::OutOfRange {
+        field: key.to_owned(),
+    })
+}
+
+pub fn optional_u16(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<u16> {
+    let value = optional_u64(values, key)?;
+    u16::try_from(value).map_err(|_| ParseError::OutOfRange {
+        field: key.to_owned(),
+    })
+}
+
+pub fn optional_bool(values: &HashMap<String, OwnedVariant>, key: &str) -> Result<bool> {
+    let Some(value) = values.get(key) else {
+        return Ok(false);
+    };
+    bool::try_from(value).map_err(|_| ParseError::InvalidType {
+        field: key.to_owned(),
+        expected: "boolean",
+    })
+}
+
+fn variant_u64(value: &OwnedVariant, key: &str) -> Result<u64> {
+    if let Ok(value) = u64::try_from(value) {
+        Ok(value)
+    } else if let Ok(value) = u32::try_from(value) {
+        Ok(u64::from(value))
+    } else if let Ok(value) = u16::try_from(value) {
+        Ok(u64::from(value))
+    } else if let Ok(value) = u8::try_from(value) {
+        Ok(u64::from(value))
+    } else {
+        Err(ParseError::InvalidType {
+            field: key.to_owned(),
+            expected: "unsigned integer",
+        })
+    }
 }
 
 #[cfg(test)]

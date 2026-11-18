@@ -24,63 +24,21 @@
 </script>
 
 <div
-    class="avatar"
-    class:selected
+    class="relative inline-flex shrink-0 items-center justify-center rounded-full bg-surface-2 leading-none font-normal text-ink data-selected:bg-base data-selected:text-ink"
+    data-selected={selected ? '' : undefined}
     style={`width:${size}px;height:${size}px;font-size:${Math.max(10, Math.round(size * 0.36))}px`}
     aria-hidden="true"
 >
     {#if image}
-        <img src={image} alt="" />
+        <img class="size-full rounded-full object-cover" src={image} alt="" />
     {:else}
         {initials(label)}
     {/if}
     {#if showPresence}
-        <span class="presence" class:online={connected} class:selected></span>
+        <span
+            class="absolute right-[-1px] bottom-[-1px] size-2 rounded-full border-2 border-rail bg-line-strong data-online:bg-success data-selected:border-ink"
+            data-online={connected ? '' : undefined}
+            data-selected={selected ? '' : undefined}
+        ></span>
     {/if}
 </div>
-
-<style>
-    .avatar {
-        position: relative;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-        border-radius: 50%;
-        background: var(--surface-2);
-        color: var(--ink);
-        font-weight: 400;
-        line-height: 1;
-    }
-
-    .avatar.selected {
-        background: var(--base);
-        color: var(--ink);
-    }
-
-    .avatar img {
-        width: 100%;
-        height: 100%;
-        border-radius: 50%;
-        object-fit: cover;
-    }
-
-    .presence {
-        position: absolute;
-        right: -1px;
-        bottom: -1px;
-        width: 8px;
-        height: 8px;
-        border: 2px solid var(--rail);
-        border-radius: 50%;
-        background: var(--line-strong);
-    }
-
-    .presence.online {
-        background: var(--success);
-    }
-
-    .presence.selected {
-        border-color: var(--ink);
-    }
-</style>

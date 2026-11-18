@@ -13,17 +13,18 @@ pub fn get(connection: &Connection, user_id: &str) -> Result<UserState, StorageE
         .query_row(
             "SELECT last_sent_seq, last_recv_seq FROM user_state WHERE user_id = ?1",
             params![user_id],
-            |row| {
-                let sent: i64 = row.get(0)?;
-                let recv: i64 = row.get(1)?;
-                Ok(UserState {
-                    last_sent_seq: u64::try_from(sent).unwrap_or_default(),
-                    last_recv_seq: u64::try_from(recv).unwrap_or_default(),
-                })
-            },
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
         )
         .optional()?;
-    Ok(state.unwrap_or_default())
+    let Some((sent, recv)) = state else {
+        return Ok(UserState::default());
+    };
+    Ok(UserState {
+        last_sent_seq: u64::try_from(sent)
+            .map_err(|_| StorageError::InvalidData(format!("last_sent_seq is negative: {sent}")))?,
+        last_recv_seq: u64::try_from(recv)
+            .map_err(|_| StorageError::InvalidData(format!("last_recv_seq is negative: {recv}")))?,
+    })
 }
 
 pub fn ensure(connection: &Connection, user_id: &str) -> Result<(), StorageError> {

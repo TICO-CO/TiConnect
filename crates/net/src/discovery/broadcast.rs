@@ -92,14 +92,21 @@ impl Beacon {
         bytes.extend_from_slice(&fingerprint);
         bytes.extend_from_slice(&self.port.to_be_bytes());
         let address = self.address.as_bytes();
-        bytes.push(u8::try_from(address.len()).unwrap_or(u8::MAX));
+        let address_length = u8::try_from(address.len())
+            .map_err(|_| DiscoveryError::InvalidRecord("address is too long".to_owned()))?;
+        bytes.push(address_length);
         bytes.extend_from_slice(address);
         let display_name = self.display_name.as_bytes();
-        bytes.push(u8::try_from(display_name.len()).unwrap_or(u8::MAX));
+        let display_name_length = u8::try_from(display_name.len())
+            .map_err(|_| DiscoveryError::InvalidRecord("display name is too long".to_owned()))?;
+        bytes.push(display_name_length);
         bytes.extend_from_slice(display_name);
         for value in platform_values(&self.platform) {
             let value = value.as_bytes();
-            bytes.push(u8::try_from(value.len()).unwrap_or(u8::MAX));
+            let value_length = u8::try_from(value.len()).map_err(|_| {
+                DiscoveryError::InvalidRecord("platform field is too long".to_owned())
+            })?;
+            bytes.push(value_length);
             bytes.extend_from_slice(value);
         }
         Ok(bytes)

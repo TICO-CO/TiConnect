@@ -11,6 +11,14 @@ use crate::tls::ClientAlpn;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+fn retry_factor(attempt: usize) -> Result<u32, TransportError> {
+    let exponent = u32::try_from(attempt)
+        .map_err(|_| TransportError::Handshake("retry attempt exceeds u32".to_owned()))?;
+    1_u32
+        .checked_shl(exponent)
+        .ok_or_else(|| TransportError::Handshake("retry delay factor overflow".to_owned()))
+}
+
 pub(crate) async fn connect(
     transport: &Transport,
     target: DialTarget,
@@ -34,7 +42,7 @@ pub(crate) async fn connect_with_retry(
                 transport.note_failure();
                 last_error = Some(error);
                 if attempt + 1 < RECONNECT_ATTEMPTS {
-                    let factor = 1_u32 << u32::try_from(attempt).unwrap_or_default();
+                    let factor = retry_factor(attempt)?;
                     let delay = RECONNECT_BASE_DELAY
                         .checked_mul(factor)
                         .unwrap_or(RECONNECT_BASE_DELAY);
@@ -84,7 +92,7 @@ pub(crate) async fn connect_trust_with_retry(
                 transport.note_failure();
                 last_error = Some(error);
                 if attempt + 1 < RECONNECT_ATTEMPTS {
-                    let factor = 1_u32 << u32::try_from(attempt).unwrap_or_default();
+                    let factor = retry_factor(attempt)?;
                     let delay = RECONNECT_BASE_DELAY
                         .checked_mul(factor)
                         .unwrap_or(RECONNECT_BASE_DELAY);

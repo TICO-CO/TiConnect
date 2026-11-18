@@ -60,8 +60,8 @@ impl CallMetricsHandle {
 
     pub fn note_sent(&self, bytes: usize) {
         self.frames_sent.fetch_add(1, Ordering::Relaxed);
-        self.bytes_sent
-            .fetch_add(u64::try_from(bytes).unwrap_or_default(), Ordering::Relaxed);
+        let bytes = u64::try_from(bytes).expect("usize length always fits u64");
+        self.bytes_sent.fetch_add(bytes, Ordering::Relaxed);
     }
 
     pub fn note_received(&self) {

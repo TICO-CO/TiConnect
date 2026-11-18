@@ -131,6 +131,18 @@ requires it, and justify it when used.
 - Do not add logic to markup that belongs in a class or helper.
 - Template markup may use double quotes for attributes even when TypeScript
   uses single quotes.
+- Style with Tailwind CSS v4 utilities. Do not add per-component `<style>`
+  blocks.
+- Use theme tokens from `src/app.css`: colors (`base`, `surface`, `ink`,
+  `line`, `accent`, and variants), fonts (`font-display`, `font-text`), text
+  steps (`text-step-xs` through `text-step-5`), radii, shadows, and easing.
+- Use the default Tailwind spacing scale. Do not add one-off spacing tokens.
+- Express state with existing ARIA attributes or `data-*` attributes and
+  Tailwind variants (`aria-pressed:`, `data-selected:`, `group-data-*:`).
+  Do not add state-only class names with CSS selectors.
+- Keep class strings literal so Tailwind can detect them. Do not concatenate
+  dynamic class names.
+- Prettier owns utility ordering through `prettier-plugin-tailwindcss`.
 
 ## 10. Centralize failure payloads
 
@@ -176,8 +188,8 @@ bun run build
 
 ## Exceptions
 
-- Rust code is governed by `cargo fmt`, `cargo clippy`, and the repository Rust
-  conventions. This document applies only to `crates/ui/web`.
+- Rust code is governed by `cargo fmt`, `cargo clippy`, and the root
+  `CODING_STYLE.md`. This document applies only to `crates/ui/web`.
 - TiCrafter DDD, schema-ownership, SQLite, agency, and Minecraft rules do not
   apply here.
 - The daemon wire protocol is an external contract. Keep its field names,

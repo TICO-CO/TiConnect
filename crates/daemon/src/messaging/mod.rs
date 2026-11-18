@@ -371,14 +371,43 @@ impl MessagingService {
     ) -> Result<(), MessagingError> {
         let user_id = self.conversation_user(conversation_id).await?;
         let user = self.user(&user_id).await?;
-        self.inner
+        let read = self
+            .inner
             .database
             .mark_messages_read(conversation_id, message_ids, now_unix_ms())
             .await?;
-        if !policy::read_receipt(user.policy, self.settings().read_receipts_enabled()) {
+        self.queue_read_receipts(&user_id, conversation_id, user.policy, &read)
+            .await
+    }
+
+    pub async fn mark_conversation_read(
+        &self,
+        conversation_id: &str,
+    ) -> Result<(), MessagingError> {
+        let user_id = self.conversation_user(conversation_id).await?;
+        let user = self.user(&user_id).await?;
+        let local_sender_id = self.inner.local.to_string();
+        let read = self
+            .inner
+            .database
+            .mark_conversation_read(conversation_id, &local_sender_id, now_unix_ms())
+            .await?;
+        self.queue_read_receipts(&user_id, conversation_id, user.policy, &read)
+            .await
+    }
+
+    async fn queue_read_receipts(
+        &self,
+        user_id: &str,
+        conversation_id: &str,
+        user_policy: UserPolicy,
+        message_ids: &[String],
+    ) -> Result<(), MessagingError> {
+        if !policy::read_receipt(user_policy, self.settings().read_receipts_enabled()) {
             return Ok(());
         }
 
+        let local_sender_id = self.inner.local.to_string();
         for message_id in message_ids {
             let target: MessageId = message_id
                 .parse()
@@ -387,11 +416,11 @@ impl MessagingService {
                 continue;
             };
             if stored.record.conversation_id != conversation_id
-                || stored.record.sender_id == self.inner.local.to_string()
+                || stored.record.sender_id == local_sender_id
             {
                 continue;
             }
-            self.queue_receipt(&user_id, target, AckKind::Read);
+            self.queue_receipt(user_id, target, AckKind::Read);
         }
         Ok(())
     }
@@ -827,10 +856,17 @@ impl MessagingService {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .take_due(Instant::now());
+        let mut users = HashSet::new();
         for ack in due {
-            if let Err(error) = self.create_ack(&ack).await {
-                tracing::debug!(%error, "failed to queue receipt");
+            match self.create_ack(&ack).await {
+                Ok(()) => {
+                    users.insert(ack.user_id.clone());
+                }
+                Err(error) => tracing::debug!(%error, "failed to queue receipt"),
             }
+        }
+        for user_id in users {
+            outbox::flush_user(self, &user_id).await;
         }
     }
 
@@ -871,7 +907,6 @@ impl MessagingService {
             .database
             .enqueue_outbox(&record.message_id.to_string(), now_unix_ms(), expires_at)
             .await?;
-        outbox::flush_user(self, &ack.user_id).await;
         Ok(())
     }
 
@@ -983,10 +1018,22 @@ pub fn spawn(connection: zbus::Connection, service: MessagingService) -> JoinHan
     let mut transport_events = service.inner.transport.subscribe();
     let mut events = service.subscribe();
     tokio::spawn(async move {
-        let mut receipt_tick = tokio::time::interval(RECEIPT_TICK);
-        receipt_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-        let mut outbox_tick = tokio::time::interval(OUTBOX_TICK);
-        outbox_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        let maintenance_service = service.clone();
+        let maintenance_task = tokio::spawn(async move {
+            let mut receipt_tick = tokio::time::interval(RECEIPT_TICK);
+            receipt_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            let mut outbox_tick = tokio::time::interval(OUTBOX_TICK);
+            outbox_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                tokio::select! {
+                    _ = receipt_tick.tick() => maintenance_service.flush_receipts().await,
+                    _ = outbox_tick.tick() => {
+                        maintenance_service.expire_outbox().await;
+                        maintenance_service.flush_due().await;
+                    }
+                }
+            }
+        });
 
         loop {
             tokio::select! {
@@ -1011,13 +1058,10 @@ pub fn spawn(connection: zbus::Connection, service: MessagingService) -> JoinHan
                         Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }
-                _ = receipt_tick.tick() => service.flush_receipts().await,
-                _ = outbox_tick.tick() => {
-                    service.expire_outbox().await;
-                    service.flush_due().await;
-                }
             }
         }
+
+        maintenance_task.abort();
     })
 }
 

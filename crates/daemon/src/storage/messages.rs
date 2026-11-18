@@ -124,6 +124,9 @@ pub fn conversation_summaries(
             params![conversation_id, local_node_id],
             |row| row.get(0),
         )?;
+        let unread_count = u32::try_from(unread).map_err(|_| {
+            StorageError::InvalidData(format!("unread message count out of range: {unread}"))
+        })?;
         summaries.push(ConversationSummary {
             conversation_id,
             user_id,
@@ -131,7 +134,7 @@ pub fn conversation_summaries(
             last_sender_id: last.as_ref().map(|item| item.1.clone()),
             last_body: last.as_ref().and_then(|item| item.2.clone()),
             last_sent_at: last.as_ref().map(|item| item.3),
-            unread_count: u32::try_from(unread).unwrap_or(u32::MAX),
+            unread_count,
         });
     }
     Ok(summaries)
@@ -142,19 +145,84 @@ pub fn mark_read(
     conversation_id: &str,
     message_ids: &[String],
     read_at: i64,
-) -> Result<u32, StorageError> {
-    let mut updated = 0_u32;
-    let mut statement = connection.prepare(
-        "UPDATE messages SET read_at = ?3
-         WHERE id = ?1 AND conversation_id = ?2 AND read_at IS NULL",
-    )?;
-    for message_id in message_ids {
-        updated = updated.saturating_add(
-            u32::try_from(statement.execute(params![message_id, conversation_id, read_at])?)
-                .unwrap_or(u32::MAX),
-        );
+) -> Result<Vec<String>, StorageError> {
+    if message_ids.is_empty() {
+        return Ok(Vec::new());
     }
-    Ok(updated)
+    let placeholders = vec!["?"; message_ids.len()].join(", ");
+    let select = format!(
+        "SELECT id FROM messages
+         WHERE conversation_id = ? AND read_at IS NULL AND id IN ({placeholders})"
+    );
+    let mut select_values: Vec<Box<dyn rusqlite::ToSql>> =
+        Vec::with_capacity(message_ids.len() + 1);
+    select_values.push(Box::new(conversation_id.to_owned()));
+    for message_id in message_ids {
+        select_values.push(Box::new(message_id.clone()));
+    }
+    let mut statement = connection.prepare(&select)?;
+    let unread = statement
+        .query_map(
+            rusqlite::params_from_iter(select_values.iter().map(|value| value.as_ref())),
+            |row| row.get::<_, String>(0),
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    mark_ids_read(connection, conversation_id, &unread, read_at)?;
+    Ok(unread)
+}
+
+pub fn mark_conversation_read(
+    connection: &Connection,
+    conversation_id: &str,
+    local_sender_id: &str,
+    read_at: i64,
+) -> Result<Vec<String>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT id FROM messages
+         WHERE conversation_id = ?1 AND sender_id != ?2 AND kind != 'ack'
+           AND read_at IS NULL",
+    )?;
+    let unread = statement
+        .query_map(params![conversation_id, local_sender_id], |row| {
+            row.get::<_, String>(0)
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    connection.execute(
+        "UPDATE messages SET read_at = ?1
+         WHERE conversation_id = ?2 AND sender_id != ?3 AND kind != 'ack'
+           AND read_at IS NULL",
+        params![read_at, conversation_id, local_sender_id],
+    )?;
+    Ok(unread)
+}
+
+fn mark_ids_read(
+    connection: &Connection,
+    conversation_id: &str,
+    message_ids: &[String],
+    read_at: i64,
+) -> Result<(), StorageError> {
+    if message_ids.is_empty() {
+        return Ok(());
+    }
+
+    let placeholders = vec!["?"; message_ids.len()].join(", ");
+    let update = format!(
+        "UPDATE messages SET read_at = ?
+         WHERE conversation_id = ? AND read_at IS NULL AND id IN ({placeholders})"
+    );
+    let mut update_values: Vec<Box<dyn rusqlite::ToSql>> =
+        Vec::with_capacity(message_ids.len() + 2);
+    update_values.push(Box::new(read_at));
+    update_values.push(Box::new(conversation_id.to_owned()));
+    for message_id in message_ids {
+        update_values.push(Box::new(message_id.clone()));
+    }
+    connection.execute(
+        &update,
+        rusqlite::params_from_iter(update_values.iter().map(|value| value.as_ref())),
+    )?;
+    Ok(())
 }
 
 pub fn insert(

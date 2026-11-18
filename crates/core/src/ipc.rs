@@ -159,6 +159,7 @@ pub mod methods {
     pub const LIST_CONVERSATION_SUMMARIES: &str = "ListConversationSummaries";
     pub const COUNT_MESSAGES: &str = "CountMessages";
     pub const MARK_READ: &str = "MarkRead";
+    pub const MARK_CONVERSATION_READ: &str = "MarkConversationRead";
     pub const SET_TYPING: &str = "SetTyping";
     pub const GET_MESSAGE_STATE: &str = "GetMessageState";
     pub const SET_USER_POLICY: &str = "SetUserPolicy";

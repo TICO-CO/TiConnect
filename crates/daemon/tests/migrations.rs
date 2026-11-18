@@ -36,15 +36,17 @@ fn required_indexes_exist() {
     let count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master
-             WHERE type = 'index' AND name IN (?, ?)",
+             WHERE type = 'index' AND name IN (?, ?, ?, ?)",
             rusqlite::params![
                 "messages_conversation_sent_at",
-                "messages_conversation_sender_seq"
+                "messages_conversation_sender_seq",
+                "messages_conversation_sort",
+                "messages_conversation_unread"
             ],
             |row| row.get(0),
         )
         .expect("index count");
-    assert_eq!(count, 2);
+    assert_eq!(count, 4);
 
     let _ = std::fs::remove_file(path);
 }

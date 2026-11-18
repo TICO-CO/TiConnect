@@ -32,10 +32,12 @@ fails to acquire the name and exits non-zero.
 | `GetUser` | `(s) -> a{sv}` | Returns stable identity plus live address, MAC, OS, desktop, and display-server metadata. |
 | `ForgetUser` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
+| `GetMessage` | `(s) -> a{sv}` | Returns one stored message by id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
 | `CountMessages` | `(s) -> u` | Returns the number of stored text messages in a conversation. |
 | `ListConversationSummaries` | `() -> aa{sv}` | Returns last message, unread count, and conversation id per user. |
 | `MarkRead` | `(s as) -> ()` | Marks inbound messages read locally and queues receipts when enabled. |
+| `MarkConversationRead` | `(s) -> ()` | Marks every unread inbound message in a conversation read and queues receipts when enabled. |
 | `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted user. |
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
 | `SetUserPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one user. |

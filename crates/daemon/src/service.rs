@@ -306,6 +306,8 @@ impl DaemonService {
             .map_err(database_error)?;
 
         let sessions = self.state.transport().session_count();
+        let active_sessions = u32::try_from(sessions)
+            .map_err(|_| ServiceError::Failed("active session count exceeds u32".to_owned()))?;
         let transport_state = if sessions > 0 {
             ipc::TRANSPORT_ONLINE
         } else {
@@ -331,7 +333,7 @@ impl DaemonService {
         );
         status.insert(
             ipc::STATUS_ACTIVE_SESSIONS.to_owned(),
-            OwnedVariant::from(u32::try_from(sessions).unwrap_or_default()),
+            OwnedVariant::from(active_sessions),
         );
         Ok(status)
     }
@@ -425,10 +427,10 @@ impl DaemonService {
             .list_conversation_summaries(&self.state.identity().node_id().to_string())
             .await
             .map_err(database_error)?;
-        Ok(summaries
+        summaries
             .into_iter()
             .map(conversation_summary_variant)
-            .collect())
+            .collect()
     }
 
     async fn set_typing(&self, user_id: &str, typing: bool) -> Result<(), ServiceError> {
@@ -483,7 +485,7 @@ impl DaemonService {
                 .iter()
                 .find(|candidate| candidate.fingerprint() == user.fingerprint);
             let connected = user_is_connected(&self.state, &user.id);
-            values.push(user_variant(user, connected, profile.as_ref(), candidate));
+            values.push(user_variant(user, connected, profile.as_ref(), candidate)?);
         }
         Ok(values)
     }
@@ -510,7 +512,7 @@ impl DaemonService {
             .snapshot()
             .into_iter()
             .find(|candidate| candidate.fingerprint() == fingerprint);
-        let mut values = user_variant(user, connected, profile.as_ref(), candidate.as_ref());
+        let mut values = user_variant(user, connected, profile.as_ref(), candidate.as_ref())?;
         if let Some(candidate) = candidate {
             let addresses = candidate.addresses_display();
             values.insert(
@@ -565,9 +567,12 @@ impl DaemonService {
             .collect()
     }
 
-    async fn get_discovery_status(&self) -> HashMap<String, OwnedVariant> {
+    async fn get_discovery_status(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
         let status = self.state.discovery().status();
-        HashMap::from([
+        let candidate_count = u32::try_from(status.candidate_count).map_err(|_| {
+            ServiceError::Failed("discovery candidate count exceeds u32".to_owned())
+        })?;
+        Ok(HashMap::from([
             (
                 ipc::DISCOVERY_ENABLED.to_owned(),
                 OwnedVariant::from(status.enabled),
@@ -590,13 +595,13 @@ impl DaemonService {
             ),
             (
                 ipc::DISCOVERY_CANDIDATE_COUNT.to_owned(),
-                OwnedVariant::from(u32::try_from(status.candidate_count).unwrap_or_default()),
+                OwnedVariant::from(candidate_count),
             ),
             (
                 ipc::DISCOVERY_DROPPED_PACKETS.to_owned(),
                 OwnedVariant::from(status.dropped_packets),
             ),
-        ])
+        ]))
     }
 
     async fn forget_user(&self, user_id: &str) -> Result<bool, ServiceError> {
@@ -615,10 +620,11 @@ impl DaemonService {
             .list_blocked_users()
             .await
             .map_err(trust_service_error)?;
-        Ok(users
+        users
             .into_iter()
             .map(|user| {
-                HashMap::from([
+                let blocked_at = checked_u64("blocked_at", user.blocked_at)?;
+                Ok(HashMap::from([
                     (
                         ipc::USER_FINGERPRINT.to_owned(),
                         string_variant(user.fingerprint),
@@ -631,13 +637,10 @@ impl DaemonService {
                         ipc::USER_DISPLAY_NAME.to_owned(),
                         string_variant(user.display_name.unwrap_or_default()),
                     ),
-                    (
-                        ipc::BLOCKED_AT.to_owned(),
-                        OwnedVariant::from(u64::try_from(user.blocked_at).unwrap_or_default()),
-                    ),
-                ])
+                    (ipc::BLOCKED_AT.to_owned(), OwnedVariant::from(blocked_at)),
+                ]))
             })
-            .collect())
+            .collect()
     }
 
     async fn unblock_user(&self, fingerprint: &str) -> Result<bool, ServiceError> {
@@ -672,11 +675,11 @@ impl DaemonService {
             .map_err(messaging_error)?;
         let mut values = Vec::with_capacity(messages.len());
         for message in messages {
-            let mut variant = stored_message_variant(message);
-            let hash = variant
-                .get(ipc::MESSAGE_ATTACHMENT_HASH)
-                .map(display_variant_string)
-                .unwrap_or_default();
+            let mut variant = stored_message_variant(message)?;
+            let hash = match variant.get(ipc::MESSAGE_ATTACHMENT_HASH) {
+                Some(value) => display_variant_string(value)?,
+                None => String::new(),
+            };
             if !hash.is_empty()
                 && let Ok(Some(path)) = self.state.attachments().path(&hash).await
             {
@@ -688,6 +691,27 @@ impl DaemonService {
             values.push(variant);
         }
         Ok(values)
+    }
+
+    async fn get_message(
+        &self,
+        message_id: &str,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let stored = self
+            .state
+            .database()
+            .get_message(message_id)
+            .await
+            .map_err(database_error)?
+            .ok_or_else(|| ServiceError::NotFound(format!("message {message_id}")))?;
+        let user_id = self
+            .state
+            .database()
+            .conversation_by_id(&stored.record.conversation_id)
+            .await
+            .map_err(database_error)?
+            .map_or_else(String::new, |conversation| conversation.user_id);
+        stored_message_variant_with(user_id, stored, false)
     }
 
     async fn count_messages(&self, conversation_id: &str) -> Result<u32, ServiceError> {
@@ -706,6 +730,14 @@ impl DaemonService {
         self.state
             .messaging()
             .mark_read(conversation_id, &message_ids)
+            .await
+            .map_err(messaging_error)
+    }
+
+    async fn mark_conversation_read(&self, conversation_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .mark_conversation_read(conversation_id)
             .await
             .map_err(messaging_error)
     }
@@ -1173,11 +1205,9 @@ pub(crate) async fn emit_messaging_event(
                 &user_id,
             )
             .await?;
-            DaemonService::message_received(
-                emitter,
-                stored_message_variant_with(user_id, message, notify),
-            )
-            .await
+            let message = stored_message_variant_with(user_id, message, notify)
+                .map_err(|error| zbus::Error::Failure(error.to_string()))?;
+            DaemonService::message_received(emitter, message).await
         }
         MessagingEvent::MessageStateChanged { message_id, state } => {
             DaemonService::message_state_changed(emitter, &message_id, state.as_str()).await
@@ -1194,7 +1224,9 @@ pub(crate) async fn emit_messaging_event(
     }
 }
 
-fn stored_message_variant(message: StoredMessage) -> HashMap<String, OwnedVariant> {
+fn stored_message_variant(
+    message: StoredMessage,
+) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
     stored_message_variant_with(String::new(), message, false)
 }
 
@@ -1202,9 +1234,11 @@ fn stored_message_variant_with(
     user_id: String,
     message: StoredMessage,
     notify: bool,
-) -> HashMap<String, OwnedVariant> {
+) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
     let record = message.record;
-    HashMap::from([
+    let sent_at = checked_u64("message sent_at", record.sent_at)?;
+    let received_at = checked_u64("message received_at", message.received_at)?;
+    Ok(HashMap::from([
         (
             ipc::MESSAGE_ID.to_owned(),
             string_variant(record.message_id.to_string()),
@@ -1218,17 +1252,11 @@ fn stored_message_variant_with(
             ipc::MESSAGE_SENDER_ID.to_owned(),
             string_variant(record.sender_id),
         ),
-        (
-            ipc::MESSAGE_SEQ.to_owned(),
-            OwnedVariant::from(u32::try_from(record.seq).unwrap_or_default()),
-        ),
-        (
-            ipc::MESSAGE_SENT_AT.to_owned(),
-            OwnedVariant::from(record.sent_at),
-        ),
+        (ipc::MESSAGE_SEQ.to_owned(), OwnedVariant::from(record.seq)),
+        (ipc::MESSAGE_SENT_AT.to_owned(), OwnedVariant::from(sent_at)),
         (
             ipc::MESSAGE_RECEIVED_AT.to_owned(),
-            OwnedVariant::from(message.received_at),
+            OwnedVariant::from(received_at),
         ),
         (
             ipc::MESSAGE_KIND.to_owned(),
@@ -1267,11 +1295,13 @@ fn stored_message_variant_with(
             ),
         ),
         (ipc::MESSAGE_NOTIFY.to_owned(), OwnedVariant::from(notify)),
-    ])
+    ]))
 }
 
-fn display_variant_string(value: &OwnedVariant) -> String {
-    <&str>::try_from(value).map_or_else(|_| String::new(), str::to_owned)
+fn display_variant_string(value: &OwnedVariant) -> Result<String, ServiceError> {
+    <&str>::try_from(value)
+        .map(str::to_owned)
+        .map_err(|_| ServiceError::Failed("expected string variant".to_owned()))
 }
 
 fn setting_variant(value: SettingValue) -> OwnedVariant {
@@ -1288,12 +1318,16 @@ fn string_variant(value: String) -> OwnedVariant {
     OwnedVariant::from(Str::from(value))
 }
 
+fn checked_u64(field: &str, value: i64) -> Result<u64, ServiceError> {
+    u64::try_from(value).map_err(|_| ServiceError::Failed(format!("{field} is negative: {value}")))
+}
+
 fn user_variant(
     user: User,
     connected: bool,
     profile: Option<&UserProfile>,
     candidate: Option<&Candidate>,
-) -> HashMap<String, OwnedVariant> {
+) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
     let display_name = preferred_display_name(
         candidate.map(Candidate::display_name),
         profile.map(|profile| profile.display_name.as_str()),
@@ -1303,7 +1337,9 @@ fn user_variant(
         .and_then(|profile| profile.avatar_hash.clone())
         .or_else(|| candidate.and_then(|candidate| candidate.avatar_hash().map(str::to_owned)))
         .unwrap_or_default();
-    HashMap::from([
+    let trusted_at = checked_u64("user trusted_at", user.trusted_at)?;
+    let last_seen = checked_u64("user last_seen", user.last_seen.unwrap_or_default())?;
+    Ok(HashMap::from([
         (ipc::USER_ID.to_owned(), string_variant(user.id)),
         (
             ipc::USER_FINGERPRINT.to_owned(),
@@ -1323,19 +1359,17 @@ fn user_variant(
         ),
         (
             ipc::USER_TRUSTED_AT.to_owned(),
-            OwnedVariant::from(u64::try_from(user.trusted_at).unwrap_or_default()),
+            OwnedVariant::from(trusted_at),
         ),
         (
             ipc::USER_LAST_SEEN.to_owned(),
-            OwnedVariant::from(
-                u64::try_from(user.last_seen.unwrap_or_default()).unwrap_or_default(),
-            ),
+            OwnedVariant::from(last_seen),
         ),
         (
             ipc::USER_CONNECTED.to_owned(),
             OwnedVariant::from(connected),
         ),
-    ])
+    ]))
 }
 
 fn preferred_display_name(
@@ -1412,8 +1446,12 @@ pub(crate) fn candidate_variant(candidate: Candidate) -> HashMap<String, OwnedVa
 
 fn conversation_summary_variant(
     summary: crate::storage::messages::ConversationSummary,
-) -> HashMap<String, OwnedVariant> {
-    HashMap::from([
+) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+    let last_sent_at = checked_u64(
+        "conversation last_sent_at",
+        summary.last_sent_at.unwrap_or_default(),
+    )?;
+    Ok(HashMap::from([
         (
             ipc::CONVERSATION_ID.to_owned(),
             string_variant(summary.conversation_id),
@@ -1436,15 +1474,13 @@ fn conversation_summary_variant(
         ),
         (
             ipc::CONVERSATION_LAST_SENT_AT.to_owned(),
-            OwnedVariant::from(
-                u64::try_from(summary.last_sent_at.unwrap_or_default()).unwrap_or_default(),
-            ),
+            OwnedVariant::from(last_sent_at),
         ),
         (
             ipc::CONVERSATION_UNREAD_COUNT.to_owned(),
             OwnedVariant::from(u64::from(summary.unread_count)),
         ),
-    ])
+    ]))
 }
 
 fn local_platform() -> UserPlatform {

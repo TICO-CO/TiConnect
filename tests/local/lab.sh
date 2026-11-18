@@ -5,6 +5,8 @@ shopt -s nullglob
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="${TICONNECT_BIN:-$ROOT/target/debug/ticonnect}"
 SMOKE=0
+HOT_RELOAD="${LAB_HOT_RELOAD:-1}"
+DEV_URL="http://127.0.0.1:5173"
 
 usage() {
     cat >&2 <<'EOF'
@@ -117,6 +119,32 @@ start_bus() {
     fail "private D-Bus did not start"
 }
 
+start_dev_server() {
+    command -v bun >/dev/null 2>&1 ||
+        fail "bun is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
+    command -v curl >/dev/null 2>&1 ||
+        fail "curl is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
+    if (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+        fail "port 5173 is already in use; stop the existing dev server or set LAB_HOT_RELOAD=0"
+    fi
+    (
+        cd "$ROOT/crates/ui/web"
+        exec bun run dev
+    ) >"$WORK/vite.log" 2>&1 &
+    PIDS+=("$!")
+    for _ in $(seq 1 150); do
+        curl -fsS "$DEV_URL/" >/dev/null 2>&1 && break
+        if ! kill -0 "${PIDS[-1]}" 2>/dev/null; then
+            tail -n 40 "$WORK/vite.log" >&2 || true
+            fail "Vite dev server exited"
+        fi
+        sleep 0.1
+    done
+    curl -fsS "$DEV_URL/" >/dev/null 2>&1 ||
+        fail "Vite dev server did not become ready; log: $WORK/vite.log"
+    printf 'lab: UI hot reload at %s (log: %s)\n' "$DEV_URL" "$WORK/vite.log"
+}
+
 cli() {
     local node="$1"
     shift
@@ -194,6 +222,11 @@ export NODE_ID='$id'
 export USER_ID='$user_id'
 export PATH='$dir/bin':"\$PATH"
 EOF
+
+    if [ -n "$DEV_URL" ] && [ "$SMOKE" = "0" ] && [ "$HOT_RELOAD" = "1" ]; then
+        printf "export TICONNECT_DEV_URL='%s'\nexport LAB_DEV_URL='%s'\n" \
+            "$DEV_URL" "$DEV_URL" >>"$dir/env"
+    fi
 
     cat >"$dir/bashrc" <<EOF
 source '$dir/env'
@@ -324,6 +357,9 @@ B_ID="$(node_id b)"
 cli a settings set identity.display_name "Lab Node A" >/dev/null
 cli b settings set identity.display_name "Lab Node B" >/dev/null
 mkdir -p "$WORK/bin"
+if [ "$SMOKE" = "0" ] && [ "$HOT_RELOAD" = "1" ]; then
+    start_dev_server
+fi
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
 write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair

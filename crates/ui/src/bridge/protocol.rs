@@ -166,6 +166,10 @@ async fn dispatch_inner(
             link.unblock_user(input.fingerprint).await?;
             Ok(Value::Null)
         }
+        "get_message" => {
+            let input: MessageId = params(value)?;
+            Ok(json!(link.get_message(input.message_id).await?))
+        }
         "list_messages" => {
             let input: ListMessages = params(value)?;
             link.list_messages(input.conversation_id, input.limit, input.offset)
@@ -213,6 +217,11 @@ async fn dispatch_inner(
             let input: MarkRead = params(value)?;
             link.mark_read(input.conversation_id, input.message_ids)
                 .await?;
+            Ok(Value::Null)
+        }
+        "mark_conversation_read" => {
+            let input: ConversationId = params(value)?;
+            link.mark_conversation_read(input.conversation_id).await?;
             Ok(Value::Null)
         }
         "set_user_policy" => {
@@ -344,6 +353,11 @@ struct Hash {
 #[derive(Deserialize)]
 struct ConversationId {
     conversation_id: String,
+}
+
+#[derive(Deserialize)]
+struct MessageId {
+    message_id: String,
 }
 
 #[derive(Deserialize)]

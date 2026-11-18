@@ -74,34 +74,54 @@
     });
 </script>
 
-<section class="party">
-    <button class="back icon-button small" onclick={() => app.backToChat()} aria-label="Back">
+<section class="flex h-full min-w-0 flex-1 gap-5 bg-base pt-[18px] pr-5 pb-5 pl-8">
+    <button
+        class="mt-1 inline-flex size-8 shrink-0 items-center justify-center self-start rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+        onclick={() => app.backToChat()}
+        aria-label="Back"
+    >
         <Icon name="back" size={16} />
     </button>
     {#if party}
-        <div class="party-body">
-            <div class="stage-column">
-                <div class="stage">
-                    <div class="stage-head">
+        <div class="flex min-w-0 flex-1 gap-5">
+            <div class="flex min-w-0 flex-1 flex-col">
+                <div
+                    class="flex min-h-0 flex-1 flex-col rounded-md border border-line bg-surface p-3"
+                >
+                    <div class="flex items-start justify-between gap-4 px-[2px] pt-0 pb-3">
                         <div>
-                            <h1 class="display">{title}</h1>
-                            <p>TiConnect Labs</p>
+                            <h1
+                                class="m-0 font-display text-[19px] leading-6 font-normal tracking-[-0.01em]"
+                            >
+                                {title}
+                            </h1>
+                            <p class="mt-[2px] mb-0 text-xs tracking-[0.06em] text-ink-3 uppercase">
+                                TiConnect Labs
+                            </p>
                         </div>
-                        <span class="synced"><span class="dot"></span>Synced · 0.2 s drift</span>
+                        <span class="flex shrink-0 items-center gap-1.5 text-xs text-ink-3"
+                            ><span class="size-1.5 rounded-full border border-success bg-success"
+                            ></span>Synced · 0.2 s drift</span
+                        >
                     </div>
-                    <div class="video">
+                    <div class="flex min-h-[300px] flex-1 overflow-hidden rounded-sm bg-surface-2">
                         {#if app.demo}
-                            <div class="mock-video">
+                            <div
+                                class="relative flex size-full items-center justify-center bg-surface-2"
+                            >
                                 <img
+                                    class="size-full object-cover opacity-[0.45]"
                                     src={`https://i.ytimg.com/vi/${party.video_id}/mqdefault.jpg`}
                                     alt=""
                                 />
-                                <span class="mock-play"
-                                    ><Icon name="play" size={22} color="var(--base)" /></span
+                                <span
+                                    class="absolute flex size-[72px] items-center justify-center rounded-full bg-accent"
+                                    ><Icon name="play" size={22} color="var(--color-base)" /></span
                                 >
                             </div>
                         {:else}
                             <iframe
+                                class="size-full border-0"
                                 bind:this={frame}
                                 src={`https://www.youtube-nocookie.com/embed/${party.video_id}?enablejsapi=1&rel=0&autoplay=${playing ? 1 : 0}`}
                                 {title}
@@ -110,17 +130,18 @@
                             ></iframe>
                         {/if}
                     </div>
-                    <div class="player-controls">
+                    <div class="flex items-center gap-2.5 pt-3">
                         <button
-                            class="icon-button small"
+                            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
                             onclick={togglePlay}
                             aria-label={playing ? 'Pause' : 'Play'}
                         >
                             <Icon name={playing ? 'pause' : 'play'} size={16} />
                         </button>
-                        <span class="time mono-data">{sessionClock(position)}</span>
+                        <span class="text-xs text-ink-3 tabular-nums">{sessionClock(position)}</span
+                        >
                         <input
-                            class="seek"
+                            class="flex-1 accent-accent"
                             type="range"
                             min="0"
                             max="1122"
@@ -128,311 +149,94 @@
                             oninput={seek}
                             aria-label="Seek video"
                         />
-                        <span class="time mono-data">18:42</span>
-                        <button class="icon-button small" aria-label="Mute">
+                        <span class="text-xs text-ink-3 tabular-nums">18:42</span>
+                        <button
+                            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                            aria-label="Mute"
+                        >
                             <Icon name="speaker" size={15} />
                         </button>
-                        <button class="icon-button small" aria-label="Fullscreen">
+                        <button
+                            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                            aria-label="Fullscreen"
+                        >
                             <Icon name="fullscreen" size={15} />
                         </button>
                     </div>
                 </div>
             </div>
-            <aside class="side">
-                <section class="side-card">
-                    <h2 class="label">Watching · {participants.length}</h2>
+            <aside class="flex w-80 shrink-0 flex-col gap-4">
+                <section class="rounded-md border border-line bg-surface p-4">
+                    <h2
+                        class="mt-0 mb-2.5 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Watching · {participants.length}
+                    </h2>
                     {#each participants as user, index (user.id)}
-                        <div class="participant">
+                        <div class="flex items-center gap-2.5 border-b border-line py-2.5">
                             <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={32} />
-                            <div class="participant-copy">
-                                <strong>{shortName(user)}</strong>
-                                <span
-                                    ><span class="dot online"></span>{index === 0
-                                        ? 'Started the party'
-                                        : 'Watching'}</span
+                            <div class="flex min-w-0 flex-1 flex-col gap-0.5">
+                                <strong class="text-sm">{shortName(user)}</strong>
+                                <span class="flex items-center gap-[5px] text-xs text-ink-3"
+                                    ><span
+                                        class="size-1.5 rounded-full border border-success bg-success"
+                                    ></span>{index === 0 ? 'Started the party' : 'Watching'}</span
                                 >
                             </div>
                             {#if index === 1}
-                                <span class="controller">Controlling</span>
+                                <span
+                                    class="rounded-pill bg-accent px-[9px] py-1 text-[11px] font-bold text-base"
+                                    >Controlling</span
+                                >
                             {/if}
                         </div>
                     {/each}
-                    <p class="side-note">Anyone can play, pause, or seek. Changes apply to all.</p>
+                    <p class="mt-3 mb-0 text-[13px] leading-[1.5] text-ink-3">
+                        Anyone can play, pause, or seek. Changes apply to all.
+                    </p>
                 </section>
-                <section class="side-card">
-                    <h2 class="label">Up next · {queue.length}</h2>
+                <section class="rounded-md border border-line bg-surface p-4">
+                    <h2
+                        class="mt-0 mb-2.5 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Up next · {queue.length}
+                    </h2>
                     {#each queue as videoId, index (videoId)}
-                        <div class="queue-item">
-                            <strong
+                        <div
+                            class="flex flex-col gap-0.5 border-b border-line py-[9px] last:border-b-0"
+                        >
+                            <strong class="text-[13px]"
                                 >{index === 0
                                     ? 'LAN discovery in 90 seconds'
                                     : 'Building the overlay'}</strong
                             >
-                            <span>TiConnect Labs · {index === 0 ? '3:08' : '7:21'}</span>
+                            <span class="text-xs text-ink-3"
+                                >TiConnect Labs · {index === 0 ? '3:08' : '7:21'}</span
+                            >
                         </div>
                     {/each}
                     {#if queue.length === 0}
-                        <p class="empty">Queue is quiet.</p>
+                        <p class="m-0 text-step-xs text-ink-3">Queue is quiet.</p>
                     {/if}
                 </section>
-                <button class="btn btn-danger leave" onclick={leave}>Leave party</button>
+                <button
+                    class="mt-auto inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
+                    onclick={leave}>Leave party</button
+                >
             </aside>
         </div>
     {:else}
-        <div class="waiting">
-            <h1 class="display">No watch party is active.</h1>
-            <p class="empty">Open a conversation with a YouTube link to start one.</p>
-            <button class="btn btn-accent" onclick={() => app.backToChat()}>Back to chat</button>
+        <div class="flex flex-1 flex-col items-center justify-center gap-2.5 text-center">
+            <h1 class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em]">
+                No watch party is active.
+            </h1>
+            <p class="m-0 text-step-xs text-ink-3">
+                Open a conversation with a YouTube link to start one.
+            </p>
+            <button
+                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
+                onclick={() => app.backToChat()}>Back to chat</button
+            >
         </div>
     {/if}
 </section>
-
-<style>
-    .party {
-        display: flex;
-        height: 100%;
-        flex: 1;
-        min-width: 0;
-        padding: 18px 20px 20px 32px;
-        gap: 20px;
-        background: var(--base);
-    }
-
-    .back {
-        align-self: flex-start;
-        margin-top: 4px;
-    }
-
-    .party-body {
-        display: flex;
-        flex: 1;
-        min-width: 0;
-        gap: 20px;
-    }
-
-    .stage-column {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .stage {
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        flex: 1;
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .stage-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 0 2px 12px;
-    }
-
-    .stage-head h1 {
-        margin: 0;
-        font-size: 19px;
-        line-height: 24px;
-    }
-
-    .stage-head p {
-        margin: 2px 0 0;
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .synced {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-shrink: 0;
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        border: 1px solid var(--line-strong);
-    }
-
-    .dot.online,
-    .synced .dot {
-        background: var(--success);
-        border-color: var(--success);
-    }
-
-    .video {
-        display: flex;
-        min-height: 300px;
-        flex: 1;
-        overflow: hidden;
-        border-radius: var(--radius-s);
-        background: var(--surface-2);
-    }
-
-    .video iframe {
-        width: 100%;
-        height: 100%;
-        border: 0;
-    }
-
-    .mock-video {
-        position: relative;
-        display: flex;
-        width: 100%;
-        height: 100%;
-        align-items: center;
-        justify-content: center;
-        background: var(--surface-2);
-    }
-
-    .mock-video img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        opacity: 0.45;
-    }
-
-    .mock-play {
-        position: absolute;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 72px;
-        height: 72px;
-        border-radius: 50%;
-        background: var(--accent);
-    }
-
-    .player-controls {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding-top: 12px;
-    }
-
-    .seek {
-        flex: 1;
-        accent-color: var(--accent);
-    }
-
-    .time {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .side {
-        display: flex;
-        flex-direction: column;
-        width: 320px;
-        flex-shrink: 0;
-        gap: 16px;
-    }
-
-    .side-card {
-        padding: 16px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .side-card h2 {
-        margin: 0 0 10px;
-    }
-
-    .participant {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--line);
-    }
-
-    .participant-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        min-width: 0;
-        flex: 1;
-    }
-
-    .participant-copy strong {
-        font-size: 14px;
-    }
-
-    .participant-copy span {
-        display: flex;
-        align-items: center;
-        gap: 5px;
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .controller {
-        padding: 4px 9px;
-        border-radius: var(--radius-pill);
-        background: var(--accent);
-        color: var(--base);
-        font-size: 11px;
-        font-weight: 700;
-    }
-
-    .side-note {
-        margin: 12px 0 0;
-        color: var(--ink-3);
-        font-size: 13px;
-        line-height: 1.5;
-    }
-
-    .queue-item {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-        padding: 9px 0;
-        border-bottom: 1px solid var(--line);
-    }
-
-    .queue-item:last-child {
-        border-bottom: 0;
-    }
-
-    .queue-item strong {
-        font-size: 13px;
-    }
-
-    .queue-item span {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .leave {
-        width: 100%;
-        margin-top: auto;
-    }
-
-    .waiting {
-        display: flex;
-        flex: 1;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        text-align: center;
-    }
-
-    .waiting h1 {
-        margin: 0;
-        font-size: var(--step-3);
-    }
-</style>

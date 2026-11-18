@@ -1,4 +1,4 @@
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 import { BridgeClient } from './bridge';
 import { demoScreen } from './demo';
@@ -62,6 +62,8 @@ interface DemoSeed {
     route: string;
 }
 
+const HISTORY_PAGE_SIZE = 100;
+
 function nowSeconds(): number {
     return Math.floor(Date.now() / 1000);
 }
@@ -76,6 +78,8 @@ export class AppState {
     users = $state<User[]>([]);
     summaries = $state<ConversationSummary[]>([]);
     messages = $state<Message[]>([]);
+    hasOlderMessages = $state(false);
+    loadingOlderMessages = $state(false);
     details = $state<UserDetails | null>(null);
     call = $state<Call | null>(null);
     remote = $state<RemoteSession | null>(null);
@@ -106,7 +110,10 @@ export class AppState {
     private client: BridgeClient | null = null;
     private reconnectTimer: number | null = null;
     private reconnectDelay = 1_000;
+    private refreshTimer: number | null = null;
     private typingTimer: number | null = null;
+    private messageOffset = 0;
+    private readMessageIds = new SvelteSet<string>();
     private removeHashListener: (() => void) | null = null;
     private removeBridgeListener: (() => void) | null = null;
 
@@ -135,6 +142,9 @@ export class AppState {
         this.removeBridgeListener?.();
         if (this.reconnectTimer !== null) {
             window.clearTimeout(this.reconnectTimer);
+        }
+        if (this.refreshTimer !== null) {
+            window.clearTimeout(this.refreshTimer);
         }
         if (this.typingTimer !== null) {
             window.clearTimeout(this.typingTimer);
@@ -263,6 +273,19 @@ export class AppState {
         if (!partyFailure) {
             this.party = party;
         }
+    }
+
+    private scheduleRefresh(): void {
+        if (this.demo) {
+            return;
+        }
+        if (this.refreshTimer !== null) {
+            window.clearTimeout(this.refreshTimer);
+        }
+        this.refreshTimer = window.setTimeout(() => {
+            this.refreshTimer = null;
+            void this.refresh();
+        }, 500);
     }
 
     avatarUrl(fingerprint: string): string {
@@ -422,35 +445,202 @@ export class AppState {
         }
     }
 
+    private normalizeMessage(message: Message): Message {
+        const nodeId = this.bootstrap?.identity.node_id;
+        if (nodeId === undefined) {
+            return message;
+        }
+        return { ...message, local_sender: message.sender_id === nodeId };
+    }
+
+    private appendMessage(message: Message): void {
+        const normalized = this.normalizeMessage(message);
+        const index = this.messages.findIndex((item) => item.id === normalized.id);
+        if (index >= 0) {
+            const next = this.messages.slice();
+            next[index] = normalized;
+            this.messages = next;
+            return;
+        }
+        this.messages = [...this.messages, normalized];
+    }
+
+    private updateSummary(message: Message): void {
+        const userId = message.user_id || this.selectedUserId;
+        if (userId === '') {
+            return;
+        }
+        const index = this.summaries.findIndex((item) => item.user_id === userId);
+        const current = this.summaries[index];
+        if (current === undefined) {
+            return;
+        }
+        const updated: ConversationSummary = {
+            ...current,
+            last_message_id: message.id,
+            last_sender_id: message.sender_id,
+            last_body: message.body,
+            last_sent_at: message.sent_at || message.received_at,
+        };
+        this.summaries = this.summaries.map((item, itemIndex) =>
+            itemIndex === index ? updated : item,
+        );
+    }
+
+    private async loadSentMessage(messageId: string, userId: string): Promise<void> {
+        const client = this.client;
+        if (client === null) {
+            return;
+        }
+        const [message, failure] = await client.request<Message>('get_message', {
+            message_id: messageId,
+        });
+        if (failure || message === null) {
+            await this.loadMessages(userId);
+            return;
+        }
+        if (message.user_id === '') {
+            message.user_id = userId;
+        }
+        if (this.route.kind === 'chat' && this.route.id === userId) {
+            this.appendMessage(message);
+        }
+        this.updateSummary(message);
+    }
+
     async loadMessages(userId: string): Promise<void> {
         this.details = null;
         if (this.client === null) {
             return;
         }
+        this.messages = [];
+        this.messageOffset = 0;
+        this.hasOlderMessages = false;
+        this.loadingOlderMessages = false;
         const summary = this.summaries.find((item) => item.user_id === userId);
         if (summary === undefined) {
-            this.messages = [];
             return;
         }
+        const conversationId = summary.conversation_id;
+        const [total, countFailure] = await this.client.request<number>('count_messages', {
+            conversation_id: conversationId,
+        });
+        if (countFailure) {
+            this.notice = countFailure.message;
+            return;
+        }
+        const messageCount = total ?? 0;
+        if (messageCount > 0) {
+            const limit = Math.min(HISTORY_PAGE_SIZE, messageCount);
+            const offset = messageCount - limit;
+            const [loaded, failure] = await this.client.request<Message[]>('list_messages', {
+                conversation_id: conversationId,
+                limit,
+                offset,
+            });
+            if (failure) {
+                this.notice = failure.message;
+                return;
+            }
+            if (this.route.kind !== 'chat' || this.route.id !== userId) {
+                return;
+            }
+            this.messages = (loaded ?? []).map((message) => this.normalizeMessage(message));
+            this.messageOffset = offset;
+            this.hasOlderMessages = offset > 0;
+        }
+        if (this.route.kind !== 'chat' || this.route.id !== userId) {
+            return;
+        }
+        await this.markConversationRead(conversationId);
+    }
+
+    async loadOlderMessages(): Promise<void> {
+        if (
+            this.client === null ||
+            this.route.kind !== 'chat' ||
+            this.loadingOlderMessages ||
+            this.messageOffset === 0
+        ) {
+            return;
+        }
+        const userId = this.route.id;
+        const summary = this.summaries.find((item) => item.user_id === userId);
+        if (summary === undefined) {
+            return;
+        }
+        const conversationId = summary.conversation_id;
+        const limit = Math.min(HISTORY_PAGE_SIZE, this.messageOffset);
+        const offset = this.messageOffset - limit;
+        this.loadingOlderMessages = true;
         const [loaded, failure] = await this.client.request<Message[]>('list_messages', {
-            conversation_id: summary.conversation_id,
-            limit: 100,
-            offset: 0,
+            conversation_id: conversationId,
+            limit,
+            offset,
+        });
+        this.loadingOlderMessages = false;
+        if (failure) {
+            this.notice = failure.message;
+            return;
+        }
+        if (this.route.kind !== 'chat' || this.route.id !== userId) {
+            return;
+        }
+        const existing = new SvelteSet(this.messages.map((message) => message.id));
+        const older = (loaded ?? [])
+            .map((message) => this.normalizeMessage(message))
+            .filter((message) => !existing.has(message.id));
+        this.messages = [...older, ...this.messages];
+        this.messageOffset = offset;
+        this.hasOlderMessages = offset > 0;
+    }
+
+    private async markConversationRead(conversationId: string): Promise<void> {
+        if (this.client === null) {
+            return;
+        }
+        const [, failure] = await this.client.request('mark_conversation_read', {
+            conversation_id: conversationId,
         });
         if (failure) {
             this.notice = failure.message;
             return;
         }
-        this.messages = loaded ?? [];
-        const unread = this.messages
-            .filter((message) => !message.local_sender)
-            .map((message) => message.id);
-        if (unread.length > 0) {
-            await this.client.request('mark_read', {
-                conversation_id: summary.conversation_id,
-                message_ids: unread,
-            });
+        this.setSummaryUnreadCount(conversationId, 0);
+        this.scheduleRefresh();
+    }
+
+    private async markMessageRead(conversationId: string, messageIds: string[]): Promise<void> {
+        if (this.client === null || messageIds.length === 0) {
+            return;
         }
+        const [, failure] = await this.client.request('mark_read', {
+            conversation_id: conversationId,
+            message_ids: messageIds,
+        });
+        if (failure) {
+            this.notice = failure.message;
+            return;
+        }
+        messageIds.forEach((messageId) => this.readMessageIds.add(messageId));
+        this.decrementSummaryUnreadCount(conversationId, messageIds.length);
+        this.scheduleRefresh();
+    }
+
+    private setSummaryUnreadCount(conversationId: string, unreadCount: number): void {
+        this.summaries = this.summaries.map((summary) =>
+            summary.conversation_id === conversationId
+                ? { ...summary, unread_count: unreadCount }
+                : summary,
+        );
+    }
+
+    private decrementSummaryUnreadCount(conversationId: string, count: number): void {
+        this.summaries = this.summaries.map((summary) =>
+            summary.conversation_id === conversationId
+                ? { ...summary, unread_count: Math.max(0, summary.unread_count - count) }
+                : summary,
+        );
     }
 
     async loadDetails(userId: string): Promise<void> {
@@ -553,46 +743,45 @@ export class AppState {
         this.draft = '';
         await this.setTyping(false);
         if (this.demo) {
-            this.messages = [
-                ...this.messages,
-                {
-                    id: `demo-${Date.now()}`,
-                    conversation_id: 'conv-mika',
-                    user_id: userId,
-                    sender_id: this.bootstrap?.identity.node_id ?? '',
-                    local_sender: true,
-                    seq: this.messages.length + 1,
-                    sent_at: Date.now(),
-                    received_at: Date.now(),
-                    body,
-                    attachment_hash: '',
-                    attachment_name: '',
-                    attachment_size: 0,
-                    attachment_mime: '',
-                    attachment_path: '',
-                    state: 'sent',
-                    notify: false,
-                },
-            ];
+            const message: Message = {
+                id: `demo-${Date.now()}`,
+                conversation_id: 'conv-mika',
+                user_id: userId,
+                sender_id: this.bootstrap?.identity.node_id ?? '',
+                local_sender: true,
+                seq: this.messages.length + 1,
+                sent_at: Date.now(),
+                received_at: Date.now(),
+                body,
+                attachment_hash: '',
+                attachment_name: '',
+                attachment_size: 0,
+                attachment_mime: '',
+                attachment_path: '',
+                state: 'sent',
+                notify: false,
+            };
+            this.appendMessage(message);
+            this.updateSummary(message);
             return;
         }
-        const [, failure] = await this.client.request<string>('send_message', {
+        const [messageId, failure] = await this.client.request<string>('send_message', {
             user_id: userId,
             body,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (failure || messageId === null) {
+            this.notice = failure?.message ?? 'send message returned no message id';
             return;
         }
-        await this.loadMessages(userId);
-        await this.refresh();
+        await this.loadSentMessage(messageId, userId);
     }
 
     async sendFile(file: File): Promise<void> {
         if (this.client === null || this.route.kind !== 'chat') {
             return;
         }
-        const [messageId, failure] = await this.client.uploadAttachment(this.route.id, file);
+        const userId = this.route.id;
+        const [messageId, failure] = await this.client.uploadAttachment(userId, file);
         if (failure) {
             this.notice = failure.message;
             return;
@@ -601,8 +790,7 @@ export class AppState {
             this.notice = 'attachment upload returned no message id';
             return;
         }
-        await this.loadMessages(this.route.id);
-        await this.refresh();
+        await this.loadSentMessage(messageId, userId);
     }
 
     async uploadAvatar(file: File): Promise<void> {
@@ -990,9 +1178,13 @@ export class AppState {
             case 'message_state_changed': {
                 const messageId = String(event.message_id ?? '');
                 const state = String(event.state ?? '');
-                this.messages = this.messages.map((message) =>
-                    message.id === messageId ? { ...message, state } : message,
-                );
+                const index = this.messages.findIndex((message) => message.id === messageId);
+                const message = this.messages[index];
+                if (message !== undefined) {
+                    const next = this.messages.slice();
+                    next[index] = { ...message, state };
+                    this.messages = next;
+                }
                 break;
             }
             case 'typing_changed': {
@@ -1011,7 +1203,7 @@ export class AppState {
             case 'user_disconnected':
             case 'users':
             case 'policy_changed':
-                void this.refresh();
+                this.scheduleRefresh();
                 break;
             case 'incoming_call':
                 this.call = event.call as Call;
@@ -1060,10 +1252,15 @@ export class AppState {
     }
 
     private receiveMessage(message: Message): void {
-        if (this.route.kind === 'chat' && this.route.id === message.user_id) {
-            this.messages = [...this.messages.filter((item) => item.id !== message.id), message];
+        const normalized = this.normalizeMessage(message);
+        if (this.route.kind === 'chat' && this.route.id === normalized.user_id) {
+            this.appendMessage(normalized);
+            if (!normalized.local_sender && !this.readMessageIds.has(normalized.id)) {
+                void this.markMessageRead(normalized.conversation_id, [normalized.id]);
+            }
         }
-        const videoId = firstVideoId(message.body);
+        this.updateSummary(normalized);
+        const videoId = firstVideoId(normalized.body);
         if (
             videoId !== null &&
             this.preferences.autoplay &&
@@ -1072,23 +1269,23 @@ export class AppState {
         ) {
             this.openPlayer(videoId, 0, true);
         }
-        if (this.route.kind !== 'chat' || this.route.id !== message.user_id) {
-            if (message.local_sender) {
-                void this.refresh();
+        if (this.route.kind !== 'chat' || this.route.id !== normalized.user_id) {
+            if (normalized.local_sender) {
+                this.scheduleRefresh();
                 return;
             }
             this.toasts = [
-                ...this.toasts.filter((toast) => toast.id !== message.id),
+                ...this.toasts.filter((toast) => toast.id !== normalized.id),
                 {
-                    id: message.id,
-                    userId: message.user_id,
-                    name: this.userName(message.user_id),
-                    body: message.body,
-                    sentAt: message.sent_at || message.received_at,
+                    id: normalized.id,
+                    userId: normalized.user_id,
+                    name: this.userName(normalized.user_id),
+                    body: normalized.body,
+                    sentAt: normalized.sent_at || normalized.received_at,
                 },
             ].slice(-3);
         }
-        void this.refresh();
+        this.scheduleRefresh();
     }
 
     private finishCall(callId: string, reason: string): void {

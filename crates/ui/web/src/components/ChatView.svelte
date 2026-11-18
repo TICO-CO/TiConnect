@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { tick } from 'svelte';
+
     import type { AppState } from '../lib';
     import { clock, dayLabel, fileSize, fingerprintLabel, sessionClock, shortName } from '../lib';
     import { firstVideoId } from '../lib';
@@ -13,6 +15,7 @@
     let stream: HTMLDivElement | null = $state(null);
     let fileInput: HTMLInputElement | null = $state(null);
     let composer: HTMLTextAreaElement | null = $state(null);
+    let prependingOlderMessages = false;
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
     const currentParty = $derived(
@@ -85,18 +88,40 @@
         }
     }
 
+    async function loadOlderMessages(): Promise<void> {
+        if (stream === null || stream.scrollTop > 48) {
+            return;
+        }
+        if (!app.hasOlderMessages || app.loadingOlderMessages) {
+            return;
+        }
+        const previousHeight = stream.scrollHeight;
+        const previousTop = stream.scrollTop;
+        prependingOlderMessages = true;
+        await app.loadOlderMessages();
+        await tick();
+        if (stream !== null) {
+            stream.scrollTop = stream.scrollHeight - previousHeight + previousTop;
+        }
+        prependingOlderMessages = false;
+    }
+
+    function handleStreamScroll(): void {
+        void loadOlderMessages();
+    }
+
     $effect(() => {
-        if (app.messages.length > 0 && stream !== null) {
+        if (app.messages.length > 0 && stream !== null && !prependingOlderMessages) {
             stream.scrollTop = stream.scrollHeight;
         }
     });
 </script>
 
-<section class="chat-pane">
+<section class="flex h-full min-w-0 flex-1 flex-col bg-base">
     {#if selectedUser}
-        <header class="chat-header">
+        <header class="flex h-[88px] shrink-0 items-center justify-between gap-3.5 bg-rail px-7">
             <button
-                class="identity"
+                class="flex min-w-0 items-center gap-3.5 border-0 bg-transparent p-0 text-left text-ink"
                 onclick={() => app.navigate({ kind: 'profile', id: selectedUser.id })}
             >
                 <Avatar
@@ -104,40 +129,55 @@
                     image={app.avatarUrl(selectedUser.fingerprint)}
                     size={44}
                 />
-                <span class="identity-copy">
-                    <span class="display name">{shortName(selectedUser)}</span>
-                    <span class="presence">
-                        <span class="dot" class:online={selectedUser.connected}></span>
+                <span class="flex min-w-0 flex-col gap-[3px]">
+                    <span
+                        class="truncate font-display text-step-2 leading-[26px] font-normal tracking-[-0.01em]"
+                        >{shortName(selectedUser)}</span
+                    >
+                    <span class="flex items-center gap-1.5 text-[13px] leading-4 text-ink-3">
+                        <span
+                            class="size-1.5 rounded-full border border-line-strong data-online:border-success data-online:bg-success"
+                            data-online={selectedUser.connected ? '' : undefined}
+                        ></span>
                         {selectedUser.connected ? 'Online' : 'Offline'}
                     </span>
                 </span>
             </button>
-            <div class="actions">
-                <button class="btn btn-small" onclick={() => void app.startCall(selectedUser.id)}>
+            <div class="flex shrink-0 gap-2.5">
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={() => void app.startCall(selectedUser.id)}
+                >
                     Call
                     <Icon name="call" size={15} />
                 </button>
                 <button
-                    class="btn btn-small"
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
                     onclick={() => void app.requestRemote(selectedUser.id)}
                 >
                     Remote desktop
                     <Icon name="remote" size={15} />
                 </button>
-                <button class="btn btn-small" onclick={playTogether}>
+                <button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={playTogether}
+                >
                     Watch party
                     <Icon name="chevron-right" size={13} />
                 </button>
             </div>
         </header>
         {#if announcementVideo}
-            <div class="youtube-bar">
-                <span class="lamp"></span>
-                <span class="youtube-label">YouTube</span>
-                <span class="youtube-title">{videoTitle(announcementVideo)} · plays in overlay</span
+            <div
+                class="flex h-9 shrink-0 items-center gap-2 border-b border-line bg-surface-2 px-7 text-xs tracking-[0.06em] text-ink-2 uppercase"
+            >
+                <span class="size-1.5 rounded-full bg-warning"></span>
+                <span class="font-bold text-ink-3">YouTube</span>
+                <span class="min-w-0 flex-1 truncate text-ink-2"
+                    >{videoTitle(announcementVideo)} · plays in overlay</span
                 >
                 <button
-                    class="icon-button small"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
                     onclick={() => app.closePlayer()}
                     aria-label="Dismiss video notice"
                 >
@@ -145,33 +185,60 @@
                 </button>
             </div>
         {/if}
-        <div class="stream scroll" bind:this={stream}>
+        <div
+            class="flex scroll min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-7 py-3"
+            bind:this={stream}
+            onscroll={handleStreamScroll}
+        >
+            {#if app.loadingOlderMessages}
+                <div
+                    class="flex shrink-0 justify-center py-2 text-step-xs text-ink-3"
+                    role="status"
+                >
+                    Loading older messages…
+                </div>
+            {/if}
             {#each app.messages as message, index (message.id)}
                 {@const previous = app.messages[index - 1]}
                 {@const showDay =
                     previous === undefined ||
                     dayLabel(previous.sent_at) !== dayLabel(message.sent_at)}
                 {#if showDay}
-                    <div class="day"><span>{dayLabel(message.sent_at)}</span></div>
+                    <div class="flex items-center justify-center pt-2 pb-3.5">
+                        <span
+                            class="rounded-pill border border-line px-3 py-1 text-xs tracking-[0.06em] text-ink-3"
+                            >{dayLabel(message.sent_at)}</span
+                        >
+                    </div>
                 {/if}
                 {#if message.body === '' && message.attachment_hash === ''}
-                    <p class="empty">Message unavailable.</p>
+                    <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
                 {:else}
-                    <article class="message" class:local={message.local_sender}>
+                    <article
+                        class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
+                        data-local={message.local_sender ? '' : undefined}
+                    >
                         {#if message.body && !isOnlyVideoLink(message.body)}
-                            <p class="body">{message.body}</p>
+                            <p
+                                class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
+                            >
+                                {message.body}
+                            </p>
                         {/if}
                         {#if message.attachment_hash}
                             <button
-                                class="attachment"
+                                class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
                                 onclick={() => void app.openAttachment(message.attachment_hash)}
                             >
-                                <span class="file-icon"
-                                    ><Icon name="file" size={18} color="var(--ink-2)" /></span
+                                <span
+                                    class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                    ><Icon name="file" size={18} color="var(--color-ink-2)" /></span
                                 >
-                                <span class="file-copy">
-                                    <strong>{message.attachment_name || 'Attachment'}</strong>
-                                    <span
+                                <span class="flex flex-col gap-0.5">
+                                    <strong class="text-[14px]"
+                                        >{message.attachment_name || 'Attachment'}</strong
+                                    >
+                                    <span class="text-xs text-ink-3"
                                         >BLAKE3 {fingerprintLabel(message.attachment_hash)} · {fileSize(
                                             message.attachment_size,
                                         )}</span
@@ -181,24 +248,35 @@
                         {/if}
                         {#if firstVideoId(message.body)}
                             {@const videoId = firstVideoId(message.body) ?? ''}
-                            <div class="video-card">
-                                <div class="thumb">
+                            <div
+                                class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
+                            >
+                                <div
+                                    class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
+                                >
                                     <img
+                                        class="h-full w-full object-cover opacity-[0.82]"
                                         src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
                                         alt=""
                                     />
-                                    <span class="thumb-play"
-                                        ><Icon name="play" size={18} color="var(--base)" /></span
+                                    <span class="absolute inset-0 flex items-center justify-center"
+                                        ><Icon
+                                            name="play"
+                                            size={18}
+                                            color="var(--color-base)"
+                                        /></span
                                     >
                                 </div>
-                                <div class="video-copy">
-                                    <strong>{videoTitle(videoId)}</strong>
-                                    <span>TiConnect Labs · 18:42</span>
-                                    <span class="playing-label"
+                                <div class="flex min-w-0 flex-col items-start gap-1">
+                                    <strong class="text-[15px] leading-5"
+                                        >{videoTitle(videoId)}</strong
+                                    >
+                                    <span class="text-xs text-ink-3">TiConnect Labs · 18:42</span>
+                                    <span class="text-xs tracking-[0.05em] text-ink-2 uppercase"
                                         >Playing in overlay · 2 in queue</span
                                     >
                                     <button
-                                        class="btn btn-small"
+                                        class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
                                         onclick={() =>
                                             void app.startParty(videoId, selectedUser.id)}
                                     >
@@ -208,28 +286,42 @@
                                 </div>
                             </div>
                         {/if}
-                        <div class="meta mono-data">
+                        <div
+                            class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
+                        >
                             <span>{clock(message.sent_at || message.received_at)}</span>
                             {#if message.local_sender}
                                 {#if message.state === 'read'}
-                                    <span class="receipt read"
+                                    <span class="inline-flex text-accent"
                                         ><Icon
                                             name="checks"
                                             size={14}
-                                            color="var(--accent)"
+                                            color="var(--color-accent)"
                                         /></span
                                     >
                                 {:else if message.state === 'delivered'}
-                                    <span class="receipt"
-                                        ><Icon name="checks" size={14} color="var(--ink-3)" /></span
+                                    <span class="inline-flex"
+                                        ><Icon
+                                            name="checks"
+                                            size={14}
+                                            color="var(--color-ink-3)"
+                                        /></span
                                     >
                                 {:else if message.state === 'failed'}
-                                    <span class="receipt error"
-                                        ><Icon name="alert" size={13} color="var(--error)" /></span
+                                    <span class="inline-flex text-error"
+                                        ><Icon
+                                            name="alert"
+                                            size={13}
+                                            color="var(--color-error)"
+                                        /></span
                                     >
                                 {:else}
-                                    <span class="receipt"
-                                        ><Icon name="check" size={13} color="var(--ink-3)" /></span
+                                    <span class="inline-flex"
+                                        ><Icon
+                                            name="check"
+                                            size={13}
+                                            color="var(--color-ink-3)"
+                                        /></span
                                     >
                                 {/if}
                             {/if}
@@ -239,32 +331,46 @@
             {/each}
             {#if callLogs.length > 0}
                 {#each callLogs as log (log.id)}
-                    <div class="call-line">
-                        <span class="rule"></span>
-                        <span class="call-label">
-                            <Icon name="call" size={12} color="var(--ink-3)" />
+                    <div
+                        class="flex w-[min(720px,100%)] items-center justify-center gap-3 self-center py-2"
+                    >
+                        <span class="h-px flex-1 bg-line"></span>
+                        <span
+                            class="flex items-center gap-1.5 text-xs tracking-[0.04em] text-ink-3"
+                        >
+                            <Icon name="call" size={12} color="var(--color-ink-3)" />
                             {log.reason === 'missed' ? 'Missed call' : 'Call ended'} · {sessionClock(
                                 log.durationSeconds,
                             )}
                         </span>
-                        <span class="rule"></span>
+                        <span class="h-px flex-1 bg-line"></span>
                     </div>
                 {/each}
             {/if}
             {#if app.typing[selectedUser.id]}
-                <p class="typing">{shortName(selectedUser)} is typing…</p>
+                <p class="m-0 text-xs text-ink-3">{shortName(selectedUser)} is typing…</p>
             {/if}
             {#if app.messages.length === 0}
-                <div class="empty-conversation">
-                    <p class="display">A quiet line is still open.</p>
-                    <p class="empty">Say hello — messages stay on this network.</p>
+                <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
+                    <p
+                        class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em] text-ink"
+                    >
+                        A quiet line is still open.
+                    </p>
+                    <p class="m-0 text-step-xs text-ink-3">
+                        Say hello — messages stay on this network.
+                    </p>
                 </div>
             {/if}
         </div>
-        <form class="composer" onsubmit={send}>
+        <form
+            class="mx-5 mb-5 flex shrink-0 flex-col rounded-md border border-line bg-surface px-4 pt-3.5 pb-2.5"
+            onsubmit={send}
+        >
             <label class="sr-only" for="message-body">Message</label>
             <textarea
                 id="message-body"
+                class="max-h-[120px] min-h-9 w-full resize-none border-0 bg-transparent text-step-0 leading-[1.45] text-ink outline-none placeholder:text-ink-3"
                 bind:this={composer}
                 value={app.draft}
                 oninput={(event) =>
@@ -272,428 +378,45 @@
                 onkeydown={onComposerKey}
                 placeholder="Write a message"
                 rows="1"></textarea>
-            <div class="composer-row">
+            <div class="flex items-center gap-1.5">
                 <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
                 <button
                     type="button"
-                    class="icon-button small"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
                     onclick={() => fileInput?.click()}
                     aria-label="Attach file"
                 >
-                    <Icon name="paperclip" size={16} color="var(--ink-2)" />
+                    <Icon name="paperclip" size={16} color="var(--color-ink-2)" />
                 </button>
                 <button
                     type="button"
-                    class="icon-button small"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
                     onclick={() =>
                         (app.notice =
                             'Voice recording is not wired yet. Attach an audio file instead.')}
                     aria-label="Record voice message"
                 >
-                    <Icon name="mic" size={16} color="var(--ink-2)" />
+                    <Icon name="mic" size={16} color="var(--color-ink-2)" />
                 </button>
-                <span class="send-hint">Enter to send</span>
-                <button type="submit" class="send-button" aria-label="Send message">
-                    <Icon name="send" size={18} color="var(--base)" />
+                <button
+                    type="submit"
+                    class="ml-auto flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent"
+                    aria-label="Send message"
+                >
+                    <Icon name="send" size={18} color="var(--color-base)" />
                 </button>
             </div>
         </form>
     {:else}
-        <div class="no-chat">
-            <p class="display">Pick a conversation.</p>
-            <p class="empty">The rail lists everyone discovered on this LAN.</p>
+        <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
+            <p
+                class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em] text-ink"
+            >
+                Pick a conversation.
+            </p>
+            <p class="m-0 text-step-xs text-ink-3">
+                The rail lists everyone discovered on this LAN.
+            </p>
         </div>
     {/if}
 </section>
-
-<style>
-    .chat-pane {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        height: 100%;
-        flex: 1;
-        background: var(--base);
-    }
-
-    .chat-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        height: 88px;
-        flex-shrink: 0;
-        padding-inline: 28px;
-        gap: 14px;
-        background: var(--rail);
-    }
-
-    .identity {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        min-width: 0;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        color: var(--ink);
-        text-align: left;
-    }
-
-    .identity-copy {
-        display: flex;
-        flex-direction: column;
-        min-width: 0;
-        gap: 3px;
-    }
-
-    .name {
-        overflow: hidden;
-        font-size: var(--step-2);
-        line-height: 26px;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .presence {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--ink-3);
-        font-size: 13px;
-        line-height: 16px;
-    }
-
-    .dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        border: 1px solid var(--line-strong);
-    }
-
-    .dot.online {
-        border-color: var(--success);
-        background: var(--success);
-    }
-
-    .actions {
-        display: flex;
-        gap: 10px;
-        flex-shrink: 0;
-    }
-
-    .youtube-bar {
-        display: flex;
-        align-items: center;
-        height: 36px;
-        flex-shrink: 0;
-        padding-inline: 28px;
-        gap: 8px;
-        background: var(--surface-2);
-        border-bottom: 1px solid var(--line);
-        color: var(--ink-2);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-        text-transform: uppercase;
-    }
-
-    .lamp {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--warning);
-    }
-
-    .youtube-label {
-        color: var(--ink-3);
-        font-weight: 700;
-    }
-
-    .youtube-title {
-        overflow: hidden;
-        flex: 1;
-        color: var(--ink-2);
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-
-    .stream {
-        display: flex;
-        flex-direction: column;
-        min-height: 0;
-        flex: 1;
-        padding: 12px 28px;
-        overflow-y: auto;
-        gap: 4px;
-    }
-
-    .day {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 8px 0 14px;
-    }
-
-    .day span {
-        padding: 4px 12px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-pill);
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.06em;
-    }
-
-    .message {
-        display: flex;
-        flex-direction: column;
-        align-self: flex-start;
-        max-width: min(760px, 78%);
-        gap: 6px;
-        padding-bottom: 12px;
-        color: var(--ink);
-    }
-
-    .message.local {
-        align-self: flex-end;
-    }
-
-    .body {
-        margin: 0;
-        font-size: var(--step-0);
-        line-height: 155%;
-        overflow-wrap: anywhere;
-        white-space: pre-wrap;
-    }
-
-    .meta {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 5px;
-        color: var(--ink-3);
-        font-size: 12px;
-        line-height: 16px;
-    }
-
-    .message.local .meta {
-        justify-content: flex-end;
-        color: var(--ink-3);
-    }
-
-    .receipt {
-        display: inline-flex;
-    }
-
-    .receipt.read {
-        color: var(--accent);
-    }
-
-    .attachment {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        width: 100%;
-        padding: 12px 14px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-        color: var(--ink);
-        text-align: left;
-    }
-
-    .attachment:hover {
-        border-color: var(--line-strong);
-        background: var(--surface-2);
-    }
-
-    .file-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 32px;
-        height: 32px;
-        flex-shrink: 0;
-        border-radius: var(--radius-s);
-        background: var(--base);
-    }
-
-    .file-copy {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-
-    .file-copy strong {
-        font-size: 14px;
-    }
-
-    .file-copy span {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .video-card {
-        display: flex;
-        gap: 16px;
-        width: 100%;
-        padding: 12px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .thumb {
-        position: relative;
-        width: 166px;
-        height: 94px;
-        flex-shrink: 0;
-        overflow: hidden;
-        border-radius: var(--radius-s);
-        background: var(--surface-2);
-    }
-
-    .thumb img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        opacity: 0.82;
-    }
-
-    .thumb-play {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .video-copy {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-        min-width: 0;
-    }
-
-    .video-copy strong {
-        font-size: 15px;
-        line-height: 20px;
-    }
-
-    .video-copy span {
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .video-copy .playing-label {
-        color: var(--ink-2);
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-
-    .video-copy .btn {
-        margin-top: 4px;
-    }
-
-    .call-line {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: min(720px, 100%);
-        align-self: center;
-        padding: 8px 0;
-        gap: 12px;
-    }
-
-    .rule {
-        height: 1px;
-        flex: 1;
-        background: var(--line);
-    }
-
-    .call-label {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        color: var(--ink-3);
-        font-size: 12px;
-        letter-spacing: 0.04em;
-    }
-
-    .typing {
-        margin: 0;
-        color: var(--ink-3);
-        font-size: 12px;
-    }
-
-    .empty-conversation,
-    .no-chat {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 100%;
-        gap: 8px;
-        text-align: center;
-    }
-
-    .empty-conversation .display,
-    .no-chat .display {
-        margin: 0;
-        font-size: var(--step-3);
-        color: var(--ink);
-    }
-
-    .composer {
-        display: flex;
-        flex-direction: column;
-        flex-shrink: 0;
-        margin: 0 20px 20px;
-        padding: 14px 16px 10px;
-        border: 1px solid var(--line);
-        border-radius: var(--radius-m);
-        background: var(--surface);
-    }
-
-    .composer textarea {
-        width: 100%;
-        max-height: 120px;
-        min-height: 36px;
-        resize: none;
-        border: 0;
-        outline: 0;
-        background: transparent;
-        color: var(--ink);
-        font-size: var(--step-0);
-        line-height: 1.45;
-    }
-
-    .composer textarea::placeholder {
-        color: var(--ink-3);
-    }
-
-    .composer-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .send-hint {
-        margin-left: auto;
-        color: var(--ink-3);
-        font-size: 11px;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-    }
-
-    .send-button {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 40px;
-        height: 32px;
-        flex-shrink: 0;
-        border: 1px solid var(--accent);
-        border-radius: var(--radius-pill);
-        background: var(--accent);
-    }
-</style>

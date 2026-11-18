@@ -41,17 +41,25 @@ pub fn due_for_user(
          LIMIT ?3",
     )?;
     let rows = statement.query_map(params![user_id, now, i64::from(OUTBOX_BATCH)], |row| {
-        let attempts: i64 = row.get(1)?;
-        Ok(OutboxEntry {
-            message_id: row.get(0)?,
-            attempts: u32::try_from(attempts).unwrap_or_default(),
-            next_try: row.get(2)?,
-            expires_at: row.get(3)?,
-        })
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
     })?;
     let mut entries = Vec::new();
     for row in rows {
-        entries.push(row?);
+        let (message_id, attempts, next_try, expires_at) = row?;
+        let attempts = u32::try_from(attempts).map_err(|_| {
+            StorageError::InvalidData(format!("outbox attempts out of range: {attempts}"))
+        })?;
+        entries.push(OutboxEntry {
+            message_id,
+            attempts,
+            next_try,
+            expires_at,
+        });
     }
     Ok(entries)
 }
