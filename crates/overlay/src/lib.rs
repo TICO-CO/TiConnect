@@ -49,7 +49,13 @@ pub fn run() -> anyhow::Result<()> {
     let commands = command_tx.clone();
     let ui_sender = ui_tx.clone();
 
-    let application = gtk::Application::builder().application_id(APP_ID).build();
+    let builder = gtk::Application::builder().application_id(APP_ID);
+    let builder = if ticonnect_core::ipc::ipc_bus_address().is_some() {
+        builder.flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
+    } else {
+        builder
+    };
+    let application = builder.build();
     application.connect_activate(move |application| {
         if started.replace(true) {
             return;

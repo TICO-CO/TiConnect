@@ -123,7 +123,7 @@ cli() {
     local dir="$WORK/node-$node"
     local bus="$BUS_A"
     [ "$node" = b ] && bus="$BUS_B"
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus" \
     TICONNECT_CONFIG_DIR="$dir/config" \
     TICONNECT_DATA_DIR="$dir/data" \
     TICONNECT_NO_AUTOSTART=1 \
@@ -135,6 +135,7 @@ start_node() {
     local node="$1" bus="$2" dir="$3" port="$4"
     mkdir -p "$dir/config" "$dir/data"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus" \
     TICONNECT_CONFIG_DIR="$dir/config" \
     TICONNECT_DATA_DIR="$dir/data" \
     TICONNECT_LOG_LEVEL="${TICONNECT_LAB_LOG_LEVEL:-warn}" \
@@ -166,7 +167,7 @@ write_node_files() {
     cat >"$dir/bin/ticonnect" <<EOF
 #!/bin/sh
 exec env \\
-  DBUS_SESSION_BUS_ADDRESS='unix:path=$bus' \\
+  TICONNECT_IPC_BUS_ADDRESS='unix:path=$bus' \\
   TICONNECT_CONFIG_DIR='$dir/config' \\
   TICONNECT_DATA_DIR='$dir/data' \\
   TICONNECT_NO_AUTOSTART=1 \\
@@ -176,7 +177,7 @@ EOF
     chmod 755 "$dir/bin/ticonnect"
 
     cat >"$dir/env" <<EOF
-export DBUS_SESSION_BUS_ADDRESS='unix:path=$bus'
+export TICONNECT_IPC_BUS_ADDRESS='unix:path=$bus'
 export TICONNECT_CONFIG_DIR='$dir/config'
 export TICONNECT_DATA_DIR='$dir/data'
 export TICONNECT_NO_AUTOSTART=1

@@ -1,7 +1,8 @@
 # D-Bus IPC
 
-The daemon exposes one session-bus service. Clients never depend on daemon
-internals.
+The daemon exposes one IPC-bus service. The IPC bus defaults to the session bus;
+set `TICONNECT_IPC_BUS_ADDRESS` to use a private bus. Clients never depend on
+daemon internals.
 
 ## Service
 
@@ -46,7 +47,7 @@ Settings writes do not use D-Bus. Any process may update `config.toml` through
 
 ## UI service
 
-The GTK UI owns `org.ticonnect.UI` on the session bus.
+The GTK UI owns `org.ticonnect.UI` on the TiConnect IPC bus.
 
 - Bus name: `org.ticonnect.UI`
 - Object path: `/org/ticonnect/UI`

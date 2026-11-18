@@ -90,8 +90,8 @@ trait Daemon {
 
 #[tokio::test]
 async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigterm() {
-    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
-        eprintln!("skipping D-Bus test: DBUS_SESSION_BUS_ADDRESS is not set");
+    if ipc::ipc_bus_address().is_none() && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        eprintln!("skipping D-Bus test: no D-Bus address is configured");
         return;
     }
 
@@ -109,7 +109,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         .spawn()
         .expect("start daemon");
 
-    let connection = zbus::Connection::session().await.expect("session bus");
+    let connection = ipc::connect().await.expect("IPC bus");
     let proxy = DaemonProxy::new(&connection).await.expect("daemon proxy");
     wait_for_daemon(&proxy).await;
 

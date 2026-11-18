@@ -22,9 +22,10 @@ messaging. Files, calls, and remote desktop add their own gates in later stages.
   data is public LAN data and never grants trust.
 - Sessions are reachable only after the user certificate fingerprint matches a
   trusted user.
-- The D-Bus session bus is the local control boundary. Any local process on the
-  session bus can call daemon methods; this is the same boundary used by the UI
-  and CLI.
+- The TiConnect IPC bus is the local control boundary. It uses the D-Bus session
+  bus by default; `TICONNECT_IPC_BUS_ADDRESS` can select a private bus. Any
+  local process on that bus can call daemon methods; this is the same boundary
+  used by the UI and CLI.
 
 ## Threats and mitigations
 

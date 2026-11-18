@@ -5,6 +5,28 @@ pub const UI_BUS_NAME: &str = "org.ticonnect.UI";
 pub const UI_PATH: &str = "/org/ticonnect/UI";
 pub const UI_INTERFACE: &str = "org.ticonnect.UI";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const IPC_BUS_ADDRESS_ENV: &str = "TICONNECT_IPC_BUS_ADDRESS";
+
+pub fn ipc_bus_address() -> Option<String> {
+    ipc_bus_address_from(std::env::var_os(IPC_BUS_ADDRESS_ENV))
+}
+
+fn ipc_bus_address_from(value: Option<std::ffi::OsString>) -> Option<String> {
+    value
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string_lossy().into_owned())
+}
+
+pub fn connection_builder() -> zbus::connection::Builder<'static> {
+    match ipc_bus_address() {
+        Some(address) => zbus::connection::Builder::address(address.as_str()),
+        None => zbus::connection::Builder::session(),
+    }
+}
+
+pub async fn connect() -> zbus::Result<zbus::Connection> {
+    connection_builder().build().await
+}
 
 pub const STATUS_UPTIME_SECONDS: &str = "uptime_seconds";
 pub const STATUS_USER_COUNT: &str = "user_count";
@@ -204,3 +226,28 @@ pub mod errors {
 
 pub mod client;
 pub mod events;
+
+#[cfg(test)]
+mod bus_tests {
+    use std::ffi::OsString;
+
+    use super::ipc_bus_address_from;
+
+    #[test]
+    fn missing_address_uses_session_bus() {
+        assert_eq!(ipc_bus_address_from(None), None);
+    }
+
+    #[test]
+    fn empty_address_uses_session_bus() {
+        assert_eq!(ipc_bus_address_from(Some(OsString::new())), None);
+    }
+
+    #[test]
+    fn explicit_address_is_used() {
+        assert_eq!(
+            ipc_bus_address_from(Some(OsString::from("unix:path=/tmp/ticonnect-bus"))).as_deref(),
+            Some("unix:path=/tmp/ticonnect-bus")
+        );
+    }
+}

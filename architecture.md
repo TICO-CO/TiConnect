@@ -100,7 +100,7 @@ startup step and let `anyhow` aggregate crate errors. Only `src/main.rs` uses
 | Wire format | `postcard` + `serde` |
 | Identity | `ed25519-dalek`, `blake3` fingerprints |
 | Trust | automatic LAN token exchange with `spake2` |
-| IPC | `zbus` on the session bus |
+| IPC | `zbus` on the session bus by default (`TICONNECT_IPC_BUS_ADDRESS` override) |
 | Data storage | `rusqlite` (bundled) |
 | Audio I/O | `cpal` |
 | Audio codec | `opus`, 20ms frames |

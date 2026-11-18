@@ -62,7 +62,7 @@ impl Default for Shutdown {
 pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     let service = DaemonService::new(state.clone());
 
-    let connection = zbus::connection::Builder::session()
+    let connection = ipc::connection_builder()
         .name(ipc::DAEMON_BUS_NAME)
         .allow_name_replacements(false)
         .replace_existing_names(false)

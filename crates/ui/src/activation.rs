@@ -35,7 +35,7 @@ impl UiService {
 }
 
 pub async fn serve(sender: broadcast::Sender<ActivationEvent>) -> zbus::Result<()> {
-    let registered = zbus::connection::Builder::session()
+    let registered = ticonnect_core::ipc::connection_builder()
         .allow_name_replacements(false)
         .replace_existing_names(false)
         .name(ticonnect_core::ipc::UI_INTERFACE)
@@ -55,7 +55,7 @@ pub async fn serve(sender: broadcast::Sender<ActivationEvent>) -> zbus::Result<(
             Ok(())
         }
         Err(zbus::Error::NameTaken) => {
-            let connection = zbus::Connection::session().await?;
+            let connection = ticonnect_core::ipc::connect().await?;
             let proxy = zbus::Proxy::new(
                 &connection,
                 ticonnect_core::ipc::UI_INTERFACE,

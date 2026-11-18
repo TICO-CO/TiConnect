@@ -156,7 +156,7 @@ ticonnect ui
 ticonnect cli status
 ```
 
-`ticonnect daemon` serves `org.ticonnect.Daemon` on the session bus until
+`ticonnect daemon` serves `org.ticonnect.Daemon` on the TiConnect IPC bus until
 shutdown. `ticonnect <command>` talks to the daemon for status, identity, users,
 discovery, trust, messaging, policy, ping, and quit. The hidden
 `ticonnect cli <command>` alias reaches the same client. `settings get`,
@@ -196,7 +196,7 @@ talks to Rust through a loopback HTTP + WebSocket bridge. The frontend source li
 in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded in
 the binary.
 
-The UI owns `org.ticonnect.UI` on the session bus and exposes
+The UI owns `org.ticonnect.UI` on the TiConnect IPC bus and exposes
 `Activate(s view)`. Views are `chat`, `users`, `settings`, `remote`, and
 `watch-party`; an empty value means `chat`. `Activate("chat:<node-id>")` opens
 one conversation; the tray and overlay use it for notification clicks. The tray
@@ -264,6 +264,9 @@ and does not depend on the UI being open.
 - User data directory: `$XDG_DATA_HOME/ticonnect`.
 - `TICONNECT_CONFIG_DIR` selects the config directory before settings load. It is
   bootstrap-only and is never persisted.
+- `TICONNECT_IPC_BUS_ADDRESS` selects the D-Bus address used for daemon, UI, CLI,
+  and overlay IPC. It defaults to the session bus. GTK, WebKit, portals, tray,
+  and notifications still use `DBUS_SESSION_BUS_ADDRESS`.
 - `TICONNECT_*` environment variables override settings at runtime. They are not
   persisted. Nested keys use a double underscore delimiter, for example
   `TICONNECT_DND__ENABLED=true`.

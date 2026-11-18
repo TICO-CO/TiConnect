@@ -657,9 +657,9 @@ fn message_value(
 }
 
 async fn connect() -> Result<DaemonProxy<'static>> {
-    let connection = zbus::Connection::session()
+    let connection = ipc::connect()
         .await
-        .context("connect to the session bus")?;
+        .context("connect to the TiConnect IPC bus")?;
     DaemonProxy::new(&connection)
         .await
         .context("create daemon proxy")

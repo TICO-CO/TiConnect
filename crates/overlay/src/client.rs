@@ -107,7 +107,7 @@ async fn run(events: UnboundedSender<Event>, mut commands: UnboundedReceiver<Com
 }
 
 async fn connect() -> zbus::Result<(zbus::Connection, DaemonProxy<'static>)> {
-    let connection = zbus::Connection::session().await?;
+    let connection = ipc::connect().await?;
     let proxy = DaemonProxy::new(&connection).await?;
     proxy.ping().await?;
     Ok((connection, proxy))

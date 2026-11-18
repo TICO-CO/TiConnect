@@ -32,10 +32,11 @@ make lab
 ```
 
 This adds a `ticonnect-lab-*` tab with two panes. Each pane is a separate node
-with its own private D-Bus, daemon, config, data directory, transport port, and
-daemon log. The original pane stays attached to the lab supervisor. Closing the
-lab tab, running `lab-stop` in either pane, or pressing Ctrl-C in the supervisor
-pane stops both nodes.
+with its own private IPC bus, daemon, config, data directory, transport port, and
+daemon log. The UI and overlay keep using the host session bus for GTK, WebKit,
+portals, and notifications. The original pane stays attached to the lab
+supervisor. Closing the lab tab, running `lab-stop` in either pane, or pressing
+Ctrl-C in the supervisor pane stops both nodes.
 
 Pane commands:
 

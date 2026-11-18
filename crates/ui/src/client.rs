@@ -459,7 +459,7 @@ async fn run_link(
 }
 
 async fn connect() -> Result<(zbus::Connection, DaemonProxy<'static>)> {
-    let connection = zbus::Connection::session().await.map_err(bus_error)?;
+    let connection = ipc::connect().await.map_err(bus_error)?;
     let proxy = DaemonProxy::new(&connection).await.map_err(bus_error)?;
     proxy.ping().await.map_err(bus_error)?;
     Ok((connection, proxy))
