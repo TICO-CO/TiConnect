@@ -308,17 +308,30 @@ impl ProfileService {
                 .await
                 .ok()
                 .flatten();
-            let needs = match &cached {
-                Some(profile) => candidate
-                    .avatar_hash()
-                    .is_some_and(|hash| profile.avatar_hash.as_deref() != Some(hash)),
-                None => true,
-            };
+            let needs = profile_needs_refresh(
+                cached.as_ref(),
+                candidate.display_name(),
+                candidate.avatar_hash(),
+            );
             if needs {
                 self.maybe_fetch(candidate);
             }
         }
     }
+}
+
+fn profile_needs_refresh(
+    cached: Option<&UserProfile>,
+    candidate_name: &str,
+    candidate_avatar_hash: Option<&str>,
+) -> bool {
+    let Some(profile) = cached else {
+        return true;
+    };
+    let avatar_changed =
+        candidate_avatar_hash.is_some_and(|hash| profile.avatar_hash.as_deref() != Some(hash));
+    let name_changed = !candidate_name.is_empty() && profile.display_name != candidate_name;
+    avatar_changed || name_changed
 }
 
 fn valid_avatar(bytes: &[u8]) -> bool {
@@ -551,5 +564,36 @@ mod tests {
         local_transport.shutdown().await;
         remote_transport.shutdown().await;
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_refresh_tracks_name_and_avatar_changes() {
+        let profile = UserProfile {
+            fingerprint: "fingerprint-1".to_owned(),
+            node_id: Some("node-1".to_owned()),
+            display_name: "Ada".to_owned(),
+            avatar_hash: Some("old-hash".to_owned()),
+            avatar_mime: Some("image/png".to_owned()),
+            avatar: Vec::new(),
+            updated_at: 1,
+        };
+
+        assert!(profile_needs_refresh(None, "Ada", Some("old-hash")));
+        assert!(!profile_needs_refresh(
+            Some(&profile),
+            "Ada",
+            Some("old-hash")
+        ));
+        assert!(profile_needs_refresh(
+            Some(&profile),
+            "Grace",
+            Some("old-hash")
+        ));
+        assert!(profile_needs_refresh(
+            Some(&profile),
+            "Ada",
+            Some("new-hash")
+        ));
+        assert!(!profile_needs_refresh(Some(&profile), "", Some("old-hash")));
     }
 }

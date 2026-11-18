@@ -117,6 +117,8 @@
                             aria-label="Change avatar"
                         >
                             <Avatar
+                                image={app.selfAvatarUrl ||
+                                    app.avatarUrl(app.bootstrap?.identity.fingerprint ?? '')}
                                 name={app.bootstrap?.identity.display_name ?? 'You'}
                                 size={196}
                             />

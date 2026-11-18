@@ -1,3 +1,5 @@
+import { SvelteMap } from 'svelte/reactivity';
+
 import { BridgeClient } from './bridge';
 import { demoScreen } from './demo';
 import { sessionClock } from './format';
@@ -91,6 +93,9 @@ export class AppState {
     connectedSince = $state<Record<string, number>>({});
     lastChatUserId = $state('');
     selfAvatarUrl = $state('');
+    avatarUrls = $state<Record<string, string>>({});
+    private avatarHashes = new SvelteMap<string, string>();
+    private avatarPending = new SvelteMap<string, string>();
     private lastRouteKind = '';
     preferences = $state<Preferences>({ ...DEFAULT_PREFERENCES });
     settings = $state<Record<string, string>>({});
@@ -135,6 +140,7 @@ export class AppState {
             window.clearTimeout(this.typingTimer);
         }
         this.client?.close();
+        this.releaseAvatars();
     }
 
     private startDemo(screenName: string): void {
@@ -210,6 +216,7 @@ export class AppState {
         this.autostart = bootstrap.autostart;
         this.autostartDraft = bootstrap.autostart;
         this.route = parseRoute(window.location.hash);
+        this.syncAvatars();
         await this.refresh();
         if (this.route.kind === 'chat' && this.route.id === '') {
             const first = this.summaries[0]?.user_id;
@@ -243,6 +250,7 @@ export class AppState {
             return;
         }
         this.users = loadedUsers ?? [];
+        this.syncAvatars();
         const [loadedSummaries, summariesFailure] = await this.client.request<
             ConversationSummary[]
         >('list_conversation_summaries');
@@ -255,6 +263,132 @@ export class AppState {
         if (!partyFailure) {
             this.party = party;
         }
+    }
+
+    avatarUrl(fingerprint: string): string {
+        return this.avatarUrls[fingerprint] ?? '';
+    }
+
+    private syncAvatars(): void {
+        const identity = this.bootstrap?.identity;
+        this.users.forEach((user) => this.syncAvatar(user.fingerprint, user.avatar_hash));
+        if (identity !== undefined) {
+            this.syncAvatar(identity.fingerprint, identity.avatar_hash);
+        }
+        Object.keys(this.avatarUrls).forEach((fingerprint) => {
+            if (fingerprint === identity?.fingerprint) {
+                return;
+            }
+            if (this.users.some((user) => user.fingerprint === fingerprint)) {
+                return;
+            }
+            this.clearAvatar(fingerprint);
+        });
+    }
+
+    private syncAvatar(fingerprint: string, avatarHash: string): void {
+        if (fingerprint === '') {
+            return;
+        }
+        if (avatarHash === '') {
+            this.clearAvatar(fingerprint);
+            return;
+        }
+        if (this.avatarHashes.get(fingerprint) === avatarHash) {
+            return;
+        }
+        if (this.avatarPending.get(fingerprint) === avatarHash) {
+            return;
+        }
+        this.avatarPending.set(fingerprint, avatarHash);
+        void this.fetchAvatar(fingerprint, avatarHash);
+    }
+
+    private async fetchAvatar(fingerprint: string, avatarHash: string): Promise<void> {
+        const client = this.client;
+        if (client === null) {
+            this.avatarPending.delete(fingerprint);
+            return;
+        }
+        const [url, failure] = await client.downloadAvatar(fingerprint);
+        if (this.avatarPending.get(fingerprint) !== avatarHash) {
+            if (url !== null) {
+                URL.revokeObjectURL(url);
+            }
+            return;
+        }
+        this.avatarPending.delete(fingerprint);
+        if (failure || url === null) {
+            return;
+        }
+        const previousUrl = this.avatarUrls[fingerprint] ?? '';
+        const previousSelfAvatarUrl = this.selfAvatarUrl;
+        if (previousUrl !== '') {
+            URL.revokeObjectURL(previousUrl);
+        }
+        this.avatarHashes.set(fingerprint, avatarHash);
+        this.avatarUrls = { ...this.avatarUrls, [fingerprint]: url };
+        if (this.bootstrap?.identity.fingerprint !== fingerprint) {
+            return;
+        }
+        if (previousSelfAvatarUrl !== '' && previousSelfAvatarUrl !== previousUrl) {
+            URL.revokeObjectURL(previousSelfAvatarUrl);
+        }
+        this.selfAvatarUrl = url;
+    }
+
+    private clearAvatar(fingerprint: string): void {
+        this.avatarPending.delete(fingerprint);
+        this.avatarHashes.delete(fingerprint);
+        const previousUrl = this.avatarUrls[fingerprint] ?? '';
+        const previousSelfAvatarUrl = this.selfAvatarUrl;
+        if (this.bootstrap?.identity.fingerprint === fingerprint) {
+            if (previousSelfAvatarUrl !== '' && previousSelfAvatarUrl !== previousUrl) {
+                URL.revokeObjectURL(previousSelfAvatarUrl);
+            }
+            this.selfAvatarUrl = '';
+        }
+        if (previousUrl === '') {
+            return;
+        }
+        URL.revokeObjectURL(previousUrl);
+        const remaining = { ...this.avatarUrls };
+        delete remaining[fingerprint];
+        this.avatarUrls = remaining;
+    }
+
+    private releaseAvatars(): void {
+        Object.values(this.avatarUrls).forEach((url) => URL.revokeObjectURL(url));
+        if (
+            this.selfAvatarUrl !== '' &&
+            !Object.values(this.avatarUrls).includes(this.selfAvatarUrl)
+        ) {
+            URL.revokeObjectURL(this.selfAvatarUrl);
+        }
+        this.avatarUrls = {};
+        this.avatarHashes.clear();
+        this.avatarPending.clear();
+        this.selfAvatarUrl = '';
+    }
+
+    private async reloadUserProfiles(): Promise<void> {
+        await this.refresh();
+        if (this.route.kind === 'profile') {
+            await this.loadDetails(this.route.id);
+        }
+    }
+
+    private async reloadSelfProfile(): Promise<void> {
+        const client = this.client;
+        if (client === null) {
+            return;
+        }
+        const [bootstrap] = await client.request<Bootstrap>('bootstrap');
+        if (bootstrap === null) {
+            return;
+        }
+        this.bootstrap = bootstrap;
+        this.syncAvatars();
     }
 
     async loadRoute(): Promise<void> {
@@ -486,6 +620,7 @@ export class AppState {
         const [bootstrap] = await this.client.request<Bootstrap>('bootstrap');
         if (bootstrap !== null) {
             this.bootstrap = bootstrap;
+            this.syncAvatars();
         }
     }
 
@@ -865,6 +1000,12 @@ export class AppState {
                 this.typing = { ...this.typing, [userId]: Boolean(event.typing) };
                 break;
             }
+            case 'user_profile_changed':
+                void this.reloadUserProfiles();
+                break;
+            case 'self_profile_changed':
+                void this.reloadSelfProfile();
+                break;
             case 'conversation_changed':
             case 'user_connected':
             case 'user_disconnected':

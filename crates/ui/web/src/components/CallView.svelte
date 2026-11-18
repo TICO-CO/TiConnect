@@ -37,7 +37,7 @@
 <section class="call-pane">
     <header class="call-head">
         {#if user}
-            <Avatar {user} size={40} />
+            <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={40} />
             <div class="head-copy">
                 <h1 class="display">{shortName(user)}</h1>
                 <p>

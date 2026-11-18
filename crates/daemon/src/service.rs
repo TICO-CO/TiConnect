@@ -20,7 +20,7 @@ use crate::messaging::{MessagingEvent, MessagingService};
 use crate::profile::ProfileService;
 use crate::remote::{RemoteEventMessage, RemoteService, RemoteSnapshot};
 use crate::runtime::Shutdown;
-use crate::storage::{DatabaseHandle, StorageError, StoredMessage, User, UserPolicy};
+use crate::storage::{DatabaseHandle, StorageError, StoredMessage, User, UserPolicy, UserProfile};
 use crate::trust::TrustStore;
 use crate::watch_party::{WatchPartyEvent, WatchPartyService, WatchPartySnapshot};
 use ticonnect_net::transport::Transport;
@@ -470,13 +470,22 @@ impl DaemonService {
             .list_users()
             .await
             .map_err(database_error)?;
-        Ok(users
-            .into_iter()
-            .map(|user| {
-                let connected = user_is_connected(&self.state, &user.id);
-                user_variant(user, connected)
-            })
-            .collect())
+        let candidates = self.state.discovery().snapshot();
+        let mut values = Vec::with_capacity(users.len());
+        for user in users {
+            let profile = self
+                .state
+                .database()
+                .get_user_profile(&user.fingerprint)
+                .await
+                .map_err(database_error)?;
+            let candidate = candidates
+                .iter()
+                .find(|candidate| candidate.fingerprint() == user.fingerprint);
+            let connected = user_is_connected(&self.state, &user.id);
+            values.push(user_variant(user, connected, profile.as_ref(), candidate));
+        }
+        Ok(values)
     }
 
     async fn get_user(&self, user_id: &str) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
@@ -489,14 +498,20 @@ impl DaemonService {
             .ok_or_else(|| ServiceError::NotFound(format!("user {user_id}")))?;
         let connected = user_is_connected(&self.state, &user.id);
         let fingerprint = user.fingerprint.clone();
-        let mut values = user_variant(user, connected);
-        if let Some(candidate) = self
+        let profile = self
+            .state
+            .database()
+            .get_user_profile(&fingerprint)
+            .await
+            .map_err(database_error)?;
+        let candidate = self
             .state
             .discovery()
             .snapshot()
             .into_iter()
-            .find(|candidate| candidate.fingerprint() == fingerprint)
-        {
+            .find(|candidate| candidate.fingerprint() == fingerprint);
+        let mut values = user_variant(user, connected, profile.as_ref(), candidate.as_ref());
+        if let Some(candidate) = candidate {
             let addresses = candidate.addresses_display();
             values.insert(
                 ipc::USER_ADDRESSES.to_owned(),
@@ -1273,7 +1288,21 @@ fn string_variant(value: String) -> OwnedVariant {
     OwnedVariant::from(Str::from(value))
 }
 
-fn user_variant(user: User, connected: bool) -> HashMap<String, OwnedVariant> {
+fn user_variant(
+    user: User,
+    connected: bool,
+    profile: Option<&UserProfile>,
+    candidate: Option<&Candidate>,
+) -> HashMap<String, OwnedVariant> {
+    let display_name = preferred_display_name(
+        candidate.map(Candidate::display_name),
+        profile.map(|profile| profile.display_name.as_str()),
+        user.display_name.as_deref(),
+    );
+    let avatar_hash = profile
+        .and_then(|profile| profile.avatar_hash.clone())
+        .or_else(|| candidate.and_then(|candidate| candidate.avatar_hash().map(str::to_owned)))
+        .unwrap_or_default();
     HashMap::from([
         (ipc::USER_ID.to_owned(), string_variant(user.id)),
         (
@@ -1282,11 +1311,11 @@ fn user_variant(user: User, connected: bool) -> HashMap<String, OwnedVariant> {
         ),
         (
             ipc::USER_DISPLAY_NAME.to_owned(),
-            string_variant(user.display_name.unwrap_or_default()),
+            string_variant(display_name),
         ),
         (
             ipc::USER_AVATAR_HASH.to_owned(),
-            string_variant(String::new()),
+            string_variant(avatar_hash),
         ),
         (
             ipc::USER_POLICY.to_owned(),
@@ -1307,6 +1336,20 @@ fn user_variant(user: User, connected: bool) -> HashMap<String, OwnedVariant> {
             OwnedVariant::from(connected),
         ),
     ])
+}
+
+fn preferred_display_name(
+    candidate_name: Option<&str>,
+    profile_name: Option<&str>,
+    stored_name: Option<&str>,
+) -> String {
+    [candidate_name, profile_name, stored_name]
+        .into_iter()
+        .flatten()
+        .map(str::trim)
+        .find(|name| !name.is_empty())
+        .unwrap_or_default()
+        .to_owned()
 }
 
 fn mac_for_address(address: &str) -> Option<String> {
@@ -1731,7 +1774,7 @@ mod tests {
 
     use super::*;
     use crate::identity::Identity;
-    use crate::storage::DatabaseHandle;
+    use crate::storage::{DatabaseHandle, NewUser, UserProfile};
     use ticonnect_net::transport::TransportConfig;
 
     #[tokio::test]
@@ -1777,6 +1820,78 @@ mod tests {
         assert!(settings.contains_key("dnd.enabled"));
         assert!(
             !bool::try_from(service.get_setting("dnd.enabled").await.expect("dnd")).expect("bool")
+        );
+    }
+
+    #[test]
+    fn display_name_prefers_candidate_then_profile_then_stored() {
+        assert_eq!(
+            preferred_display_name(Some("Lab Node B"), Some("Profile"), Some("Stored")),
+            "Lab Node B"
+        );
+        assert_eq!(
+            preferred_display_name(Some(""), Some("Profile"), Some("Stored")),
+            "Profile"
+        );
+        assert_eq!(
+            preferred_display_name(None, Some("  "), Some("Stored")),
+            "Stored"
+        );
+        assert_eq!(preferred_display_name(None, None, None), "");
+    }
+
+    #[tokio::test]
+    async fn user_payloads_prefer_cached_profile_fields() {
+        let (service, _dir) = test_service().await;
+        service
+            .state
+            .database()
+            .insert_user(NewUser {
+                id: "user-1".to_owned(),
+                fingerprint: "fingerprint-1".to_owned(),
+                public_key: None,
+                display_name: Some(String::new()),
+                policy: UserPolicy::Accept,
+                trusted_at: 1,
+                last_seen: None,
+            })
+            .await
+            .expect("user");
+        service
+            .state
+            .database()
+            .upsert_user_profile(UserProfile {
+                fingerprint: "fingerprint-1".to_owned(),
+                node_id: Some("user-1".to_owned()),
+                display_name: "Ada".to_owned(),
+                avatar_hash: Some("avatar-hash".to_owned()),
+                avatar_mime: Some("image/png".to_owned()),
+                avatar: Vec::new(),
+                updated_at: 1,
+            })
+            .await
+            .expect("profile");
+
+        let users = service.list_users().await.expect("users");
+        assert_eq!(users.len(), 1);
+        let listed = &users[0];
+        assert_eq!(
+            <&str>::try_from(&listed[ipc::USER_DISPLAY_NAME]).expect("display name"),
+            "Ada"
+        );
+        assert_eq!(
+            <&str>::try_from(&listed[ipc::USER_AVATAR_HASH]).expect("avatar hash"),
+            "avatar-hash"
+        );
+
+        let user = service.get_user("user-1").await.expect("user");
+        assert_eq!(
+            <&str>::try_from(&user[ipc::USER_DISPLAY_NAME]).expect("display name"),
+            "Ada"
+        );
+        assert_eq!(
+            <&str>::try_from(&user[ipc::USER_AVATAR_HASH]).expect("avatar hash"),
+            "avatar-hash"
         );
     }
 

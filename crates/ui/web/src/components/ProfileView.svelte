@@ -77,7 +77,7 @@
     </div>
     {#if details && user}
         <header class="profile-head">
-            <Avatar {user} size={64} />
+            <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={64} />
             <div class="identity">
                 <h1 class="display">{shortName(user)}</h1>
                 <p class="presence">

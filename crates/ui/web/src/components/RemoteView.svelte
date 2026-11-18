@@ -141,7 +141,11 @@
                         </div>
                         <p class="share-title"><span class="lamp"></span>Sharing screen</p>
                         <div class="peer-row">
-                            {#if user}<Avatar {user} size={32} />{/if}
+                            {#if user}<Avatar
+                                    {user}
+                                    image={app.avatarUrl(user.fingerprint)}
+                                    size={32}
+                                />{/if}
                             <div>
                                 <strong>{user ? shortName(user) : 'Remote viewer'}</strong><span
                                     >Encrypted · LAN</span
@@ -173,7 +177,11 @@
                     <section class="side-card">
                         <h2 class="label">Session</h2>
                         <div class="peer-row">
-                            {#if user}<Avatar {user} size={32} />{/if}
+                            {#if user}<Avatar
+                                    {user}
+                                    image={app.avatarUrl(user.fingerprint)}
+                                    size={32}
+                                />{/if}
                             <div>
                                 <strong>{user ? shortName(user) : 'Host'}</strong><span
                                     >Encrypted · LAN</span

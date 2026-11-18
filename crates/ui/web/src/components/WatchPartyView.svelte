@@ -143,7 +143,7 @@
                     <h2 class="label">Watching · {participants.length}</h2>
                     {#each participants as user, index (user.id)}
                         <div class="participant">
-                            <Avatar {user} size={32} />
+                            <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={32} />
                             <div class="participant-copy">
                                 <strong>{shortName(user)}</strong>
                                 <span

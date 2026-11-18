@@ -333,6 +333,11 @@ if [ "$SMOKE" = "1" ]; then
         fail "node-a did not auto-trust node-b"
     wait_for "cli b users list | grep -q '$A_ID'" 300 ||
         fail "node-b did not auto-trust node-a"
+    wait_for "cli b users list | grep -q 'Lab Node A'" 300 ||
+        fail "node-b did not receive node-a display name"
+    cli a settings set identity.display_name "Lab Node A Renamed" >/dev/null
+    wait_for "cli b users list | grep -q 'Lab Node A Renamed'" 300 ||
+        fail "node-b did not receive renamed display name"
     message_id="$(cli a send "$B_ID" "lab-smoke-$(date +%s)")"
     for _ in $(seq 1 100); do
         cli b messages "$A_ID" --limit 20 | grep -q "$message_id" && break

@@ -99,7 +99,11 @@
                 class="identity"
                 onclick={() => app.navigate({ kind: 'profile', id: selectedUser.id })}
             >
-                <Avatar user={selectedUser} size={44} />
+                <Avatar
+                    user={selectedUser}
+                    image={app.avatarUrl(selectedUser.fingerprint)}
+                    size={44}
+                />
                 <span class="identity-copy">
                     <span class="display name">{shortName(selectedUser)}</span>
                     <span class="presence">

@@ -67,6 +67,7 @@
                 >
                     <Avatar
                         {user}
+                        image={app.avatarUrl(user.fingerprint)}
                         size={36}
                         showPresence
                         selected={app.selectedUserId === user.id}
@@ -119,7 +120,7 @@
                     onclick={() => selectUser(user.id)}
                     aria-current={selected ? 'page' : undefined}
                 >
-                    <Avatar {user} size={32} />
+                    <Avatar {user} image={app.avatarUrl(user.fingerprint)} size={32} />
                     <span class="user-copy">
                         <span class="user-top">
                             <span class="user-name">{shortName(user)}</span>

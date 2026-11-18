@@ -84,7 +84,12 @@
         {@const caller = app.userById(incomingCall.user_id)}
         <article class="request-card">
             <div class="card-head">
-                <Avatar user={caller} name={app.userName(incomingCall.user_id)} size={32} />
+                <Avatar
+                    user={caller}
+                    image={caller ? app.avatarUrl(caller.fingerprint) : ''}
+                    name={app.userName(incomingCall.user_id)}
+                    size={32}
+                />
                 <span class="label">Incoming call</span>
                 <span class="time mono-data">{clock(incomingCall.started_at)}</span>
             </div>
@@ -104,7 +109,12 @@
         {@const requester = app.userById(remoteRequest.user_id)}
         <article class="request-card">
             <div class="card-head">
-                <Avatar user={requester} name={app.userName(remoteRequest.user_id)} size={32} />
+                <Avatar
+                    user={requester}
+                    image={requester ? app.avatarUrl(requester.fingerprint) : ''}
+                    name={app.userName(remoteRequest.user_id)}
+                    size={32}
+                />
                 <span class="label">Remote desktop</span>
                 <span class="time mono-data">Now</span>
             </div>
@@ -124,7 +134,12 @@
         {@const partyUser = app.userById(partyInvite.user_id)}
         <article class="request-card">
             <div class="card-head">
-                <Avatar user={partyUser} name={app.userName(partyInvite.user_id)} size={32} />
+                <Avatar
+                    user={partyUser}
+                    image={partyUser ? app.avatarUrl(partyUser.fingerprint) : ''}
+                    name={app.userName(partyInvite.user_id)}
+                    size={32}
+                />
                 <span class="label">Watch party invite</span>
                 <span class="time mono-data">{clock(partyInvite.updated_at)}</span>
             </div>
@@ -152,7 +167,12 @@
             </div>
             <h2 class="display">{app.userName(activeCall.user_id)}</h2>
             <div class="profile-ident">
-                <Avatar user={callUser} name={app.userName(activeCall.user_id)} size={24} />
+                <Avatar
+                    user={callUser}
+                    image={callUser ? app.avatarUrl(callUser.fingerprint) : ''}
+                    name={app.userName(activeCall.user_id)}
+                    size={24}
+                />
                 <span>{app.userName(activeCall.user_id)}</span>
             </div>
             <div class="card-actions">
