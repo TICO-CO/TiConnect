@@ -1,4 +1,3 @@
-pub mod consent;
 pub mod session;
 pub mod state;
 
@@ -15,7 +14,6 @@ use crate::messaging::now_unix_ms;
 use crate::storage::UserPolicy;
 use crate::trust::{TrustError, TrustStore};
 
-use consent::{generate_pin, verify_pin};
 use state::{
     RemoteEvent, RemoteRole, RemoteSession, RemoteSessionId, RemoteState, RemoteStateError,
 };
@@ -27,7 +25,6 @@ pub struct RemoteSnapshot {
     pub fingerprint: String,
     pub role: String,
     pub state: String,
-    pub pin: String,
     pub indicator: bool,
     pub expires_at: i64,
 }
@@ -267,10 +264,8 @@ impl RemoteService {
             fingerprint: user.fingerprint.clone(),
             role: RemoteRole::Viewer,
             state: RemoteState::Idle,
-            pin: None,
-            attempts: 0,
-            max_attempts: settings.remote_pin_attempts(),
-            expires_at: now.saturating_add(i64::from(settings.remote_pin_ttl_secs()) * 1000),
+            expires_at: now
+                .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
             indicator_visible: false,
         };
         session.transition(RemoteEvent::Request)?;
@@ -288,11 +283,7 @@ impl RemoteService {
         Ok(snapshot)
     }
 
-    pub async fn accept_session(
-        &self,
-        session_id: &str,
-        pin: &str,
-    ) -> Result<RemoteSnapshot, RemoteError> {
+    pub async fn accept_session(&self, session_id: &str) -> Result<RemoteSnapshot, RemoteError> {
         let id: RemoteSessionId = session_id.parse()?;
         let expired = {
             let mut guard = self
@@ -330,7 +321,7 @@ impl RemoteService {
             });
             return Err(RemoteError::Expired);
         }
-        let (role, snapshot, signal) = {
+        let snapshot = {
             let mut guard = self
                 .inner
                 .session
@@ -340,51 +331,33 @@ impl RemoteService {
                 .as_mut()
                 .filter(|session| session.id == id)
                 .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-            match session.role {
-                RemoteRole::Host => {
-                    if session.state != RemoteState::Requested {
-                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
-                    }
-                    let generated = session.pin.clone().unwrap_or_else(generate_pin);
-                    session.pin = Some(generated.clone());
-                    session.transition(RemoteEvent::Consent)?;
-                    let snapshot = snapshot(session);
-                    (
-                        RemoteRole::Host,
-                        snapshot,
-                        Some(RemoteSignalFrame::Consent {
-                            session_id: id_bytes(id),
-                        }),
-                    )
-                }
-                RemoteRole::Viewer => {
-                    if session.state != RemoteState::Requested
-                        && session.state != RemoteState::Consented
-                    {
-                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
-                    }
-                    session.pin = Some(pin.to_owned());
-                    let snapshot = snapshot(session);
-                    (
-                        RemoteRole::Viewer,
-                        snapshot,
-                        Some(RemoteSignalFrame::Pin {
-                            session_id: id_bytes(id),
-                            pin: pin.to_owned(),
-                        }),
-                    )
-                }
+            if session.role != RemoteRole::Host {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
             }
+            if session.state != RemoteState::Requested {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
+            }
+            session.transition(RemoteEvent::Consent)?;
+            snapshot(session)
         };
+        self.inner.host.start(1920, 1080)?;
         let user_node = snapshot
             .user_id
             .parse()
             .map_err(|_| RemoteError::InvalidUser(snapshot.user_id.clone()))?;
-        if let Some(signal) = signal {
-            self.send_signal(user_node, &signal).await?;
-        }
-        self.emit(RemoteEventMessage::Requested(snapshot.clone()));
-        let _ = role;
+        let _ = self
+            .send_signal(
+                user_node,
+                &RemoteSignalFrame::Start {
+                    session_id: id_bytes(id),
+                },
+            )
+            .await;
+        self.emit(RemoteEventMessage::Started(snapshot.clone()));
+        self.emit(RemoteEventMessage::Indicator {
+            session_id: snapshot.session_id.clone(),
+            visible: true,
+        });
         Ok(snapshot)
     }
 
@@ -500,11 +473,8 @@ impl RemoteService {
                     fingerprint: user.fingerprint.to_hex(),
                     role: RemoteRole::Host,
                     state: RemoteState::Idle,
-                    pin: Some(generate_pin()),
-                    attempts: 0,
-                    max_attempts: settings.remote_pin_attempts(),
                     expires_at: (self.inner.clock)()
-                        .saturating_add(i64::from(settings.remote_pin_ttl_secs()) * 1000),
+                        .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
                     indicator_visible: false,
                 };
                 session.transition(RemoteEvent::Request)?;
@@ -515,98 +485,6 @@ impl RemoteService {
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner) = Some(session);
                 self.emit(RemoteEventMessage::Requested(snapshot));
-                Ok(())
-            }
-            RemoteSignalFrame::Consent { .. } => {
-                let mut guard = self
-                    .inner
-                    .session
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                let session = guard
-                    .as_mut()
-                    .filter(|session| session.id == id && session.user_id == user_id)
-                    .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                if session.state == RemoteState::Requested {
-                    session.transition(RemoteEvent::Consent)?;
-                    let snapshot = snapshot(session);
-                    drop(guard);
-                    self.emit(RemoteEventMessage::Requested(snapshot));
-                }
-                Ok(())
-            }
-            RemoteSignalFrame::Pin { pin, .. } => {
-                enum PinOutcome {
-                    Expired(RemoteSnapshot),
-                    Verified(RemoteState, RemoteSnapshot, bool),
-                }
-                let outcome = {
-                    let mut guard = self
-                        .inner
-                        .session
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner);
-                    let session = guard
-                        .as_mut()
-                        .filter(|session| session.id == id && session.user_id == user_id)
-                        .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                    if (self.inner.clock)() > session.expires_at {
-                        session.transition(RemoteEvent::Deny)?;
-                        PinOutcome::Expired(snapshot(session))
-                    } else {
-                        let verified = verify_pin(session, &pin)?;
-                        PinOutcome::Verified(verified.state, snapshot(session), verified.pin_failed)
-                    }
-                };
-                let (verified, snapshot, denied) = match outcome {
-                    PinOutcome::Expired(snapshot) => {
-                        let _ = self
-                            .send_signal(
-                                user.node_id,
-                                &RemoteSignalFrame::Deny {
-                                    session_id: id_bytes(id),
-                                },
-                            )
-                            .await;
-                        self.cleanup();
-                        self.emit(RemoteEventMessage::Ended {
-                            session_id: snapshot.session_id,
-                            reason: "expired".to_owned(),
-                        });
-                        return Err(RemoteError::Expired);
-                    }
-                    PinOutcome::Verified(state, snapshot, denied) => (state, snapshot, denied),
-                };
-                if verified == RemoteState::Active {
-                    self.inner.host.start(1920, 1080)?;
-                    let _ = self
-                        .send_signal(
-                            user.node_id,
-                            &RemoteSignalFrame::Start {
-                                session_id: id_bytes(id),
-                            },
-                        )
-                        .await;
-                    self.emit(RemoteEventMessage::Started(snapshot.clone()));
-                    self.emit(RemoteEventMessage::Indicator {
-                        session_id: snapshot.session_id,
-                        visible: true,
-                    });
-                } else if denied {
-                    let _ = self
-                        .send_signal(
-                            user.node_id,
-                            &RemoteSignalFrame::Deny {
-                                session_id: id_bytes(id),
-                            },
-                        )
-                        .await;
-                    self.cleanup();
-                    self.emit(RemoteEventMessage::Ended {
-                        session_id: snapshot.session_id,
-                        reason: "pin".to_owned(),
-                    });
-                }
                 Ok(())
             }
             RemoteSignalFrame::Deny { .. } => {
@@ -622,12 +500,16 @@ impl RemoteService {
                         .unwrap_or_else(PoisonError::into_inner);
                     let session = guard
                         .as_mut()
-                        .filter(|session| session.id == id && session.user_id == user_id)
+                        .filter(|session| {
+                            session.id == id
+                                && session.user_id == user_id
+                                && session.role == RemoteRole::Viewer
+                        })
                         .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                    if session.state == RemoteState::Requested {
-                        session.transition(RemoteEvent::Consent)?;
+                    if session.state != RemoteState::Requested {
+                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
                     }
-                    session.transition(RemoteEvent::PinOk)?;
+                    session.transition(RemoteEvent::Consent)?;
                     snapshot(session)
                 };
                 self.emit(RemoteEventMessage::Started(snapshot.clone()));
@@ -694,10 +576,7 @@ impl RemoteService {
                 .unwrap_or_else(PoisonError::into_inner);
             if let Some(session) = guard.as_mut()
                 && session.user_id == user_id
-                && matches!(
-                    session.state,
-                    RemoteState::Active | RemoteState::Consented | RemoteState::Requested
-                )
+                && matches!(session.state, RemoteState::Active | RemoteState::Requested)
             {
                 let _ = session.transition(RemoteEvent::Disconnect);
                 Some(session.id)
@@ -830,7 +709,6 @@ fn snapshot(session: &RemoteSession) -> RemoteSnapshot {
         }
         .to_owned(),
         state: session.state.as_str().to_owned(),
-        pin: session.pin.clone().unwrap_or_default(),
         indicator: session.indicator_visible,
         expires_at: session.expires_at,
     }

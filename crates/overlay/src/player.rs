@@ -7,12 +7,39 @@ use webkit6::prelude::*;
 
 const HTML: &str = r#"<!doctype html>
 <html><head><meta charset="utf-8"><style>
-html,body{margin:0;background:#000;overflow:hidden}
-#host,iframe{width:100vw;height:100vh;border:0}
-</style></head><body><div id="host"></div><script>
+*{box-sizing:border-box}
+html,body{margin:0;background:#213639;color:#FFE5B0;font-family:"Istok Web",sans-serif;overflow:hidden;border-radius:20px}
+.shell{display:flex;flex-direction:column;border:1px solid #3F5A52;border-radius:20px;overflow:hidden;background:#213639}
+.head{display:flex;align-items:center;gap:8px;padding:10px 12px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#A9A78A}
+.head strong{color:#EDB483;font-weight:700}
+.grow{flex:1}
+.ignore{display:flex;align-items:center;gap:6px}
+.switch{width:32px;height:18px;border-radius:999px;background:#EDB483;position:relative}
+.switch:after{content:"";position:absolute;top:2px;right:2px;width:14px;height:14px;border-radius:50%;background:#182B2F}
+.close{border:0;background:transparent;color:#A9A78A;font-size:16px;cursor:pointer}
+#host{width:100%;aspect-ratio:16/9;background:#2A403C}
+#host iframe{width:100%;height:100%;border:0}
+.copy{display:flex;flex-direction:column;gap:2px;padding:10px 12px 2px}
+.copy strong{font-size:15px;font-weight:700;color:#FFE5B0}
+.copy span{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:#A9A78A}
+.controls{display:flex;align-items:center;gap:8px;padding:8px 12px 12px}
+button{font:inherit;cursor:pointer}
+.ctrl{width:28px;height:28px;border:0;border-radius:50%;background:transparent;color:#EDB483;font-size:13px}
+.ctrl:hover{background:#2A403C}
+.time{font-size:11px;color:#A9A78A;font-variant-numeric:tabular-nums}
+.bar{height:3px;flex:1;border-radius:999px;background:#2F4547;overflow:hidden}
+.bar i{display:block;height:100%;width:33%;background:#EDB483;border-radius:999px}
+</style></head><body><div class="shell">
+<div class="head"><strong>YouTube</strong><span class="grow"></span><span class="ignore">Ignore incoming <span class="switch"></span></span><button class="close" onclick="window.close()">×</button></div>
+<div id="host"></div>
+<div class="copy"><strong id="title">TiConnect video</strong><span id="meta">TiConnect Labs · LAN</span></div>
+<div class="controls"><button class="ctrl" onclick="command('playVideo')">▶</button><button class="ctrl" onclick="command('pauseVideo')">❚❚</button><span class="time" id="pos">00:00</span><span class="bar"><i id="progress"></i></span><span class="time">18:42</span><button class="ctrl" onclick="command('mute')">◔</button><button class="ctrl" onclick="command('unMute')">◕</button></div>
+</div><script>
 let current=null, frame=null, lastPos=0;
+function command(func){if(frame&&frame.contentWindow){frame.contentWindow.postMessage(JSON.stringify({event:'command',func:func,args:[]}),'*');}}
 function apply(id,pos,playing){
   const position=Math.max(0, Math.floor(pos/1000));
+  document.getElementById('title').textContent='TiConnect Labs';
   if(current!==id){
     current=id; lastPos=position;
     document.getElementById('host').innerHTML='';
@@ -25,8 +52,7 @@ function apply(id,pos,playing){
     return;
   }
   if(!frame||!frame.contentWindow) return;
-  const command=playing?'playVideo':'pauseVideo';
-  frame.contentWindow.postMessage(JSON.stringify({event:'command',func:command,args:[]}),'*');
+  frame.contentWindow.postMessage(JSON.stringify({event:'command',func:playing?'playVideo':'pauseVideo',args:[]}),'*');
   if(Math.abs(position-lastPos)>2){
     lastPos=position;
     frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'seekTo',args:[position,true]}),'*');
@@ -48,17 +74,17 @@ impl Player {
             .application(application)
             .decorated(false)
             .resizable(true)
-            .default_width(640)
-            .default_height(400)
+            .default_width(480)
+            .default_height(420)
             .build();
         window.add_css_class("ticonnect-player");
         window.init_layer_shell();
-        window.set_anchor(gtk4_layer_shell::Edge::Top, true);
+        window.set_anchor(gtk4_layer_shell::Edge::Bottom, true);
         window.set_anchor(gtk4_layer_shell::Edge::Right, true);
         window.set_layer(Layer::Overlay);
         window.set_keyboard_mode(gtk4_layer_shell::KeyboardMode::OnDemand);
         window.set_exclusive_zone(0);
-        window.set_margin(gtk4_layer_shell::Edge::Top, 24);
+        window.set_margin(gtk4_layer_shell::Edge::Bottom, 24);
         window.set_margin(gtk4_layer_shell::Edge::Right, 24);
         window.set_namespace(Some("ticonnect-player"));
         window.set_visible(false);

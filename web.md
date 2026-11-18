@@ -18,6 +18,10 @@ Progress:
 - [x] Svelte 5 + TypeScript + Vite scaffold with typed bridge client.
 - [x] Svelte routes, stores, and components (`crates/ui/web`).
 - [x] Committed Vite dist and CI freshness gate.
+- [x] Quiet Grove screens: chat, collapsed rail, profile, settings, watch party, call, sharing.
+- [x] In-app request/active cards, message toasts and YouTube player.
+- [x] Remote desktop consent without a PIN.
+- [x] Native overlay request and toast surfaces restyled; active session cards added.
 - [x] Frontend tests; manual desktop matrix remains pending.
 
 ## Decision

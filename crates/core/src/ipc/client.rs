@@ -66,7 +66,7 @@ pub trait Daemon {
     fn end_watch_party(&self, party_id: &str) -> zbus::Result<()>;
     fn get_watch_party(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn request_remote_session(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
+    fn accept_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;

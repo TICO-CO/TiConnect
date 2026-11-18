@@ -89,6 +89,37 @@ export interface WatchParty {
     updated_at: number;
 }
 
+export interface Call {
+    id: string;
+    user_id: string;
+    direction: string;
+    state: string;
+    started_at: number;
+    connected_at: number;
+}
+
+export interface RemoteSession {
+    session_id: string;
+    user_id: string;
+    fingerprint: string;
+    role: string;
+    state: string;
+    indicator: boolean;
+    expires_at: number;
+}
+
+export interface RemoteTicket {
+    url: string;
+    expires_at: number;
+}
+
+export interface BlockedUser {
+    fingerprint: string;
+    node_id: string;
+    display_name: string;
+    blocked_at: number;
+}
+
 export interface WebSocketEvent {
     type: string;
     [key: string]: unknown;
@@ -105,6 +136,8 @@ export interface RpcResponse<T = unknown> {
     result?: T;
     error?: RpcError;
 }
+
+export type Connection = 'connecting' | 'online' | 'offline';
 
 export class BridgeMessages {
     private static isRecord(value: unknown): value is Record<string, unknown> {

@@ -124,8 +124,7 @@ jobs:
 
       - name: Web build
         if: hashFiles('crates/ui/web/package.json') != ''
-        working-directory: crates/ui/web
-        run: bun run build
+        run: make web-build
 
       - name: Web assets freshness
         if: hashFiles('crates/ui/web/package.json') != ''

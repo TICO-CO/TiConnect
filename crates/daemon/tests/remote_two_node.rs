@@ -9,7 +9,7 @@ use ticonnect_core::remote::{InputKind, InputPacket};
 use ticonnect_daemon::remote::RemoteEventMessage;
 
 #[tokio::test]
-async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
+async fn consent_indicator_and_kill_switch_between_two_nodes() {
     let first = TestNode::start("remote-first").await;
     let second = TestNode::start("remote-second").await;
     connect_pair(&first, &second).await;
@@ -34,30 +34,13 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
     .expect("host request event");
     assert_eq!(requested.role, "host");
     assert_eq!(requested.state, "requested");
-    assert_eq!(requested.pin.len(), 6);
     assert_eq!(requested.user_id, first.node_id().to_string());
 
     second
         .remote
-        .accept_session(&viewer.session_id, "")
+        .accept_session(&viewer.session_id)
         .await
         .expect("host consent");
-    let _consented = recv_event(&mut first_events, |event| match event {
-        RemoteEventMessage::Requested(snapshot)
-            if snapshot.session_id == viewer.session_id && snapshot.state == "consented" =>
-        {
-            Some(snapshot)
-        }
-        _ => None,
-    })
-    .await
-    .expect("viewer consent");
-
-    first
-        .remote
-        .accept_session(&viewer.session_id, &requested.pin)
-        .await
-        .expect("viewer pin");
     recv_event(&mut first_events, |event| match event {
         RemoteEventMessage::Started(snapshot) if snapshot.session_id == viewer.session_id => {
             Some(())
@@ -102,74 +85,6 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
     })
     .await
     .expect("viewer teardown");
-
-    first.shutdown().await;
-    second.shutdown().await;
-}
-
-#[tokio::test]
-async fn wrong_pin_is_bounded_and_denies_session() {
-    let first = TestNode::start("remote-pin-first").await;
-    let second = TestNode::start("remote-pin-second").await;
-    connect_pair(&first, &second).await;
-    let mut second_events = second.remote.subscribe();
-
-    let viewer = first
-        .remote
-        .request_session(&second.node_id().to_string())
-        .await
-        .expect("request");
-    let requested = recv_event(&mut second_events, |event| match event {
-        RemoteEventMessage::Requested(snapshot) if snapshot.session_id == viewer.session_id => {
-            Some(snapshot)
-        }
-        _ => None,
-    })
-    .await
-    .expect("host request");
-    second
-        .remote
-        .accept_session(&viewer.session_id, "")
-        .await
-        .expect("consent");
-
-    let wrong = if requested.pin == "000000" {
-        "000001"
-    } else {
-        "000000"
-    };
-    for attempt in 0..2 {
-        first
-            .remote
-            .accept_session(&viewer.session_id, wrong)
-            .await
-            .expect("failed pin accepted");
-        assert_eq!(
-            second.remote.snapshot().expect("session").state,
-            "consented",
-            "attempt {attempt}"
-        );
-    }
-    first
-        .remote
-        .accept_session(&viewer.session_id, wrong)
-        .await
-        .expect("third pin");
-    recv_event(&mut second_events, |event| match event {
-        RemoteEventMessage::Ended { session_id, reason }
-            if session_id == viewer.session_id && reason == "pin" =>
-        {
-            Some(())
-        }
-        _ => None,
-    })
-    .await
-    .expect("host pin denial");
-    wait_true(Duration::from_secs(5), || async {
-        first.remote.snapshot().is_none()
-    })
-    .await
-    .expect("viewer denied");
 
     first.shutdown().await;
     second.shutdown().await;
@@ -238,7 +153,7 @@ async fn deny_path_and_expiry_leave_no_session() {
     .expect("host request");
     clock.fetch_add(400_000, Ordering::Relaxed);
     assert!(matches!(
-        second.remote.accept_session(&viewer.session_id, "").await,
+        second.remote.accept_session(&viewer.session_id).await,
         Err(ticonnect_daemon::remote::RemoteError::Expired)
     ));
     assert!(

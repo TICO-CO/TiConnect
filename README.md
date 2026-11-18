@@ -197,10 +197,10 @@ in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded i
 the binary.
 
 The UI owns `org.ticonnect.UI` on the session bus and exposes
-`Activate(s view)`. Views are `users`, `chat`, `settings`, and `trust`; an
-empty value means `chat`. `Activate("chat:<node-id>")` opens one conversation;
-the tray and overlay use it for notification clicks. The tray uses
-`Activate("chat")`. Starting a second UI forwards activation to the running
+`Activate(s view)`. Views are `chat`, `users`, `settings`, `remote`, and
+`watch-party`; an empty value means `chat`. `Activate("chat:<node-id>")` opens
+one conversation; the tray and overlay use it for notification clicks. The tray
+uses `Activate("chat")`. Starting a second UI forwards activation to the running
 instance.
 
 Frontend styling lives in `crates/ui/web`. Build the bundle with `make
@@ -232,17 +232,24 @@ The overlay runs as the internal `ticonnect overlay` process. It subscribes
 directly to `org.ticonnect.Daemon`, resolves sender names through `ListUsers`,
 and does not depend on the UI being open.
 
-- Wayland: uses `gtk4-layer-shell` with `Layer::Overlay`, anchored top-right,
-  and `KeyboardMode::None`. Cards never take keyboard focus; only the card
-  surface accepts pointer input.
+- Wayland: uses `gtk4-layer-shell` with `Layer::Overlay` and
+  `KeyboardMode::None`. Request and active-session cards anchor top-right;
+  message toasts anchor bottom-right above the YouTube player.
 - Wayland without layer-shell support: falls back to system notifications.
-- X11: uses an undecorated, always-on-top, skip-taskbar window positioned at the
-  top-right of the first monitor. Window flags use EWMH through `x11rb`.
-- Message cards show sender, preview, and local time. Up to three cards are
-  visible; additional cards queue. Cards auto-dismiss after
-  `overlay.timeout_secs`, pause while hovered, and deduplicate by message id.
-- Clicking a card calls `org.ticonnect.UI.Activate("chat")`. If the UI is not
-  running, the overlay starts the current executable with `ui` and retries once.
+- X11: uses two undecorated, always-on-top, skip-taskbar windows positioned at
+  the top-right and bottom-right of the first monitor. Window flags use EWMH
+  through `x11rb`.
+- Request cards cover incoming calls, remote consent, watch-party invites, and
+  the active call/sharing/party states. Message toasts show sender, preview, and
+  local time.
+- Up to three cards are visible per surface; additional cards queue. Cards
+  auto-dismiss after `overlay.timeout_secs`, pause while hovered, and deduplicate
+  by message id.
+- Clicking a message toast calls `org.ticonnect.UI.Activate("chat")`. If the UI
+  is not running, the overlay starts the current executable with `ui` and retries
+  once. Party cards open the `watch-party` view.
+- Remote consent is a single host acceptance; no PIN is generated, shown, or
+  entered.
 - Mute, ignore, and DND are enforced by the daemon: suppressed messages arrive
   with `notify=false` and produce no card or notification.
 - When `overlay.enabled` is false or no surface can initialize, the same events
@@ -292,6 +299,7 @@ Settings keys:
 | `calls.input_device` | string | empty | Optional input device name |
 | `calls.output_device` | string | empty | Optional output device name |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
+| `remote.request_timeout_secs` | integer | `300` | Consent request expiry; valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
 | `video.fps` | integer | `30` | Valid range `5..=60` |
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
@@ -418,8 +426,7 @@ D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
 ## Remote desktop
 
 - A viewer requests a session from a trusted online user. The host reviews the
-  viewer fingerprint and consents. The viewer submits the host-generated
-  session PIN.
+  request and consents. Consent is the full grant; no PIN is shown or entered.
 - Sessions are scoped to one user and require per-session consent. A visible
   indicator stays on while active, and `EndRemoteSession` is a hard kill switch.
 - Capture uses the XDG RemoteDesktop portal and PipeWire fd; input uses libei

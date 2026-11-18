@@ -116,7 +116,6 @@ enum Command {
     },
     AcceptRemoteSession {
         session_id: String,
-        pin: String,
         reply: Reply<()>,
     },
     DenyRemoteSession {
@@ -343,13 +342,9 @@ impl LinkHandle {
             .await
     }
 
-    pub async fn accept_remote_session(&self, session_id: String, pin: String) -> Result<()> {
-        self.request(|reply| Command::AcceptRemoteSession {
-            session_id,
-            pin,
-            reply,
-        })
-        .await
+    pub async fn accept_remote_session(&self, session_id: String) -> Result<()> {
+        self.request(|reply| Command::AcceptRemoteSession { session_id, reply })
+            .await
     }
 
     pub async fn deny_remote_session(&self, session_id: String) -> Result<()> {
@@ -1015,13 +1010,9 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
-        Command::AcceptRemoteSession {
-            session_id,
-            pin,
-            reply,
-        } => {
+        Command::AcceptRemoteSession { session_id, reply } => {
             let result = proxy
-                .accept_remote_session(&session_id, &pin)
+                .accept_remote_session(&session_id)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);

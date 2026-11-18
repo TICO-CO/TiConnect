@@ -211,7 +211,7 @@ async fn asset(
     if !state.request_allowed(&headers) {
         return forbidden();
     }
-    assets::asset(&path)
+    assets::asset(&format!("assets/{path}"))
 }
 
 async fn websocket(

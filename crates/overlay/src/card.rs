@@ -10,34 +10,90 @@ pub const DEDUP_CAPACITY: usize = 256;
 const PREVIEW_CHARS: usize = 140;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardSurface {
+    Request,
+    Toast,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardKind {
     Message,
     IncomingCall,
     RemoteRequest,
     WatchPartyInvite,
-    Youtube,
+    ActiveCall,
+    Sharing,
+    PartyPill,
+    CallEnded,
+}
+
+impl CardKind {
+    fn surface(self) -> CardSurface {
+        match self {
+            Self::Message | Self::CallEnded => CardSurface::Toast,
+            Self::IncomingCall
+            | Self::RemoteRequest
+            | Self::WatchPartyInvite
+            | Self::ActiveCall
+            | Self::Sharing
+            | Self::PartyPill => CardSurface::Request,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Message => "Message",
+            Self::IncomingCall => "Incoming call",
+            Self::RemoteRequest => "Remote desktop",
+            Self::WatchPartyInvite => "Watch party invite",
+            Self::ActiveCall => "In call",
+            Self::Sharing => "Sharing screen",
+            Self::PartyPill => "Watch party",
+            Self::CallEnded => "Voice call ended",
+        }
+    }
+
+    fn is_active(self) -> bool {
+        matches!(self, Self::ActiveCall | Self::Sharing | Self::PartyPill)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardAction {
     AcceptCall,
     DeclineCall,
-    OpenRemote,
+    AcceptRemote,
     DenyRemote,
+    HangupCall,
+    EndRemote,
     JoinWatchParty,
     DeclineWatchParty,
+    OpenParty,
 }
 
 impl CardAction {
     pub fn label(self) -> &'static str {
         match self {
-            Self::AcceptCall => "Accept",
-            Self::DeclineCall => "Decline",
-            Self::OpenRemote => "Open",
-            Self::DenyRemote => "Deny",
+            Self::AcceptCall | Self::AcceptRemote => "Accept",
+            Self::DeclineCall | Self::DenyRemote | Self::DeclineWatchParty => "Decline",
+            Self::HangupCall | Self::EndRemote => "End",
             Self::JoinWatchParty => "Join",
-            Self::DeclineWatchParty => "Decline",
+            Self::OpenParty => "Open",
         }
+    }
+
+    fn is_danger(self) -> bool {
+        matches!(
+            self,
+            Self::DeclineCall | Self::DenyRemote | Self::DeclineWatchParty
+        )
+    }
+
+    fn is_accent(self) -> bool {
+        matches!(
+            self,
+            Self::AcceptCall | Self::AcceptRemote | Self::JoinWatchParty | Self::OpenParty
+        )
     }
 }
 
@@ -76,11 +132,11 @@ impl Card {
             id: format!("call:{}", call.id),
             user_id: call.user_id.clone(),
             sender,
-            preview: "Incoming voice call".to_owned(),
+            preview: "Voice call · LAN".to_owned(),
             sent_at: call.started_at,
             kind: CardKind::IncomingCall,
             persistent: true,
-            actions: vec![CardAction::AcceptCall, CardAction::DeclineCall],
+            actions: vec![CardAction::DeclineCall, CardAction::AcceptCall],
         }
     }
 
@@ -89,11 +145,11 @@ impl Card {
             id: format!("party:{}", party.party_id),
             user_id: party.user_id.clone(),
             sender,
-            preview: "YouTube watch party invite".to_owned(),
+            preview: "Watch party · How we built TiConnect".to_owned(),
             sent_at: party.updated_at,
             kind: CardKind::WatchPartyInvite,
             persistent: true,
-            actions: vec![CardAction::JoinWatchParty, CardAction::DeclineWatchParty],
+            actions: vec![CardAction::DeclineWatchParty, CardAction::JoinWatchParty],
         }
     }
 
@@ -102,11 +158,63 @@ impl Card {
             id: format!("remote:{}", session.session_id),
             user_id: session.user_id.clone(),
             sender,
-            preview: "Remote desktop request".to_owned(),
+            preview: "Wants to view and control this screen".to_owned(),
             sent_at: 0,
             kind: CardKind::RemoteRequest,
             persistent: true,
-            actions: vec![CardAction::OpenRemote, CardAction::DenyRemote],
+            actions: vec![CardAction::DenyRemote, CardAction::AcceptRemote],
+        }
+    }
+
+    pub fn from_active_call(call: &Call, sender: String) -> Self {
+        Self {
+            id: format!("active-call:{}", call.id),
+            user_id: call.user_id.clone(),
+            sender,
+            preview: "Encrypted · Opus · LAN".to_owned(),
+            sent_at: call.connected_at,
+            kind: CardKind::ActiveCall,
+            persistent: true,
+            actions: vec![CardAction::HangupCall],
+        }
+    }
+
+    pub fn from_sharing(session: &RemoteSession, sender: String) -> Self {
+        Self {
+            id: format!("sharing:{}", session.session_id),
+            user_id: session.user_id.clone(),
+            sender,
+            preview: "Indicator stays visible while sharing.".to_owned(),
+            sent_at: 0,
+            kind: CardKind::Sharing,
+            persistent: true,
+            actions: vec![CardAction::EndRemote],
+        }
+    }
+
+    pub fn from_party_pill(party: &WatchParty) -> Self {
+        Self {
+            id: format!("party-pill:{}", party.party_id),
+            user_id: party.user_id.clone(),
+            sender: "Watch party".to_owned(),
+            preview: "Watch party · 3 watching".to_owned(),
+            sent_at: party.updated_at,
+            kind: CardKind::PartyPill,
+            persistent: true,
+            actions: vec![CardAction::OpenParty],
+        }
+    }
+
+    pub fn from_call_ended(sender: String, user_id: String, duration_secs: u64) -> Self {
+        Self {
+            id: format!("call-ended:{user_id}:{duration_secs}"),
+            user_id,
+            sender,
+            preview: format!("Voice call ended · {}", clock_duration(duration_secs)),
+            sent_at: now_seconds(),
+            kind: CardKind::CallEnded,
+            persistent: false,
+            actions: Vec::new(),
         }
     }
 }
@@ -223,20 +331,23 @@ impl CardQueue {
 
 #[derive(Debug)]
 pub struct CardRouter {
-    queue: CardQueue,
+    requests: CardQueue,
+    toasts: CardQueue,
     seen: VecDeque<String>,
 }
 
 impl CardRouter {
     pub fn new(timeout_ms: u64) -> Self {
         Self {
-            queue: CardQueue::new(timeout_ms),
+            requests: CardQueue::new(timeout_ms),
+            toasts: CardQueue::new(timeout_ms),
             seen: VecDeque::new(),
         }
     }
 
     pub fn set_timeout_ms(&mut self, timeout_ms: u64) {
-        self.queue.set_timeout_ms(timeout_ms);
+        self.requests.set_timeout_ms(timeout_ms);
+        self.toasts.set_timeout_ms(timeout_ms);
     }
 
     pub fn route(
@@ -256,41 +367,54 @@ impl CardRouter {
         while self.seen.len() > DEDUP_CAPACITY {
             self.seen.pop_front();
         }
-        if overlay_enabled && overlay_available {
-            self.queue.enqueue(card);
-            AddOutcome::Overlay
-        } else {
-            AddOutcome::Notification
+        if !overlay_enabled || !overlay_available {
+            return AddOutcome::Notification;
         }
+        match card.kind.surface() {
+            CardSurface::Request => self.requests.enqueue(card),
+            CardSurface::Toast => self.toasts.enqueue(card),
+        }
+        AddOutcome::Overlay
     }
 
     pub fn advance(&mut self, elapsed_ms: u64) -> bool {
-        self.queue.advance(elapsed_ms)
+        let requests = self.requests.advance(elapsed_ms);
+        let toasts = self.toasts.advance(elapsed_ms);
+        requests || toasts
     }
 
     pub fn set_hovered(&mut self, id: &str, hovered: bool) -> bool {
-        self.queue.set_hovered(id, hovered)
+        self.requests.set_hovered(id, hovered) || self.toasts.set_hovered(id, hovered)
     }
 
     pub fn dismiss(&mut self, id: &str) -> bool {
-        self.queue.dismiss(id)
+        self.requests.dismiss(id) || self.toasts.dismiss(id)
     }
 
     pub fn clear(&mut self) -> bool {
-        self.queue.clear()
+        let requests = self.requests.clear();
+        let toasts = self.toasts.clear();
+        requests || toasts
     }
 
-    pub fn visible(&self) -> impl Iterator<Item = &Card> {
-        self.queue.visible()
+    pub fn visible_requests(&self) -> impl Iterator<Item = &Card> {
+        self.requests.visible()
+    }
+
+    pub fn visible_toasts(&self) -> impl Iterator<Item = &Card> {
+        self.toasts.visible()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.queue.is_empty()
+        self.requests.is_empty() && self.toasts.is_empty()
     }
 }
 
 pub fn preview(body: &str) -> String {
     let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if normalized.is_empty() {
+        return "New message".to_owned();
+    }
     let mut chars = normalized.chars();
     let shortened: String = chars.by_ref().take(PREVIEW_CHARS).collect();
     if chars.next().is_some() {
@@ -339,26 +463,43 @@ fn card_widget(
 ) -> gtk::Box {
     let button = gtk::Box::new(gtk::Orientation::Vertical, 0);
     button.add_css_class("ticonnect-card");
+    button.add_css_class(card_class(card));
     button.set_focusable(false);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    content.set_margin_top(12);
-    content.set_margin_bottom(12);
-    content.set_margin_start(14);
-    content.set_margin_end(14);
+    content.set_margin_top(14);
+    content.set_margin_bottom(14);
+    content.set_margin_start(16);
+    content.set_margin_end(16);
     content.set_hexpand(true);
 
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let sender = gtk::Label::new(Some(&card.sender));
-    sender.set_xalign(0.0);
-    sender.set_hexpand(true);
-    sender.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    sender.add_css_class("ticonnect-card-sender");
+    header.set_valign(gtk::Align::Center);
+    let monogram = gtk::Label::new(Some(&initials(&card.sender)));
+    monogram.add_css_class("ticonnect-monogram");
+    let label_text = if matches!(card.kind, CardKind::Message | CardKind::CallEnded) {
+        card.sender.clone()
+    } else {
+        card.kind.label().to_owned()
+    };
+    let kind = gtk::Label::new(Some(&label_text));
+    kind.set_xalign(0.0);
+    kind.set_hexpand(true);
+    kind.add_css_class("ticonnect-card-kind");
     let time = gtk::Label::new(Some(&time_label(card.sent_at)));
     time.set_xalign(1.0);
     time.add_css_class("ticonnect-card-time");
-    header.append(&sender);
+    header.append(&monogram);
+    header.append(&kind);
     header.append(&time);
+
+    let title = gtk::Label::new(Some(&card.sender));
+    title.set_xalign(0.0);
+    title.set_wrap(true);
+    title.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    title.set_lines(2);
+    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    title.add_css_class("ticonnect-card-title");
 
     let body = gtk::Label::new(Some(&card.preview));
     body.set_xalign(0.0);
@@ -366,17 +507,30 @@ fn card_widget(
     body.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     body.set_lines(3);
     body.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    body.add_css_class("ticonnect-card-preview");
+    body.add_css_class(if card.kind == CardKind::Message {
+        "ticonnect-card-preview"
+    } else {
+        "ticonnect-card-subtitle"
+    });
 
     content.append(&header);
+    if card.kind != CardKind::Message {
+        content.append(&title);
+    }
     content.append(&body);
 
     if !card.actions.is_empty() {
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.set_halign(gtk::Align::End);
+        actions.set_halign(gtk::Align::Start);
         for action in &card.actions {
             let action_button = gtk::Button::with_label(action.label());
             action_button.add_css_class("ticonnect-card-action");
+            if action.is_danger() {
+                action_button.add_css_class("danger");
+            }
+            if action.is_accent() {
+                action_button.add_css_class("accent");
+            }
             let handler = on_action.clone();
             let id = card.id.clone();
             let action = *action;
@@ -408,6 +562,37 @@ fn card_widget(
     button
 }
 
+fn card_class(card: &Card) -> &'static str {
+    if card.kind.is_active() {
+        return "ticonnect-card-active";
+    }
+    if card.kind == CardKind::PartyPill {
+        return "ticonnect-card-pill";
+    }
+    if card.kind == CardKind::Message || card.kind == CardKind::CallEnded {
+        return "ticonnect-toast";
+    }
+    "ticonnect-request"
+}
+
+fn initials(name: &str) -> String {
+    let mut words = name
+        .split(|character: char| character.is_whitespace() || character == '-' || character == '_')
+        .filter(|word| !word.is_empty());
+    let first = words.next().unwrap_or("");
+    let second = words.next().unwrap_or("");
+    let initials: String = if second.is_empty() {
+        first.chars().take(2).collect()
+    } else {
+        first
+            .chars()
+            .take(1)
+            .chain(second.chars().take(1))
+            .collect()
+    };
+    initials.to_uppercase()
+}
+
 fn time_label(sent_at: u64) -> String {
     if sent_at == 0 {
         return String::new();
@@ -419,5 +604,19 @@ fn time_label(sent_at: u64) -> String {
         .ok()
         .and_then(|date| date.format("%H:%M").ok())
         .map(|value| value.to_string())
+        .unwrap_or_default()
+}
+
+fn clock_duration(seconds: u64) -> String {
+    let hours = seconds / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let remaining = seconds % 60;
+    format!("{hours:02}:{minutes:02}:{remaining:02}")
+}
+
+fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
         .unwrap_or_default()
 }

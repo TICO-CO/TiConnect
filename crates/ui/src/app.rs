@@ -167,7 +167,7 @@ pub fn run() -> anyhow::Result<()> {
     }
 
     let _bridge = bridge;
-    app.run();
+    app.run_with_args::<&str>(&[]);
     drop(_guard);
     Ok(())
 }

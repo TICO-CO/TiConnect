@@ -162,11 +162,7 @@ enum RemoteCommand {
     /// Request a remote desktop session.
     Request { user_id: String },
     /// Consent to a remote desktop request.
-    Accept {
-        session_id: String,
-        #[arg(default_value = "")]
-        pin: String,
-    },
+    Accept { session_id: String },
     /// Deny a remote session request.
     Deny { session_id: String },
     /// End or kill a remote session.
@@ -417,9 +413,9 @@ async fn run_command(command: Command) -> Result<()> {
                         println!("{key}: {}", message_value(&session, key));
                     }
                 }
-                RemoteCommand::Accept { session_id, pin } => {
+                RemoteCommand::Accept { session_id } => {
                     proxy
-                        .accept_remote_session(&session_id, &pin)
+                        .accept_remote_session(&session_id)
                         .await
                         .context("accept remote session")?;
                     println!("accepted");

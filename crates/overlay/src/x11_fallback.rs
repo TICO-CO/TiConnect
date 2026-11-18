@@ -1,3 +1,5 @@
+use std::cell::Cell;
+use std::rc::Rc;
 use std::time::Duration;
 
 use gtk::prelude::*;
@@ -10,41 +12,56 @@ use x11rb::wrapper::ConnectionExt as _;
 use crate::card::{ActionHandler, Card, ClickHandler, HoverHandler, render_cards};
 
 const MARGIN: i32 = 24;
-const TITLE: &str = "TiConnect Overlay";
 
 pub struct Surface {
     window: gtk::Window,
     cards: gtk::Box,
+    bottom: bool,
+    bottom_offset: Rc<Cell<i32>>,
 }
 
 impl Surface {
-    pub fn new(application: &gtk::Application) -> Self {
+    pub fn new(application: &gtk::Application, title: &str, bottom: bool) -> Self {
         let window = gtk::Window::builder()
             .application(application)
             .decorated(false)
             .resizable(false)
             .build();
         window.add_css_class("ticonnect-x11-overlay");
-        window.set_title(Some(TITLE));
+        if bottom {
+            window.add_css_class("ticonnect-x11-overlay-bottom");
+        }
+        window.set_title(Some(title));
         window.set_focusable(false);
 
         let cards = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        cards.set_valign(gtk::Align::Start);
+        cards.set_valign(if bottom {
+            gtk::Align::End
+        } else {
+            gtk::Align::Start
+        });
         cards.set_halign(gtk::Align::End);
         window.set_child(Some(&cards));
         window.set_visible(false);
 
         let surface_window = window.clone();
+        let title = title.to_owned();
         window.connect_map(move |_| {
             let window = surface_window.clone();
+            let title = title.clone();
             gtk::glib::timeout_add_local_once(Duration::from_millis(100), move || {
-                if let Err(error) = apply_hints(&window) {
+                if let Err(error) = apply_hints(&window, &title) {
                     tracing::warn!(%error, "failed to apply X11 overlay hints");
                 }
             });
         });
 
-        Self { window, cards }
+        Self {
+            window,
+            cards,
+            bottom,
+            bottom_offset: Rc::new(Cell::new(if bottom { MARGIN } else { 0 })),
+        }
     }
 
     pub fn render(
@@ -60,9 +77,26 @@ impl Surface {
         } else {
             self.window.present();
             let window = self.window.clone();
+            let title = self.window.title().unwrap_or_default().to_string();
+            let bottom = self.bottom;
+            let offset = self.bottom_offset.get();
             gtk::glib::timeout_add_local_once(Duration::from_millis(50), move || {
-                if let Err(error) = position(&window) {
+                if let Err(error) = position(&window, &title, bottom, offset) {
                     tracing::warn!(%error, "failed to position X11 overlay");
+                }
+            });
+        }
+    }
+
+    pub fn set_bottom_margin(&self, margin: i32) {
+        self.bottom_offset.set(margin);
+        if self.bottom {
+            let window = self.window.clone();
+            let title = self.window.title().unwrap_or_default().to_string();
+            let offset = self.bottom_offset.get();
+            gtk::glib::timeout_add_local_once(Duration::from_millis(20), move || {
+                if let Err(error) = position(&window, &title, true, offset) {
+                    tracing::warn!(%error, "failed to reposition X11 overlay");
                 }
             });
         }
@@ -73,8 +107,8 @@ impl Surface {
     }
 }
 
-fn apply_hints(window: &gtk::Window) -> anyhow::Result<()> {
-    let Some((connection, window_id)) = x11_window(window) else {
+fn apply_hints(_window: &gtk::Window, title: &str) -> anyhow::Result<()> {
+    let Some((connection, window_id)) = x11_window(title) else {
         return Ok(());
     };
     let above = intern(&connection, b"_NET_WM_STATE_ABOVE")?;
@@ -102,8 +136,8 @@ fn apply_hints(window: &gtk::Window) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn position(window: &gtk::Window) -> anyhow::Result<()> {
-    let Some((connection, window_id)) = x11_window(window) else {
+fn position(window: &gtk::Window, title: &str, bottom: bool, offset: i32) -> anyhow::Result<()> {
+    let Some((connection, window_id)) = x11_window(title) else {
         return Ok(());
     };
     let Some(display) = gtk::gdk::Display::default() else {
@@ -119,7 +153,11 @@ fn position(window: &gtk::Window) -> anyhow::Result<()> {
     let scale = monitor.scale_factor();
     let width = window.width().max(320) * scale;
     let x = geometry.x() * scale + geometry.width() - width - MARGIN * scale;
-    let y = geometry.y() * scale + MARGIN * scale;
+    let y = if bottom {
+        geometry.y() * scale + geometry.height() - window.height().max(1) * scale - offset * scale
+    } else {
+        geometry.y() * scale + MARGIN * scale
+    };
 
     connection.configure_window(
         window_id,
@@ -129,7 +167,7 @@ fn position(window: &gtk::Window) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn x11_window(_window: &gtk::Window) -> Option<(RustConnection, u32)> {
+fn x11_window(target_title: &str) -> Option<(RustConnection, u32)> {
     let (connection, screen) = x11rb::connect(None).ok()?;
     let root = connection.setup().roots.get(screen)?.root;
     let tree = connection.query_tree(root).ok()?.reply().ok()?;
@@ -137,7 +175,7 @@ fn x11_window(_window: &gtk::Window) -> Option<(RustConnection, u32)> {
         let Some(title) = window_title(&connection, window_id) else {
             continue;
         };
-        if title == TITLE.as_bytes() {
+        if title == target_title.as_bytes() {
             return Some((connection, window_id));
         }
     }

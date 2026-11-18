@@ -104,3 +104,28 @@ fn preview_collapses_whitespace_and_truncates() {
     assert!(preview.ends_with("..."));
     assert!(preview.chars().count() <= 143);
 }
+
+#[test]
+fn messages_use_toasts_and_requests_use_the_request_surface() {
+    let mut router = CardRouter::new(1_000);
+    let mut message = card("message");
+    message.kind = CardKind::Message;
+    let mut request = card("request");
+    request.kind = CardKind::IncomingCall;
+    request.persistent = true;
+    assert_eq!(router.route(message, true, true, true), AddOutcome::Overlay);
+    assert_eq!(router.route(request, true, true, true), AddOutcome::Overlay);
+    assert_eq!(router.visible_toasts().count(), 1);
+    assert_eq!(router.visible_requests().count(), 1);
+}
+
+#[test]
+fn action_labels_match_the_design() {
+    use ticonnect_overlay::card::CardAction;
+    assert_eq!(CardAction::AcceptCall.label(), "Accept");
+    assert_eq!(CardAction::DeclineCall.label(), "Decline");
+    assert_eq!(CardAction::AcceptRemote.label(), "Accept");
+    assert_eq!(CardAction::DenyRemote.label(), "Decline");
+    assert_eq!(CardAction::HangupCall.label(), "End");
+    assert_eq!(CardAction::OpenParty.label(), "Open");
+}

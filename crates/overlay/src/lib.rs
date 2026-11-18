@@ -58,15 +58,19 @@ pub fn run() -> anyhow::Result<()> {
             return;
         };
         install_css();
-        let surface = build_surface(application).unwrap_or_else(|| {
+        let (requests_surface, toasts_surface) = build_surfaces(application).unwrap_or_else(|| {
             tracing::warn!("no supported overlay surface; using system notifications");
-            Surface::None
+            (Surface::None, Surface::None)
         });
         let player = Player::new(application);
         let state = State {
-            surface,
+            requests_surface,
+            toasts_surface,
             player,
+            player_visible: false,
             watch_party: None,
+            active_call: None,
+            active_remote: None,
             router: CardRouter::new(5_000),
             enabled: true,
             timeout_ms: 5_000,
@@ -84,9 +88,13 @@ pub fn run() -> anyhow::Result<()> {
 }
 
 struct State {
-    surface: Surface,
+    requests_surface: Surface,
+    toasts_surface: Surface,
     player: Player,
+    player_visible: bool,
     watch_party: Option<ticonnect_core::ipc::events::WatchParty>,
+    active_call: Option<ticonnect_core::ipc::events::Call>,
+    active_remote: Option<ticonnect_core::ipc::events::RemoteSession>,
     router: CardRouter,
     enabled: bool,
     timeout_ms: u64,
@@ -99,6 +107,16 @@ enum Surface {
     Wayland(layer_shell::Surface),
     X11(x11_fallback::Surface),
     None,
+}
+
+impl Surface {
+    fn set_bottom_margin(&self, margin: i32) {
+        match self {
+            Self::Wayland(surface) => surface.set_bottom_margin(margin),
+            Self::X11(surface) => surface.set_bottom_margin(margin),
+            Self::None => {}
+        }
+    }
 }
 
 enum UiEvent {
@@ -127,9 +145,11 @@ impl State {
                 self.show_youtube(&message);
             }
             Event::IncomingCall(call) => self.show_call(call),
+            Event::CallState(call) => self.apply_call_state(call),
             Event::RemoteSessionRequested(session) => self.show_remote_request(session),
-            Event::CallEnded(call_id) => self.remove(&format!("call:{call_id}")),
-            Event::RemoteSessionEnded(session_id) => self.remove(&format!("remote:{session_id}")),
+            Event::RemoteState(session) => self.apply_remote_state(session),
+            Event::CallEnded(call_id) => self.finish_call(&call_id),
+            Event::RemoteSessionEnded(session_id) => self.finish_remote(&session_id),
             Event::WatchPartyRequested(party) => self.show_watch_party(party),
             Event::WatchPartyChanged(party) => self.apply_watch_party(party),
             Event::WatchPartyEnded(party_id) => self.end_watch_party(&party_id),
@@ -172,7 +192,7 @@ impl State {
     fn show_message(&mut self, message: Message) {
         let sender = self.sender_name(&message);
         let card = Card::from_message(&message, sender);
-        let available = !matches!(self.surface, Surface::None);
+        let available = self.available();
         match self
             .router
             .route(card.clone(), message.notify, self.enabled, available)
@@ -193,6 +213,8 @@ impl State {
             return;
         }
         self.player.show(&video_id, 0, true);
+        self.player_visible = true;
+        self.update_toast_offset();
     }
 
     fn show_watch_party(&mut self, party: ticonnect_core::ipc::events::WatchParty) {
@@ -211,6 +233,12 @@ impl State {
         self.remove(&format!("party:{}", party.party_id));
         self.player
             .show(&party.video_id, party.position_ms, party.playing);
+        self.player_visible = true;
+        self.update_toast_offset();
+        let pill = Card::from_party_pill(&party);
+        if self.watch_party.as_ref().map(|active| &active.party_id) != Some(&party.party_id) {
+            self.show_card(pill);
+        }
         self.watch_party = Some(party);
     }
 
@@ -222,8 +250,11 @@ impl State {
         {
             self.watch_party = None;
             self.player.hide();
+            self.player_visible = false;
+            self.update_toast_offset();
         }
         self.remove(&format!("party:{party_id}"));
+        self.remove(&format!("party-pill:{party_id}"));
     }
 
     fn show_call(&mut self, call: ticonnect_core::ipc::events::Call) {
@@ -244,8 +275,66 @@ impl State {
         self.show_card(card);
     }
 
+    fn apply_call_state(&mut self, call: Option<ticonnect_core::ipc::events::Call>) {
+        if let Some(previous) = self.active_call.take() {
+            self.remove(&format!("active-call:{}", previous.id));
+        }
+        let Some(call) = call else {
+            return;
+        };
+        if call.state != "in_call" {
+            return;
+        }
+        self.remove(&format!("call:{}", call.id));
+        let sender = self.user_name(&call.user_id);
+        let card = Card::from_active_call(&call, sender);
+        self.show_card(card);
+        self.active_call = Some(call);
+    }
+
+    fn finish_call(&mut self, call_id: &str) {
+        self.remove(&format!("call:{call_id}"));
+        self.remove(&format!("active-call:{call_id}"));
+        let finished = self.active_call.take();
+        let Some(call) = finished else {
+            return;
+        };
+        let duration = crate::now_seconds().saturating_sub(call.started_at);
+        let sender = self.user_name(&call.user_id);
+        let card = Card::from_call_ended(sender, call.user_id, duration);
+        self.show_card(card);
+    }
+
+    fn apply_remote_state(&mut self, session: Option<ticonnect_core::ipc::events::RemoteSession>) {
+        if let Some(previous) = self.active_remote.take() {
+            self.remove(&format!("sharing:{}", previous.session_id));
+        }
+        let Some(session) = session else {
+            return;
+        };
+        if session.state == "active" {
+            self.remove(&format!("remote:{}", session.session_id));
+            let sender = self.user_name(&session.user_id);
+            let card = Card::from_sharing(&session, sender);
+            self.show_card(card);
+            self.active_remote = Some(session);
+        }
+    }
+
+    fn finish_remote(&mut self, session_id: &str) {
+        self.remove(&format!("remote:{session_id}"));
+        self.remove(&format!("sharing:{session_id}"));
+        if self
+            .active_remote
+            .as_ref()
+            .is_some_and(|session| session.session_id == session_id)
+        {
+            self.active_remote = None;
+        }
+    }
+
     fn show_card(&mut self, card: Card) {
-        let available = !matches!(self.surface, Surface::None);
+        let available = self.available();
         match self
             .router
             .route(card.clone(), true, self.enabled, available)
@@ -262,6 +351,20 @@ impl State {
         if self.router.dismiss(id) {
             self.render();
         }
+    }
+
+    fn update_toast_offset(&self) {
+        let offset = if self.player_visible {
+            24 + 420 + 8
+        } else {
+            24
+        };
+        self.toasts_surface.set_bottom_margin(offset);
+    }
+
+    fn available(&self) -> bool {
+        !matches!(self.requests_surface, Surface::None)
+            || !matches!(self.toasts_surface, Surface::None)
     }
 
     fn user_name(&self, user_id: &str) -> String {
@@ -286,7 +389,13 @@ impl State {
     }
 
     fn render(&self) {
-        let cards: Vec<Card> = self.router.visible().cloned().collect();
+        let request_cards: Vec<Card> = self.router.visible_requests().cloned().collect();
+        let toast_cards: Vec<Card> = self.router.visible_toasts().cloned().collect();
+        let cards: Vec<Card> = request_cards
+            .iter()
+            .chain(toast_cards.iter())
+            .cloned()
+            .collect();
         let users: std::collections::HashMap<String, String> = cards
             .iter()
             .map(|card| (card.id.clone(), card.user_id.clone()))
@@ -318,11 +427,17 @@ impl State {
                 CardAction::DeclineCall => {
                     let _ = commands.send(Command::DeclineCall(strip(id, "call:")));
                 }
-                CardAction::OpenRemote => {
-                    let _ = commands.send(Command::Activate("remote".to_owned()));
+                CardAction::HangupCall => {
+                    let _ = commands.send(Command::HangupCall(strip(id, "active-call:")));
+                }
+                CardAction::AcceptRemote => {
+                    let _ = commands.send(Command::AcceptRemoteSession(strip(id, "remote:")));
                 }
                 CardAction::DenyRemote => {
                     let _ = commands.send(Command::DenyRemoteSession(strip(id, "remote:")));
+                }
+                CardAction::EndRemote => {
+                    let _ = commands.send(Command::EndRemoteSession(strip(id, "sharing:")));
                 }
                 CardAction::JoinWatchParty => {
                     let _ = commands.send(Command::AcceptWatchParty(strip(id, "party:")));
@@ -330,14 +445,28 @@ impl State {
                 CardAction::DeclineWatchParty => {
                     let _ = commands.send(Command::DeclineWatchParty(strip(id, "party:")));
                 }
+                CardAction::OpenParty => {
+                    let _ = commands.send(Command::Activate("watch-party".to_owned()));
+                }
             }
             let _ = ui.send(UiEvent::Dismiss(id.to_owned()));
         });
-        match &self.surface {
+        match &self.requests_surface {
             Surface::Wayland(surface) => {
-                surface.render(&cards, &on_click, &on_hover, &on_action);
+                surface.render(&request_cards, &on_click, &on_hover, &on_action);
             }
-            Surface::X11(surface) => surface.render(&cards, &on_click, &on_hover, &on_action),
+            Surface::X11(surface) => {
+                surface.render(&request_cards, &on_click, &on_hover, &on_action);
+            }
+            Surface::None => {}
+        }
+        match &self.toasts_surface {
+            Surface::Wayland(surface) => {
+                surface.render(&toast_cards, &on_click, &on_hover, &on_action);
+            }
+            Surface::X11(surface) => {
+                surface.render(&toast_cards, &on_click, &on_hover, &on_action);
+            }
             Surface::None => {}
         }
     }
@@ -372,16 +501,19 @@ fn spawn_ticks(state: Rc<RefCell<State>>) {
     });
 }
 
-fn build_surface(application: &gtk::Application) -> Option<Surface> {
+fn build_surfaces(application: &gtk::Application) -> Option<(Surface, Surface)> {
     if gtk4_layer_shell::is_supported() {
-        return layer_shell::Surface::new(application).map(Surface::Wayland);
+        let requests = layer_shell::Surface::new(application, "ticonnect-overlay-requests", false)?;
+        let toasts = layer_shell::Surface::new(application, "ticonnect-overlay-toasts", true)?;
+        return Some((Surface::Wayland(requests), Surface::Wayland(toasts)));
     }
     let display = gtk::gdk::Display::default()?;
-    display
-        .backend()
-        .is_x11()
-        .then(|| x11_fallback::Surface::new(application))
-        .map(Surface::X11)
+    if !display.backend().is_x11() {
+        return None;
+    }
+    let requests = x11_fallback::Surface::new(application, "TiConnect Overlay Requests", false);
+    let toasts = x11_fallback::Surface::new(application, "TiConnect Overlay Toasts", true);
+    Some((Surface::X11(requests), Surface::X11(toasts)))
 }
 
 fn install_css() {
@@ -395,6 +527,13 @@ fn install_css() {
         &provider,
         gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
     );
+}
+
+pub(crate) fn now_seconds() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or_default()
 }
 
 fn strip(id: &str, prefix: &str) -> String {

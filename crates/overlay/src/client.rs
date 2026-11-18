@@ -16,7 +16,10 @@ pub enum Command {
     Activate(String),
     AcceptCall(String),
     DeclineCall(String),
+    HangupCall(String),
+    AcceptRemoteSession(String),
     DenyRemoteSession(String),
+    EndRemoteSession(String),
     AcceptWatchParty(String),
     DeclineWatchParty(String),
     PublishWatchParty {
@@ -34,7 +37,9 @@ pub enum Event {
     User(User),
     Message(Message),
     IncomingCall(Call),
+    CallState(Option<Call>),
     RemoteSessionRequested(RemoteSession),
+    RemoteState(Option<RemoteSession>),
     CallEnded(String),
     RemoteSessionEnded(String),
     WatchPartyRequested(WatchParty),
@@ -156,7 +161,10 @@ async fn listen(
     let mut disconnected = proxy.receive_user_disconnected().await?;
     let mut settings_changed = proxy.receive_settings_changed().await?;
     let mut incoming_call = proxy.receive_incoming_call().await?;
+    let mut call_state_changed = proxy.receive_call_state_changed().await?;
     let mut remote_requested = proxy.receive_remote_session_requested().await?;
+    let mut remote_started = proxy.receive_remote_session_started().await?;
+    let mut remote_indicator = proxy.receive_remote_indicator_changed().await?;
     let mut call_ended = proxy.receive_call_ended().await?;
     let mut remote_ended = proxy.receive_remote_session_ended().await?;
     let mut watch_party_requested = proxy.receive_watch_party_requested().await?;
@@ -196,11 +204,53 @@ async fn listen(
                     let _ = events.send(Event::IncomingCall(call));
                 }
             }
+            signal = call_state_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(_args) = signal.args() else { continue };
+                if let Ok(proxy) = DaemonProxy::new(&connection).await
+                    && let Ok(values) = proxy.get_call_state().await
+                {
+                    let call = if values.is_empty() {
+                        None
+                    } else {
+                        events::parse_call(&values).ok()
+                    };
+                    let _ = events.send(Event::CallState(call));
+                }
+            }
             signal = remote_requested.next() => {
                 let Some(signal) = signal else { break };
                 let Ok(args) = signal.args() else { continue };
                 if let Ok(session) = events::parse_remote_session(&args.session) {
                     let _ = events.send(Event::RemoteSessionRequested(session));
+                }
+            }
+            signal = remote_started.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(_args) = signal.args() else { continue };
+                if let Ok(proxy) = DaemonProxy::new(&connection).await
+                    && let Ok(values) = proxy.get_remote_session().await
+                {
+                    let session = if values.is_empty() {
+                        None
+                    } else {
+                        events::parse_remote_session(&values).ok()
+                    };
+                    let _ = events.send(Event::RemoteState(session));
+                }
+            }
+            signal = remote_indicator.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(_args) = signal.args() else { continue };
+                if let Ok(proxy) = DaemonProxy::new(&connection).await
+                    && let Ok(values) = proxy.get_remote_session().await
+                {
+                    let session = if values.is_empty() {
+                        None
+                    } else {
+                        events::parse_remote_session(&values).ok()
+                    };
+                    let _ = events.send(Event::RemoteState(session));
                 }
             }
             signal = watch_party_requested.next() => {
@@ -276,12 +326,36 @@ async fn handle_command(connection: &zbus::Connection, command: Command) {
                 tracing::warn!(%error, "failed to decline call");
             }
         }
+        Command::HangupCall(call_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.hangup_call(&call_id).await
+            {
+                tracing::warn!(%error, "failed to hang up call");
+            }
+        }
+        Command::AcceptRemoteSession(session_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.accept_remote_session(&session_id).await
+            {
+                tracing::warn!(%error, "failed to accept remote session");
+            }
+        }
         Command::DenyRemoteSession(session_id) => {
             let proxy = DaemonProxy::new(connection).await;
             if let Ok(proxy) = proxy
                 && let Err(error) = proxy.deny_remote_session(&session_id).await
             {
                 tracing::warn!(%error, "failed to deny remote session");
+            }
+        }
+        Command::EndRemoteSession(session_id) => {
+            let proxy = DaemonProxy::new(connection).await;
+            if let Ok(proxy) = proxy
+                && let Err(error) = proxy.end_remote_session(&session_id).await
+            {
+                tracing::warn!(%error, "failed to end remote session");
             }
         }
         Command::AcceptWatchParty(party_id) => {

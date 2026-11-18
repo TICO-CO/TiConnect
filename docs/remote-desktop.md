@@ -3,19 +3,16 @@
 ## Consent flow
 
 1. The viewer calls `RequestRemoteSession(user_id)`. The host creates a session
-   in `requested` and emits `RemoteSessionRequested` with the viewer fingerprint
-   and a fresh six-digit PIN.
-2. The host shows the consent dialog and calls `AcceptRemoteSession(session_id, "")`
-   to grant consent. No capture or input is opened before this step.
-3. The viewer enters the PIN and calls `AcceptRemoteSession(session_id, pin)`.
-   The host verifies it in constant time, bounded by `remote.pin_attempts`.
-4. On success the host opens the portal grant, starts capture and input, and both
-   sides transition to `active`. A visible indicator is emitted.
-5. `EndRemoteSession(session_id)` is the kill switch. It stops capture, releases
+   in `requested` and emits `RemoteSessionRequested` with the viewer identity.
+2. The host reviews the request and calls `AcceptRemoteSession(session_id)`.
+   This is the full consent grant; no PIN is generated, shown, or entered.
+3. The host opens the portal grant, starts capture and input, sends a start
+   frame, and both sides transition to `active`. A visible indicator is emitted.
+4. `EndRemoteSession(session_id)` is the kill switch. It stops capture, releases
    input, sends a kill frame, and tears down the route immediately.
 
-Sessions are scoped to exactly one pinned user. There is no remembered grant in
-v1: every session repeats consent and PIN entry.
+Sessions are scoped to exactly one trusted user. There is no remembered grant
+in v1: every session repeats host consent.
 
 ## Desktop support
 

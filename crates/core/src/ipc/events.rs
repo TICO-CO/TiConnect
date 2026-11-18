@@ -14,7 +14,7 @@ use super::{
     MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY,
     MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
     MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, MESSAGE_USER_ID, REMOTE_EXPIRES_AT,
-    REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_PIN, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
+    REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
     REMOTE_USER_ID, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE,
     STATUS_USER_COUNT, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PHASE,
     TRANSFER_REASON, TRANSFER_SIZE, TRANSFER_USER_ID, USER_ADDRESSES, USER_APP_VERSION,
@@ -190,7 +190,6 @@ pub struct RemoteSession {
     pub fingerprint: String,
     pub role: String,
     pub state: String,
-    pub pin: String,
     pub indicator: bool,
     pub expires_at: u64,
 }
@@ -426,7 +425,6 @@ pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<Re
         fingerprint: optional_string(values, REMOTE_FINGERPRINT),
         role: optional_string(values, REMOTE_ROLE),
         state: optional_string(values, REMOTE_STATE),
-        pin: optional_string(values, REMOTE_PIN),
         indicator: optional_bool(values, REMOTE_INDICATOR),
         expires_at: optional_u64(values, REMOTE_EXPIRES_AT),
     })

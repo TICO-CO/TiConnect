@@ -134,16 +134,14 @@ impl Default for CallsSettings {
 #[serde(default)]
 pub struct RemoteSettings {
     pub session_timeout_secs: u32,
-    pub pin_attempts: u32,
-    pub pin_ttl_secs: u32,
+    pub request_timeout_secs: u32,
 }
 
 impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
             session_timeout_secs: 0,
-            pin_attempts: DEFAULT_REMOTE_PIN_ATTEMPTS,
-            pin_ttl_secs: DEFAULT_REMOTE_PIN_TTL_SECS,
+            request_timeout_secs: DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS,
         }
     }
 }
@@ -256,8 +254,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "calls.input_device",
     "calls.output_device",
     "remote.session_timeout_secs",
-    "remote.pin_attempts",
-    "remote.pin_ttl_secs",
+    "remote.request_timeout_secs",
     "video.bitrate_kbps",
     "video.fps",
     "video.keyframe_interval",
@@ -279,12 +276,9 @@ pub const ATTACHMENT_MAX_MIB_MAX: u32 = 102_400;
 pub const DEFAULT_CALL_TIMEOUT_SECS: u32 = 30;
 pub const CALL_TIMEOUT_MIN_SECS: u32 = 5;
 pub const CALL_TIMEOUT_MAX_SECS: u32 = 300;
-pub const DEFAULT_REMOTE_PIN_ATTEMPTS: u32 = 3;
-pub const REMOTE_PIN_ATTEMPTS_MIN: u32 = 1;
-pub const REMOTE_PIN_ATTEMPTS_MAX: u32 = 10;
-pub const DEFAULT_REMOTE_PIN_TTL_SECS: u32 = 300;
-pub const REMOTE_PIN_TTL_MIN_SECS: u32 = 30;
-pub const REMOTE_PIN_TTL_MAX_SECS: u32 = 3600;
+pub const DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS: u32 = 300;
+pub const REMOTE_REQUEST_TIMEOUT_MIN_SECS: u32 = 30;
+pub const REMOTE_REQUEST_TIMEOUT_MAX_SECS: u32 = 3600;
 pub const DEFAULT_VIDEO_BITRATE_KBPS: u32 = 2500;
 pub const VIDEO_BITRATE_MIN_KBPS: u32 = 256;
 pub const VIDEO_BITRATE_MAX_KBPS: u32 = 20_000;
@@ -629,22 +623,13 @@ impl Settings {
         self.active.remote.session_timeout_secs = value;
     }
 
-    pub fn remote_pin_attempts(&self) -> u32 {
-        self.active.remote.pin_attempts
+    pub fn remote_request_timeout_secs(&self) -> u32 {
+        self.active.remote.request_timeout_secs
     }
 
-    pub fn remote_pin_ttl_secs(&self) -> u32 {
-        self.active.remote.pin_ttl_secs
-    }
-
-    pub fn set_remote_pin_attempts(&mut self, value: u32) {
+    pub fn set_remote_request_timeout_secs(&mut self, value: u32) {
         self.changes.remote = true;
-        self.active.remote.pin_attempts = value;
-    }
-
-    pub fn set_remote_pin_ttl_secs(&mut self, value: u32) {
-        self.changes.remote = true;
-        self.active.remote.pin_ttl_secs = value;
+        self.active.remote.request_timeout_secs = value;
     }
 
     pub fn video_bitrate_kbps(&self) -> u32 {
@@ -731,8 +716,9 @@ impl Settings {
             "remote.session_timeout_secs" => {
                 Ok(SettingValue::Integer(self.remote_session_timeout_secs()))
             }
-            "remote.pin_attempts" => Ok(SettingValue::Integer(self.remote_pin_attempts())),
-            "remote.pin_ttl_secs" => Ok(SettingValue::Integer(self.remote_pin_ttl_secs())),
+            "remote.request_timeout_secs" => {
+                Ok(SettingValue::Integer(self.remote_request_timeout_secs()))
+            }
             "video.bitrate_kbps" => Ok(SettingValue::Integer(self.video_bitrate_kbps())),
             "video.fps" => Ok(SettingValue::Integer(self.video_fps())),
             "video.keyframe_interval" => Ok(SettingValue::Integer(self.video_keyframe_interval())),
@@ -852,23 +838,14 @@ impl Settings {
                 let secs = parse_u32(key, value)?;
                 self.set_remote_session_timeout_secs(secs);
             }
-            "remote.pin_attempts" => {
-                let attempts = parse_bounded_u32(
-                    key,
-                    value,
-                    REMOTE_PIN_ATTEMPTS_MIN,
-                    REMOTE_PIN_ATTEMPTS_MAX,
-                )?;
-                self.set_remote_pin_attempts(attempts);
-            }
-            "remote.pin_ttl_secs" => {
+            "remote.request_timeout_secs" => {
                 let secs = parse_bounded_u32(
                     key,
                     value,
-                    REMOTE_PIN_TTL_MIN_SECS,
-                    REMOTE_PIN_TTL_MAX_SECS,
+                    REMOTE_REQUEST_TIMEOUT_MIN_SECS,
+                    REMOTE_REQUEST_TIMEOUT_MAX_SECS,
                 )?;
-                self.set_remote_pin_ttl_secs(secs);
+                self.set_remote_request_timeout_secs(secs);
             }
             "video.bitrate_kbps" => {
                 let kbps =
@@ -959,25 +936,14 @@ impl Settings {
                 ),
             });
         }
-        if !(REMOTE_PIN_ATTEMPTS_MIN..=REMOTE_PIN_ATTEMPTS_MAX)
-            .contains(&self.remote_pin_attempts())
+        if !(REMOTE_REQUEST_TIMEOUT_MIN_SECS..=REMOTE_REQUEST_TIMEOUT_MAX_SECS)
+            .contains(&self.remote_request_timeout_secs())
         {
             return Err(Error::InvalidSetting {
-                key: "remote.pin_attempts".to_owned(),
-                value: self.remote_pin_attempts().to_string(),
+                key: "remote.request_timeout_secs".to_owned(),
+                value: self.remote_request_timeout_secs().to_string(),
                 reason: format!(
-                    "expected a value between {REMOTE_PIN_ATTEMPTS_MIN} and {REMOTE_PIN_ATTEMPTS_MAX}"
-                ),
-            });
-        }
-        if !(REMOTE_PIN_TTL_MIN_SECS..=REMOTE_PIN_TTL_MAX_SECS)
-            .contains(&self.remote_pin_ttl_secs())
-        {
-            return Err(Error::InvalidSetting {
-                key: "remote.pin_ttl_secs".to_owned(),
-                value: self.remote_pin_ttl_secs().to_string(),
-                reason: format!(
-                    "expected a value between {REMOTE_PIN_TTL_MIN_SECS} and {REMOTE_PIN_TTL_MAX_SECS}"
+                    "expected a value between {REMOTE_REQUEST_TIMEOUT_MIN_SECS} and {REMOTE_REQUEST_TIMEOUT_MAX_SECS}"
                 ),
             });
         }

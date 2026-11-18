@@ -857,10 +857,10 @@ impl DaemonService {
         Ok(remote_variant(&snapshot))
     }
 
-    async fn accept_remote_session(&self, session_id: &str, pin: &str) -> Result<(), ServiceError> {
+    async fn accept_remote_session(&self, session_id: &str) -> Result<(), ServiceError> {
         self.state
             .remote()
-            .accept_session(session_id, pin)
+            .accept_session(session_id)
             .await
             .map_err(remote_error)?;
         Ok(())
@@ -1587,10 +1587,6 @@ fn remote_variant(snapshot: &RemoteSnapshot) -> HashMap<String, OwnedVariant> {
         (
             ipc::REMOTE_STATE.to_owned(),
             string_variant(snapshot.state.clone()),
-        ),
-        (
-            ipc::REMOTE_PIN.to_owned(),
-            string_variant(snapshot.pin.clone()),
         ),
         (
             ipc::REMOTE_INDICATOR.to_owned(),

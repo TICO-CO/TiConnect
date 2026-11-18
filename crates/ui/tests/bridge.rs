@@ -17,10 +17,14 @@ async fn start_bridge() -> bridge::Bridge {
 }
 
 async fn http_get(port: u16, host: &str) -> String {
+    http_get_path(port, host, "/").await
+}
+
+async fn http_get_path(port: u16, host: &str, path: &str) -> String {
     let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
         .await
         .expect("connect");
-    let request = format!("GET / HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
+    let request = format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nConnection: close\r\n\r\n");
     stream.write_all(request.as_bytes()).await.expect("write");
     let mut response = String::new();
     stream.read_to_string(&mut response).await.expect("read");
@@ -81,6 +85,15 @@ async fn asset_requests_require_the_loopback_host() {
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(response.contains("<title>TiConnect</title>"), "{response}");
     assert!(!response.contains("bundle missing"), "{response}");
+
+    let asset = response
+        .split("src=\"")
+        .nth(1)
+        .and_then(|value| value.split('\"').next())
+        .expect("script asset path");
+    let response = http_get_path(bridge.port, &format!("127.0.0.1:{}", bridge.port), asset).await;
+    assert!(response.starts_with("HTTP/1.1 200"), "{response}");
+    assert!(!response.contains("not found"), "{response}");
 }
 
 #[tokio::test]

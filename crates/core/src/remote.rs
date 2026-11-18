@@ -6,8 +6,6 @@ use crate::wire::{Frame, FrameKind, MAX_INPUT_FRAME, MAX_REMOTE_FRAME, WireError
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RemoteSignalFrame {
     Request { session_id: [u8; 16] },
-    Consent { session_id: [u8; 16] },
-    Pin { session_id: [u8; 16], pin: String },
     Deny { session_id: [u8; 16] },
     Start { session_id: [u8; 16] },
     Hangup { session_id: [u8; 16] },
@@ -19,8 +17,6 @@ impl RemoteSignalFrame {
     pub fn session_id(&self) -> [u8; 16] {
         match self {
             Self::Request { session_id }
-            | Self::Consent { session_id }
-            | Self::Pin { session_id, .. }
             | Self::Deny { session_id }
             | Self::Start { session_id }
             | Self::Hangup { session_id }
@@ -151,11 +147,6 @@ mod tests {
         let session_id = *Uuid::now_v7().as_bytes();
         for signal in [
             RemoteSignalFrame::Request { session_id },
-            RemoteSignalFrame::Consent { session_id },
-            RemoteSignalFrame::Pin {
-                session_id,
-                pin: "123456".to_owned(),
-            },
             RemoteSignalFrame::Deny { session_id },
             RemoteSignalFrame::Start { session_id },
             RemoteSignalFrame::Hangup { session_id },

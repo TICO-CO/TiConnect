@@ -119,14 +119,14 @@ TLS handshake and before accepting the handshake stream.
 
 ## Remote desktop
 
-- Every session requires explicit host consent with a session PIN.
+- Every session requires explicit host consent. Consent is the full grant; no PIN is shown or entered.
 - A session is scoped to exactly one pinned user. Untrusted users cannot request
   or join a session.
 - Capture and input use the desktop portal grant and begin only after consent.
 - A visible indicator is shown for the whole active session. The kill switch
   tears down capture, input, and transport immediately.
 - Input events are validated and rate limited before injection. No screen
-  content, keystrokes, or PINs are logged.
+  content or keystrokes are logged.
 
 ## Threat model review status
 

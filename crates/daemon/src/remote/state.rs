@@ -38,7 +38,6 @@ impl std::str::FromStr for RemoteSessionId {
 pub enum RemoteState {
     Idle,
     Requested,
-    Consented,
     Active,
     Ending,
     Ended,
@@ -50,7 +49,6 @@ impl RemoteState {
         match self {
             Self::Idle => "idle",
             Self::Requested => "requested",
-            Self::Consented => "consented",
             Self::Active => "active",
             Self::Ending => "ending",
             Self::Ended => "ended",
@@ -72,9 +70,6 @@ pub struct RemoteSession {
     pub fingerprint: String,
     pub role: RemoteRole,
     pub state: RemoteState,
-    pub pin: Option<String>,
-    pub attempts: u32,
-    pub max_attempts: u32,
     pub expires_at: i64,
     pub indicator_visible: bool,
 }
@@ -84,8 +79,6 @@ pub enum RemoteEvent {
     Request,
     Consent,
     Deny,
-    PinOk,
-    PinFail,
     KillSwitch,
     Disconnect,
     Hangup,
@@ -96,17 +89,8 @@ impl RemoteSession {
     pub fn transition(&mut self, event: RemoteEvent) -> Result<RemoteTransition, RemoteStateError> {
         let next = match (self.state, event) {
             (RemoteState::Idle, RemoteEvent::Request) => RemoteState::Requested,
-            (RemoteState::Requested, RemoteEvent::Consent) => RemoteState::Consented,
+            (RemoteState::Requested, RemoteEvent::Consent) => RemoteState::Active,
             (RemoteState::Requested, RemoteEvent::Deny) => RemoteState::Denied,
-            (RemoteState::Consented, RemoteEvent::PinOk) => RemoteState::Active,
-            (RemoteState::Consented, RemoteEvent::PinFail) => {
-                self.attempts = self.attempts.saturating_add(1);
-                if self.attempts >= self.max_attempts {
-                    RemoteState::Denied
-                } else {
-                    RemoteState::Consented
-                }
-            }
             (RemoteState::Active, RemoteEvent::KillSwitch)
             | (RemoteState::Active, RemoteEvent::Disconnect)
             | (RemoteState::Active, RemoteEvent::Hangup) => RemoteState::Ending,
@@ -121,17 +105,13 @@ impl RemoteSession {
         if next == RemoteState::Ending || next == RemoteState::Denied {
             self.indicator_visible = false;
         }
-        Ok(RemoteTransition {
-            state: next,
-            pin_failed: matches!(event, RemoteEvent::PinFail),
-        })
+        Ok(RemoteTransition { state: next })
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RemoteTransition {
     pub state: RemoteState,
-    pub pin_failed: bool,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -154,9 +134,6 @@ mod tests {
             fingerprint: "fingerprint".to_owned(),
             role,
             state: RemoteState::Idle,
-            pin: Some("123456".to_owned()),
-            attempts: 0,
-            max_attempts: 3,
             expires_at: 0,
             indicator_visible: false,
         }
@@ -177,10 +154,6 @@ mod tests {
                 .transition(RemoteEvent::Consent)
                 .expect("consent")
                 .state,
-            RemoteState::Consented
-        );
-        assert_eq!(
-            session.transition(RemoteEvent::PinOk).expect("pin").state,
             RemoteState::Active
         );
         assert!(session.indicator_visible);
@@ -202,33 +175,10 @@ mod tests {
     }
 
     #[test]
-    fn wrong_pin_is_bounded() {
-        let mut session = session(RemoteRole::Host);
-        session.transition(RemoteEvent::Request).expect("request");
-        session.transition(RemoteEvent::Consent).expect("consent");
-        for _ in 0..2 {
-            assert_eq!(
-                session
-                    .transition(RemoteEvent::PinFail)
-                    .expect("fail")
-                    .state,
-                RemoteState::Consented
-            );
-        }
-        assert_eq!(
-            session
-                .transition(RemoteEvent::PinFail)
-                .expect("fail")
-                .state,
-            RemoteState::Denied
-        );
-    }
-
-    #[test]
     fn invalid_transitions_are_rejected() {
         let mut session = session(RemoteRole::Host);
-        assert!(session.transition(RemoteEvent::PinOk).is_err());
+        assert!(session.transition(RemoteEvent::Consent).is_err());
         session.transition(RemoteEvent::Request).expect("request");
-        assert!(session.transition(RemoteEvent::PinOk).is_err());
+        assert!(session.transition(RemoteEvent::CleanupDone).is_err());
     }
 }

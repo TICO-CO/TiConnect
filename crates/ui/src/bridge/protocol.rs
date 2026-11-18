@@ -285,9 +285,8 @@ async fn dispatch_inner(
             Ok(json!(link.request_remote_session(input.user_id).await?))
         }
         "accept_remote_session" => {
-            let input: AcceptRemote = params(value)?;
-            link.accept_remote_session(input.session_id, input.pin)
-                .await?;
+            let input: SessionId = params(value)?;
+            link.accept_remote_session(input.session_id).await?;
             Ok(Value::Null)
         }
         "deny_remote_session" => {
@@ -404,10 +403,4 @@ struct PublishWatchParty {
     party_id: String,
     position_ms: u64,
     playing: bool,
-}
-
-#[derive(Deserialize)]
-struct AcceptRemote {
-    session_id: String,
-    pin: String,
 }

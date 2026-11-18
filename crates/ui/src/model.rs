@@ -110,6 +110,8 @@ pub fn activation_view(value: &str) -> Result<&'static str> {
         "" | "chat" => Ok("chat"),
         "users" => Ok("users"),
         "settings" => Ok("settings"),
+        "remote" => Ok("remote"),
+        "watch-party" => Ok("watch-party"),
         other => Err(Error::InvalidResponse(format!(
             "unknown activation view: {other}"
         ))),
@@ -137,6 +139,11 @@ mod tests {
     fn activation_views_are_stable() {
         assert_eq!(activation_view("").expect("default"), "chat");
         assert_eq!(activation_view("settings").expect("settings"), "settings");
+        assert_eq!(activation_view("remote").expect("remote"), "remote");
+        assert_eq!(
+            activation_view("watch-party").expect("watch-party"),
+            "watch-party"
+        );
         assert!(activation_view("bogus").is_err());
     }
 }

@@ -1,8 +1,8 @@
 import type { BridgeFailure } from './bridge-failures';
 import { BridgeFailures } from './bridge-failures';
 import type { Result } from './result';
-import { attempt } from './result';
-import type { RpcResponse, WebSocketEvent } from './types';
+import { attempt, attemptAsync } from './result';
+import type { RemoteTicket, RpcResponse, WebSocketEvent } from './types';
 import { BridgeMessages } from './types';
 
 export interface BridgeInfo {
@@ -44,6 +44,10 @@ export class BridgeClient {
     private closeRequested = false;
 
     constructor(private readonly bridgeInfo: BridgeInfo) {}
+
+    get baseUrl(): string {
+        return this.bridgeInfo.httpBaseUrl;
+    }
 
     onEvent(listener: (event: WebSocketEvent) => void): () => void {
         this.eventListeners.add(listener);
@@ -174,6 +178,98 @@ export class BridgeClient {
             const message = sendError instanceof Error ? sendError.message : String(sendError);
             resolve([null, BridgeFailures.requestFailed(message)]);
         });
+    }
+
+    async downloadAvatar(fingerprint: string): Promise<Result<string, BridgeFailure>> {
+        return this.download(
+            'avatar_ticket',
+            { fingerprint },
+            `/avatar/${encodeURIComponent(fingerprint)}`,
+        );
+    }
+
+    async downloadAttachment(hash: string): Promise<Result<string, BridgeFailure>> {
+        return this.download(
+            'attachment_ticket',
+            { hash },
+            `/attachment/${encodeURIComponent(hash)}`,
+        );
+    }
+
+    async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
+        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}`;
+        const [value, failure] = await this.upload(path, file);
+        if (failure) {
+            return [null, failure];
+        }
+        if (typeof value !== 'object' || value === null || !('message_id' in value)) {
+            return [null, BridgeFailures.requestFailed('attachment upload returned no message id')];
+        }
+        const messageId = value.message_id;
+        if (typeof messageId !== 'string') {
+            return [null, BridgeFailures.requestFailed('attachment upload returned no message id')];
+        }
+        return [messageId, null];
+    }
+
+    async uploadAvatar(file: File): Promise<Result<void, BridgeFailure>> {
+        const [, failure] = await this.upload('/avatar', file);
+        return [null, failure];
+    }
+
+    private async download(
+        method: string,
+        parameters: Record<string, unknown>,
+        path: string,
+    ): Promise<Result<string, BridgeFailure>> {
+        const [ticket, ticketFailure] = await this.request<RemoteTicket>(method, parameters);
+        if (ticketFailure) {
+            return [null, ticketFailure];
+        }
+        if (ticket === null || typeof ticket.url !== 'string') {
+            return [null, BridgeFailures.requestFailed('bridge did not return a download ticket')];
+        }
+        const [response, fetchFailure] = await attemptAsync(() => fetch(ticket.url));
+        if (fetchFailure) {
+            return [null, BridgeFailures.requestFailed('download request failed')];
+        }
+        if (response === null || !response.ok) {
+            return [null, BridgeFailures.requestFailed('download request failed')];
+        }
+        const [blob, blobFailure] = await attemptAsync(() => response.blob());
+        if (blobFailure || blob === null) {
+            return [null, BridgeFailures.requestFailed('download response was empty')];
+        }
+        const [url, urlFailure] = attempt(() => URL.createObjectURL(blob));
+        if (urlFailure || url === null) {
+            return [null, BridgeFailures.requestFailed('download could not be opened')];
+        }
+        return [url, null];
+    }
+
+    private async upload(path: string, file: File): Promise<Result<unknown, BridgeFailure>> {
+        const headers: Record<string, string> = { 'Content-Type': 'application/octet-stream' };
+        if (this.bridgeInfo.token) {
+            headers.Authorization = `Bearer ${this.bridgeInfo.token}`;
+        }
+        const [response, fetchFailure] = await attemptAsync(() =>
+            fetch(`${this.bridgeInfo.httpBaseUrl}${path}`, {
+                method: 'POST',
+                headers,
+                body: file,
+            }),
+        );
+        if (fetchFailure) {
+            return [null, BridgeFailures.requestFailed('upload request failed')];
+        }
+        if (response === null || !response.ok) {
+            return [null, BridgeFailures.requestFailed('upload request failed')];
+        }
+        const [value, parseFailure] = await attemptAsync<unknown>(() => response.json());
+        if (parseFailure) {
+            return [null, BridgeFailures.requestFailed('upload response was malformed')];
+        }
+        return [value, null];
     }
 
     close(): void {

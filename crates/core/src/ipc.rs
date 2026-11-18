@@ -77,7 +77,6 @@ pub const REMOTE_USER_ID: &str = "user_id";
 pub const REMOTE_FINGERPRINT: &str = "fingerprint";
 pub const REMOTE_ROLE: &str = "role";
 pub const REMOTE_STATE: &str = "state";
-pub const REMOTE_PIN: &str = "pin";
 pub const REMOTE_INDICATOR: &str = "indicator";
 pub const REMOTE_EXPIRES_AT: &str = "expires_at";
 pub const CALL_ID: &str = "call_id";
