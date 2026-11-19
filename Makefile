@@ -8,7 +8,7 @@ SYSTEMD_USER_DIR ?= $(HOME)/.config/systemd/user
 AUTOSTART_DIR ?= $(HOME)/.config/autostart
 LAB_RUSTC_WRAPPER ?=
 
-.PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test web-install web-dev web-build web-check
+.PHONY: install-user uninstall-user check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
@@ -47,6 +47,7 @@ build-bin:
 
 lab:
 	@if [ "$${LAB_HOT_RELOAD:-1}" = "1" ]; then \
+		$(MAKE) web-deps; \
 		$(MAKE) build-bin; \
 	else \
 		$(MAKE) web-build; \
@@ -86,10 +87,16 @@ UI_ASSETS ?= crates/ui/assets
 web-install:
 	cd $(WEB_DIR) && bun install --frozen-lockfile
 
-web-dev:
+web-deps:
+	@if [ ! -x "$(WEB_DIR)/node_modules/.bin/vite" ] || \
+	    [ "$(WEB_DIR)/bun.lock" -nt "$(WEB_DIR)/node_modules" ]; then \
+		$(MAKE) web-install; \
+	fi
+
+web-dev: web-deps
 	cd $(WEB_DIR) && bun run dev
 
-web-build:
+web-build: web-deps
 	cd $(WEB_DIR) && bun run build
 	@if command -v rsync >/dev/null 2>&1; then \
 		rsync -rlpgoD --checksum --delete $(WEB_DIR)/dist/ $(UI_ASSETS)/; \
@@ -99,5 +106,5 @@ web-build:
 		cp -R $(WEB_DIR)/dist/. $(UI_ASSETS)/; \
 	fi
 
-web-check:
+web-check: web-deps
 	cd $(WEB_DIR) && bun run format:check && bun run lint && bun run check && bun run test
