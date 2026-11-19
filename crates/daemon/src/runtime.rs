@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use ticonnect_core::ipc;
@@ -20,6 +21,34 @@ use crate::remote;
 use crate::service::{DaemonService, DaemonState};
 use crate::tray;
 use crate::watch_party;
+
+const MESSAGE_SOUND_COOLDOWN: Duration = Duration::from_secs(5);
+
+struct MessageSoundCooldown {
+    last_played: Option<Instant>,
+}
+
+impl MessageSoundCooldown {
+    fn new() -> Self {
+        Self { last_played: None }
+    }
+
+    fn try_play(&mut self, now: Instant) -> bool {
+        if self
+            .last_played
+            .is_some_and(|last| now.duration_since(last) < MESSAGE_SOUND_COOLDOWN)
+        {
+            return false;
+        }
+        self.last_played = Some(now);
+        true
+    }
+}
+
+async fn ui_is_running(connection: &zbus::Connection) -> Result<bool> {
+    let dbus = zbus::fdo::DBusProxy::new(connection).await?;
+    Ok(dbus.name_has_owner(ipc::UI_BUS_NAME.try_into()?).await?)
+}
 
 #[derive(Clone)]
 pub struct Shutdown {
@@ -180,11 +209,27 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     });
     let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
     let message_sound = RodioNotificationSound::new();
+    let message_sound_connection = connection.clone();
     let mut message_events = state.messaging().subscribe();
     let message_sound_task = tokio::spawn(async move {
+        let mut cooldown = MessageSoundCooldown::new();
         loop {
             match message_events.recv().await {
                 Ok(MessagingEvent::MessageReceived { notify: true, .. }) => {
+                    match ui_is_running(&message_sound_connection).await {
+                        Ok(true) => continue,
+                        Ok(false) => {}
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                "failed to check UI status; skipping message sound"
+                            );
+                            continue;
+                        }
+                    }
+                    if !cooldown.try_play(Instant::now()) {
+                        continue;
+                    }
                     if let Err(error) = message_sound.play() {
                         tracing::warn!(%error, "failed to play message sound");
                     }
@@ -288,5 +333,27 @@ mod tests {
         let shutdown = Shutdown::new();
         shutdown.request();
         shutdown.wait().await;
+    }
+
+    #[test]
+    fn message_sound_cooldown_allows_first_play() {
+        let mut cooldown = MessageSoundCooldown::new();
+        assert!(cooldown.try_play(Instant::now()));
+    }
+
+    #[test]
+    fn message_sound_cooldown_skips_quick_repeat() {
+        let mut cooldown = MessageSoundCooldown::new();
+        let first = Instant::now();
+        assert!(cooldown.try_play(first));
+        assert!(!cooldown.try_play(first + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn message_sound_cooldown_allows_after_interval() {
+        let mut cooldown = MessageSoundCooldown::new();
+        let first = Instant::now();
+        assert!(cooldown.try_play(first));
+        assert!(cooldown.try_play(first + MESSAGE_SOUND_COOLDOWN));
     }
 }
