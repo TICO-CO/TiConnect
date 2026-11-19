@@ -1,7 +1,8 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::{PoisonError, RwLock};
 
 use thiserror::Error;
+use ticonnect_core::id::NodeId;
 
 use crate::storage::{BlockedUser, DatabaseHandle, NewUser, StorageError, User};
 
@@ -20,17 +21,30 @@ pub enum TrustError {
 pub struct TrustStore {
     database: DatabaseHandle,
     fingerprints: RwLock<HashSet<String>>,
+    node_ids: RwLock<HashMap<String, NodeId>>,
     blocked: RwLock<HashSet<String>>,
 }
 
 impl TrustStore {
     pub async fn load(database: DatabaseHandle) -> Result<Self, TrustError> {
-        let fingerprints = database
-            .list_users()
-            .await?
-            .into_iter()
-            .map(|user| user.fingerprint)
-            .collect();
+        let users = database.list_users().await?;
+        let mut fingerprints = HashSet::with_capacity(users.len());
+        let mut node_ids = HashMap::with_capacity(users.len());
+        for user in &users {
+            fingerprints.insert(user.fingerprint.clone());
+            match user.id.parse() {
+                Ok(node_id) => {
+                    node_ids.insert(user.fingerprint.clone(), node_id);
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        fingerprint = %user.fingerprint,
+                        %error,
+                        "trusted user has an invalid node id"
+                    );
+                }
+            }
+        }
         let blocked = database
             .list_blocked_users()
             .await?
@@ -40,6 +54,7 @@ impl TrustStore {
         Ok(Self {
             database,
             fingerprints: RwLock::new(fingerprints),
+            node_ids: RwLock::new(node_ids),
             blocked: RwLock::new(blocked),
         })
     }
@@ -62,6 +77,7 @@ impl TrustStore {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(user.fingerprint.clone());
+        self.remember_node_id(&user);
         if clear_block {
             self.unblock(&fingerprint).await?;
         }
@@ -80,7 +96,31 @@ impl TrustStore {
             .write()
             .unwrap_or_else(PoisonError::into_inner)
             .remove(&user.fingerprint);
+        self.node_ids
+            .write()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&user.fingerprint);
         Ok(user)
+    }
+
+    fn remember_node_id(&self, user: &User) {
+        let mut node_ids = self
+            .node_ids
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        match user.id.parse() {
+            Ok(node_id) => {
+                node_ids.insert(user.fingerprint.clone(), node_id);
+            }
+            Err(error) => {
+                node_ids.remove(&user.fingerprint);
+                tracing::warn!(
+                    fingerprint = %user.fingerprint,
+                    %error,
+                    "trusted user has an invalid node id"
+                );
+            }
+        }
     }
 
     pub async fn block(&self, user: &User) -> Result<(), TrustError> {
@@ -154,6 +194,14 @@ impl ticonnect_net::transport::TrustLookup for TrustStore {
     fn is_trusted(&self, fingerprint: &str) -> bool {
         Self::is_trusted(self, fingerprint)
     }
+
+    fn node_id_for_fingerprint(&self, fingerprint: &str) -> Option<NodeId> {
+        self.node_ids
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .get(fingerprint)
+            .copied()
+    }
 }
 
 #[cfg(test)]
@@ -198,6 +246,47 @@ mod tests {
         ));
         assert!(store.unblock("fingerprint-1").await.expect("unblock"));
         assert!(!store.is_blocked("fingerprint-1"));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn caches_the_node_id_for_each_trusted_fingerprint() {
+        let dir = std::env::temp_dir().join(format!(
+            "ticonnect-trust-node-{}-{}",
+            std::process::id(),
+            unique_id()
+        ));
+        let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+            .await
+            .expect("database");
+        let store = TrustStore::load(database).await.expect("trust store");
+        let node_id = NodeId::generate();
+        let fingerprint = "fingerprint-node".to_owned();
+
+        store
+            .commit(NewUser {
+                id: node_id.to_string(),
+                fingerprint: fingerprint.clone(),
+                public_key: None,
+                display_name: Some("User".to_owned()),
+                policy: UserPolicy::Accept,
+                trusted_at: 1,
+                last_seen: None,
+            })
+            .await
+            .expect("commit");
+
+        assert_eq!(
+            ticonnect_net::transport::TrustLookup::node_id_for_fingerprint(&store, &fingerprint),
+            Some(node_id)
+        );
+
+        store.forget(&node_id.to_string()).await.expect("forget");
+        assert_eq!(
+            ticonnect_net::transport::TrustLookup::node_id_for_fingerprint(&store, &fingerprint),
+            None
+        );
 
         let _ = std::fs::remove_dir_all(dir);
     }

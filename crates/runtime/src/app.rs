@@ -31,10 +31,10 @@ pub fn ensure_daemon_with_options(
     timeout: Duration,
     autostart_disabled: bool,
 ) -> anyhow::Result<()> {
-    if daemon_present() {
+    if autostart_disabled {
         return Ok(());
     }
-    if autostart_disabled {
+    if daemon_present() {
         return Ok(());
     }
 

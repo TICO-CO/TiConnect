@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { AppState } from '../lib';
-    import { sessionClock, shortName } from '../lib';
+    import { fingerprintLabel, sessionClock, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
     import Icon from './Icon.svelte';
 
@@ -61,6 +61,11 @@
                     ? 'The request stays open until you accept or it expires.'
                     : 'Capture starts only after the other side accepts.'}
             </p>
+            {#if host && session && session.fingerprint}
+                <p class="m-0 font-mono text-[11px] text-ink-2" title={session.fingerprint}>
+                    Verify identity {fingerprintLabel(session.fingerprint)} before accepting.
+                </p>
+            {/if}
             <div class="mt-2 flex gap-2.5">
                 <button
                     class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"

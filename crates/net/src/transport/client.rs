@@ -132,12 +132,21 @@ async fn connect_once(
         return Err(TransportError::IdentityMismatch);
     }
 
+    let expected_node_id = target.node_id.or_else(|| {
+        transport
+            .trust()
+            .node_id_for_fingerprint(&target.fingerprint.to_hex())
+    });
+    let Some(expected_node_id) = expected_node_id else {
+        connection.close(super::SESSION_REJECTED.into(), b"unknown identity");
+        return Err(TransportError::IdentityMismatch);
+    };
     let user = session::client_handshake(
         &connection,
         transport.node_id(),
         transport.expected_fingerprint(),
         target.fingerprint,
-        target.node_id,
+        expected_node_id,
         public_key,
     )
     .await?;

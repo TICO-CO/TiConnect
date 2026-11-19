@@ -58,20 +58,37 @@ async fn handle_incoming(
         ));
     }
 
-    if !transport.trust().is_trusted(&fingerprint.to_hex()) {
+    let fingerprint_hex = fingerprint.to_hex();
+    if !transport.trust().is_trusted(&fingerprint_hex) {
         transport.note_failure();
         connection.close(SESSION_REJECTED.into(), b"untrusted user");
         return Err(TransportError::Untrusted);
     }
 
-    let user = session::server_handshake(
+    let Some(expected_remote_node_id) = transport.trust().node_id_for_fingerprint(&fingerprint_hex)
+    else {
+        transport.note_failure();
+        connection.close(SESSION_REJECTED.into(), b"identity mismatch");
+        return Err(TransportError::IdentityMismatch);
+    };
+
+    let user = match session::server_handshake(
         &connection,
         transport.node_id(),
         transport.expected_fingerprint(),
         fingerprint,
+        expected_remote_node_id,
         public_key,
     )
-    .await?;
+    .await
+    {
+        Ok(user) => user,
+        Err(TransportError::IdentityMismatch) => {
+            transport.note_failure();
+            return Err(TransportError::IdentityMismatch);
+        }
+        Err(error) => return Err(error),
+    };
     let session = Session::new(connection.clone(), user.clone());
     transport.register(session);
 

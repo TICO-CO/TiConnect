@@ -457,6 +457,10 @@ mod tests {
         fn is_trusted(&self, _fingerprint: &str) -> bool {
             false
         }
+
+        fn node_id_for_fingerprint(&self, _fingerprint: &str) -> Option<NodeId> {
+            None
+        }
     }
 
     async fn bind_transport(

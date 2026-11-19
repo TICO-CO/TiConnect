@@ -8,11 +8,14 @@ pub mod bridge;
 pub mod client;
 pub mod error;
 pub mod model;
+mod timing;
 
 use anyhow::Context;
 
 pub fn run() -> anyhow::Result<()> {
+    timing::mark("ui run start");
     ticonnect_runtime::init().context("initialize runtime")?;
+    timing::mark("runtime initialized");
     app::run().context("run TiConnect UI")?;
     Ok(())
 }

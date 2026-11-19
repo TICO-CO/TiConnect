@@ -21,7 +21,9 @@ messaging. Files, calls, and remote desktop add their own gates in later stages.
   serves only the local display name and avatar, bounded to 160 KiB. Profile
   data is public LAN data and never grants trust.
 - Sessions are reachable only after the user certificate fingerprint matches a
-  trusted user.
+  trusted user. Inbound and outbound handshakes require the claimed `node_id` to
+  match the node id stored for that fingerprint, so a trusted key cannot
+  impersonate another trusted contact.
 - The TiConnect IPC bus is the local control boundary. It uses the D-Bus session
   bus by default; `TICONNECT_IPC_BUS_ADDRESS` can select a private bus. Any
   local process on that bus can call daemon methods; this is the same boundary
@@ -42,6 +44,7 @@ messaging. Files, calls, and remote desktop add their own gates in later stages.
 | Oversized or malformed frames | Every decoder enforces fixed maximum sizes and returns typed errors. Fuzz targets cover wire and trust decoders. |
 | Resource exhaustion | Candidate caps, packet size limits, bounded trust frames, connection timeouts, and one active session per user limit memory and connection abuse. |
 | Secret leakage | Private keys, trust tokens, and session keys are never logged or exposed over D-Bus. Message bodies are never logged. Errors are stable reason codes. |
+| Claimed node id substitution | Both sides resolve the expected node id from the trusted fingerprint and reject the handshake when the claimed id differs. Remote consent also shows the verified fingerprint. |
 | Forged or tampered message | Records are signed with the sender's Ed25519 identity key. The receiver verifies the signature against the public key bound to the pinned fingerprint before storage, acknowledgement, or notification. |
 | Message replay or duplication | Message IDs are UUIDv7 and signed. Duplicate IDs and duplicate `(conversation, sender, seq)` rows are ignored. Sequence numbers are bounded and monotonic. |
 | Forged receipt | Ack records are signed and may target only a locally stored outbound message. Acks for unknown or inbound targets are rejected. |
@@ -121,9 +124,12 @@ TLS handshake and before accepting the handshake stream.
 ## Remote desktop
 
 - Every session requires explicit host consent. Consent is the full grant; no PIN is shown or entered.
-- A session is scoped to exactly one pinned user. Untrusted users cannot request
-  or join a session.
-- Capture and input use the desktop portal grant and begin only after consent.
+- A session is scoped to exactly one pinned user and the verified fingerprint.
+  Untrusted users cannot request or join a session, and a trusted user cannot
+  claim another contact's node id.
+- The consent card shows the verified fingerprint. Capture starts only after
+  consent and a desktop portal grant. Input injection uses libei on Wayland or
+  XTEST on X11 and begins only after consent.
 - A visible indicator is shown for the whole active session. The kill switch
   tears down capture, input, and transport immediately.
 - Input events are validated and rate limited before injection. No screen

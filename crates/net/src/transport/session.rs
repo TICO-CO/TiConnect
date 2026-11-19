@@ -7,7 +7,7 @@ use ticonnect_core::id::NodeId;
 use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_WIRE_FRAME};
 use tokio::time::timeout;
 
-use super::TransportError;
+use super::{SESSION_REJECTED, TransportError};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const STREAM_TIMEOUT: Duration = Duration::from_secs(30);
@@ -121,7 +121,7 @@ pub(crate) async fn client_handshake(
     node_id: NodeId,
     fingerprint: Fingerprint,
     expected: Fingerprint,
-    expected_node_id: Option<NodeId>,
+    expected_node_id: NodeId,
     public_key: [u8; 32],
 ) -> Result<UserInfo, TransportError> {
     let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.open_bi())
@@ -148,9 +148,8 @@ pub(crate) async fn client_handshake(
     if user.fingerprint != expected {
         return Err(TransportError::IdentityMismatch);
     }
-    if let Some(expected_node_id) = expected_node_id
-        && user.node_id != expected_node_id
-    {
+    if user.node_id != expected_node_id {
+        connection.close(SESSION_REJECTED.into(), b"identity mismatch");
         return Err(TransportError::IdentityMismatch);
     }
 
@@ -167,6 +166,7 @@ pub(crate) async fn server_handshake(
     node_id: NodeId,
     fingerprint: Fingerprint,
     certificate_fingerprint: Fingerprint,
+    expected_remote_node_id: NodeId,
     public_key: [u8; 32],
 ) -> Result<UserInfo, TransportError> {
     let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.accept_bi())
@@ -182,6 +182,10 @@ pub(crate) async fn server_handshake(
     }
     let user = HandshakeFrame::decode(frame.payload())?;
     if user.fingerprint != certificate_fingerprint {
+        return Err(TransportError::IdentityMismatch);
+    }
+    if user.node_id != expected_remote_node_id {
+        connection.close(SESSION_REJECTED.into(), b"identity mismatch");
         return Err(TransportError::IdentityMismatch);
     }
 

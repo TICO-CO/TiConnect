@@ -28,6 +28,12 @@ import type {
 } from './types';
 import { firstVideoId } from './youtube';
 
+function timing(label: string): void {
+    if (import.meta.env.DEV) {
+        console.info(`[ui-timing] ${performance.now().toFixed(0)}ms ${label}`);
+    }
+}
+
 export interface Toast {
     id: string;
     userId: string;
@@ -127,6 +133,8 @@ export class AppState {
     private readMessageIds = new SvelteSet<string>();
     private removeHashListener: (() => void) | null = null;
     private removeBridgeListener: (() => void) | null = null;
+    private appearanceMedia: MediaQueryList | null = null;
+    private appearanceMediaListener: (() => void) | null = null;
     private recorder: MediaRecorder | null = null;
     private recordingChunks: Blob[] = [];
     private recordingStream: MediaStream | null = null;
@@ -144,6 +152,7 @@ export class AppState {
     }
 
     async start(): Promise<void> {
+        timing('frontend start');
         if (isDemoEnabled()) {
             this.startDemo(demoParameter() ?? '');
             return;
@@ -156,6 +165,7 @@ export class AppState {
     stop(): void {
         this.removeHashListener?.();
         this.removeBridgeListener?.();
+        this.removeAppearanceMediaListener();
         if (this.reconnectTimer !== null) {
             window.clearTimeout(this.reconnectTimer);
         }
@@ -229,6 +239,7 @@ export class AppState {
             this.scheduleReconnect();
             return;
         }
+        timing('bridge connected');
         const [bootstrap, bootstrapFailure] = await bridge.request<Bootstrap>('bootstrap');
         if (bootstrapFailure) {
             this.connection = 'offline';
@@ -245,6 +256,7 @@ export class AppState {
         this.bootstrap = bootstrap;
         this.errorMessage = '';
         this.connection = 'online';
+        timing('bootstrap loaded');
         this.reconnectDelay = 1_000;
         this.settings = { ...bootstrap.settings };
         this.settingsDraft = { ...bootstrap.settings };
@@ -261,6 +273,7 @@ export class AppState {
             }
         }
         await this.loadRoute();
+        timing('route loaded');
     }
 
     private scheduleReconnect(): void {
@@ -787,6 +800,52 @@ export class AppState {
             delete root.dataset.theme;
             root.style.colorScheme = 'light dark';
         }
+
+        this.watchSystemAppearance(appearance);
+        this.syncThemeColor(appearance);
+    }
+
+    private syncThemeColor(appearance: string): void {
+        if (typeof document === 'undefined') {
+            return;
+        }
+
+        const resolved =
+            appearance === 'system'
+                ? typeof window !== 'undefined' &&
+                  typeof window.matchMedia === 'function' &&
+                  window.matchMedia('(prefers-color-scheme: light)').matches
+                    ? 'light'
+                    : 'dark'
+                : appearance;
+        document
+            .querySelector('meta[name="theme-color"]')
+            ?.setAttribute('content', resolved === 'light' ? '#f4efe2' : '#182b2f');
+    }
+
+    private watchSystemAppearance(appearance: string): void {
+        this.removeAppearanceMediaListener();
+        if (
+            appearance !== 'system' ||
+            typeof window === 'undefined' ||
+            typeof window.matchMedia !== 'function'
+        ) {
+            return;
+        }
+
+        const media = window.matchMedia('(prefers-color-scheme: light)');
+        const listener = () => this.syncThemeColor('system');
+        media.addEventListener('change', listener);
+        this.appearanceMedia = media;
+        this.appearanceMediaListener = listener;
+    }
+
+    private removeAppearanceMediaListener(): void {
+        if (this.appearanceMedia !== null && this.appearanceMediaListener !== null) {
+            this.appearanceMedia.removeEventListener('change', this.appearanceMediaListener);
+        }
+        this.appearanceMedia = null;
+        this.appearanceMediaListener = null;
     }
 
     async loadStorageUsage(): Promise<void> {
@@ -1456,6 +1515,11 @@ export class AppState {
                 break;
             }
             case 'remote_session_requested':
+                this.remote = (event.session as RemoteSession | undefined) ?? this.remote;
+                if (this.remote !== null) {
+                    this.remote = { ...this.remote, state: 'requested', indicator: false };
+                }
+                break;
             case 'remote_session_started':
                 this.remote = (event.session as RemoteSession | undefined) ?? this.remote;
                 if (this.remote !== null) {

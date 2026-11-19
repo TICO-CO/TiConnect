@@ -213,6 +213,7 @@ export TICONNECT_LOG_LEVEL=off
 export TICONNECT_BIN='$BIN'
 export TICONNECT_UI_TITLE='TiConnect · $label'
 export LD_LIBRARY_PATH='${LD_LIBRARY_PATH:-}'
+export TICONNECT_UI_TIMING='${TICONNECT_UI_TIMING:-}'
 export LAB_DIR='$WORK'
 export LAB_NODE_DIR='$dir'
 export LAB_NODE='$node'

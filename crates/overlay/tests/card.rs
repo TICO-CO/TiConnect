@@ -8,6 +8,7 @@ fn card(id: &str) -> Card {
         user_id: format!("user-{id}"),
         sender: "Ada".to_owned(),
         preview: format!("body {id}"),
+        detail: None,
         sent_at: 1,
         kind: CardKind::Message,
         persistent: false,
@@ -128,4 +129,23 @@ fn action_labels_match_the_design() {
     assert_eq!(CardAction::DenyRemote.label(), "Decline");
     assert_eq!(CardAction::HangupCall.label(), "End");
     assert_eq!(CardAction::OpenParty.label(), "Open");
+}
+
+#[test]
+fn remote_request_card_shows_the_verified_fingerprint() {
+    use ticonnect_core::ipc::events::RemoteSession;
+
+    let session = RemoteSession {
+        session_id: "session-1".to_owned(),
+        user_id: "user-1".to_owned(),
+        fingerprint: "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90".to_owned(),
+        role: "host".to_owned(),
+        state: "requested".to_owned(),
+        indicator: false,
+        expires_at: 1,
+    };
+    let card = Card::from_remote_request(&session, "Ada".to_owned());
+    let detail = card.detail.expect("fingerprint detail");
+    assert!(detail.starts_with("Identity: "));
+    assert!(detail.contains("a1b2 c3d4 e5f6 0718"));
 }

@@ -97,6 +97,10 @@ function audioMessage(): Message {
 
 describe('feature surfaces', () => {
     it('changes appearance from Settings and applies it immediately', async () => {
+        const themeColor = document.createElement('meta');
+        themeColor.name = 'theme-color';
+        document.head.append(themeColor);
+
         const app = makeApp();
         app.route = { kind: 'settings', section: 'user' };
         render(SettingsView, { app });
@@ -104,14 +108,17 @@ describe('feature surfaces', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'dark' }));
         expect(app.settingsDraft['appearance.color_scheme']).toBe('dark');
         expect(document.documentElement.dataset.theme).toBe('dark');
+        expect(themeColor.content).toBe('#182b2f');
 
         await fireEvent.click(screen.getByRole('button', { name: 'light' }));
         expect(app.settingsDraft['appearance.color_scheme']).toBe('light');
         expect(document.documentElement.dataset.theme).toBe('light');
+        expect(themeColor.content).toBe('#f4efe2');
 
         await fireEvent.click(screen.getByRole('button', { name: 'system' }));
         expect(app.settingsDraft['appearance.color_scheme']).toBe('system');
         expect(document.documentElement.dataset.theme).toBeUndefined();
+        expect(themeColor.content).toBe('#182b2f');
     });
 
     it('edits discovery controls from Settings', async () => {

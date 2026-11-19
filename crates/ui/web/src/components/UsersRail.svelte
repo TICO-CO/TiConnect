@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    import { logoUrl } from '../assets';
     import type { AppState } from '../lib';
     import { clock, preview, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
@@ -83,9 +82,7 @@
         <footer
             class="-mx-3 mt-auto -mb-3 flex w-[72px] flex-col items-center gap-2 border-t border-line bg-surface py-3"
         >
-            <a class="inline-flex size-[34px] shrink-0" href="#/chat" aria-label="TiConnect">
-                <img class="h-full w-full object-contain" src={logoUrl} alt="" />
-            </a>
+            <a class="logo-mark size-[34px] shrink-0" href="#/chat" aria-label="TiConnect"></a>
             <button
                 class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                 onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
@@ -185,7 +182,8 @@
         </div>
         <footer class="-mx-3 mt-auto -mb-3 border-t border-line bg-surface p-3">
             <div class="flex h-9 items-center justify-between">
-                <img class="size-[34px] shrink-0 object-contain" src={logoUrl} alt="TiConnect" />
+                <span class="logo-mark size-[34px] shrink-0" role="img" aria-label="TiConnect"
+                ></span>
                 <button
                     class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                     onclick={() => app.navigate({ kind: 'settings', section: 'user' })}

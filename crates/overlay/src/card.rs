@@ -3,6 +3,7 @@ use std::rc::Rc;
 
 use gtk::prelude::*;
 use gtk4 as gtk;
+use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::ipc::events::{Call, Message, RemoteSession, WatchParty};
 
 pub const MAX_VISIBLE: usize = 3;
@@ -103,6 +104,7 @@ pub struct Card {
     pub user_id: String,
     pub sender: String,
     pub preview: String,
+    pub detail: Option<String>,
     pub sent_at: u64,
     pub kind: CardKind,
     pub persistent: bool,
@@ -120,6 +122,7 @@ impl Card {
             },
             sender,
             preview: preview(&message.body),
+            detail: None,
             sent_at: message.sent_at,
             kind: CardKind::Message,
             persistent: false,
@@ -133,6 +136,7 @@ impl Card {
             user_id: call.user_id.clone(),
             sender,
             preview: "Voice call · LAN".to_owned(),
+            detail: None,
             sent_at: call.started_at,
             kind: CardKind::IncomingCall,
             persistent: true,
@@ -146,6 +150,7 @@ impl Card {
             user_id: party.user_id.clone(),
             sender,
             preview: "Watch party · How we built TiConnect".to_owned(),
+            detail: None,
             sent_at: party.updated_at,
             kind: CardKind::WatchPartyInvite,
             persistent: true,
@@ -159,6 +164,7 @@ impl Card {
             user_id: session.user_id.clone(),
             sender,
             preview: "Wants to view and control this screen".to_owned(),
+            detail: fingerprint_detail(&session.fingerprint),
             sent_at: 0,
             kind: CardKind::RemoteRequest,
             persistent: true,
@@ -172,6 +178,7 @@ impl Card {
             user_id: call.user_id.clone(),
             sender,
             preview: "Encrypted · Opus · LAN".to_owned(),
+            detail: None,
             sent_at: call.connected_at,
             kind: CardKind::ActiveCall,
             persistent: true,
@@ -185,6 +192,7 @@ impl Card {
             user_id: session.user_id.clone(),
             sender,
             preview: "Indicator stays visible while sharing.".to_owned(),
+            detail: fingerprint_detail(&session.fingerprint),
             sent_at: 0,
             kind: CardKind::Sharing,
             persistent: true,
@@ -198,6 +206,7 @@ impl Card {
             user_id: party.user_id.clone(),
             sender: "Watch party".to_owned(),
             preview: "Watch party · 3 watching".to_owned(),
+            detail: None,
             sent_at: party.updated_at,
             kind: CardKind::PartyPill,
             persistent: true,
@@ -211,6 +220,7 @@ impl Card {
             user_id,
             sender,
             preview: format!("Voice call ended · {}", clock_duration(duration_secs)),
+            detail: None,
             sent_at: now_seconds(),
             kind: CardKind::CallEnded,
             persistent: false,
@@ -410,6 +420,17 @@ impl CardRouter {
     }
 }
 
+fn fingerprint_detail(fingerprint: &str) -> Option<String> {
+    if fingerprint.trim().is_empty() {
+        return None;
+    }
+    let grouped = fingerprint
+        .parse::<Fingerprint>()
+        .map(|value| value.to_string())
+        .unwrap_or_else(|_| fingerprint.to_owned());
+    Some(format!("Identity: {grouped}"))
+}
+
 pub fn preview(body: &str) -> String {
     let normalized = body.split_whitespace().collect::<Vec<_>>().join(" ");
     if normalized.is_empty() {
@@ -518,6 +539,16 @@ fn card_widget(
         content.append(&title);
     }
     content.append(&body);
+    if let Some(detail) = &card.detail {
+        let identity = gtk::Label::new(Some(detail));
+        identity.set_xalign(0.0);
+        identity.set_wrap(true);
+        identity.set_wrap_mode(gtk::pango::WrapMode::Char);
+        identity.set_lines(3);
+        identity.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        identity.add_css_class("ticonnect-card-fingerprint");
+        content.append(&identity);
+    }
 
     if !card.actions.is_empty() {
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);

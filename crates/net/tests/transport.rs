@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,11 +10,15 @@ use ticonnect_net::transport::{
     DialTarget, Session, Transport, TransportConfig, TransportEvent, TrustLookup,
 };
 
-struct StaticTrust(HashSet<String>);
+struct StaticTrust(HashMap<String, NodeId>);
 
 impl TrustLookup for StaticTrust {
     fn is_trusted(&self, fingerprint: &str) -> bool {
-        self.0.contains(fingerprint)
+        self.0.contains_key(fingerprint)
+    }
+
+    fn node_id_for_fingerprint(&self, fingerprint: &str) -> Option<NodeId> {
+        self.0.get(fingerprint).copied()
     }
 }
 
@@ -147,17 +151,21 @@ async fn trusted_pair() -> (Node, Node) {
     let second_identity = IdentityKeyPair::from_secret_bytes([72_u8; 32]);
     let first_fingerprint = Fingerprint::of(&first_identity.verifying_key());
     let second_fingerprint = Fingerprint::of(&second_identity.verifying_key());
+    let first_node_id = NodeId::generate();
+    let second_node_id = NodeId::generate();
 
     let first = node(
         first_identity,
+        first_node_id,
         first_fingerprint,
-        [first_fingerprint.to_hex(), second_fingerprint.to_hex()],
+        [(second_fingerprint.to_hex(), second_node_id)],
     )
     .await;
     let second = node(
         second_identity,
+        second_node_id,
         second_fingerprint,
-        [first_fingerprint.to_hex(), second_fingerprint.to_hex()],
+        [(first_fingerprint.to_hex(), first_node_id)],
     )
     .await;
     (first, second)
@@ -166,15 +174,15 @@ async fn trusted_pair() -> (Node, Node) {
 async fn node_without_trust() -> Node {
     let identity = IdentityKeyPair::from_secret_bytes([73_u8; 32]);
     let fingerprint = Fingerprint::of(&identity.verifying_key());
-    node(identity, fingerprint, []).await
+    node(identity, NodeId::generate(), fingerprint, []).await
 }
 
 async fn node(
     identity: IdentityKeyPair,
+    node_id: NodeId,
     fingerprint: Fingerprint,
-    trusted: impl IntoIterator<Item = String>,
+    trusted: impl IntoIterator<Item = (String, NodeId)>,
 ) -> Node {
-    let node_id = NodeId::generate();
     let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
     let transport = Transport::bind(TransportConfig {
         identity: identity.clone(),

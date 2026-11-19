@@ -102,8 +102,15 @@ fn unknown_flag(arg: &OsString) -> ParseError {
 pub fn run(action: Action) -> Result<()> {
     match action {
         Action::App | Action::Ui => {
+            let started = std::time::Instant::now();
             if let Err(error) = ticonnect_runtime::ensure_daemon() {
                 eprintln!("warning: {error}");
+            }
+            if std::env::var_os("TICONNECT_UI_TIMING").is_some() {
+                eprintln!(
+                    "ui-timing +{}ms ensure_daemon done",
+                    started.elapsed().as_millis()
+                );
             }
             ticonnect_ui::run()
         }

@@ -464,6 +464,7 @@ async fn run_link(
     loop {
         match connect().await {
             Ok((connection, proxy)) => {
+                crate::timing::mark("daemon link connected");
                 backoff.reset();
                 let _ = events.send(DaemonEvent::Connected);
                 let (lost_sender, mut lost_receiver) = mpsc::unbounded_channel();

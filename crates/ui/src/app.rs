@@ -12,6 +12,7 @@ use ticonnect_settings::Appearance;
 use crate::activation::{self, ActivationEvent};
 use crate::bridge::{self, security::Origins};
 use crate::client;
+use crate::timing;
 
 fn window_title() -> String {
     window_title_from(std::env::var("TICONNECT_UI_TITLE").ok().as_deref())
@@ -87,16 +88,23 @@ fn build_webview(url: &str, origins: &Origins) -> webkit6::WebView {
             true
         }
     });
+    webview.connect_load_changed(|_, event| {
+        if event == webkit6::LoadEvent::Finished {
+            crate::timing::mark("webview load finished");
+        }
+    });
     webview.load_uri(url);
     webview
 }
 
 pub fn run() -> anyhow::Result<()> {
+    timing::mark("app run start");
     let settings = ticonnect_settings::Settings::load().ok();
     let appearance = settings
         .as_ref()
         .and_then(ticonnect_settings::Settings::stored_appearance_color_scheme)
         .unwrap_or(Appearance::System);
+    timing::mark("settings loaded");
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -111,6 +119,7 @@ pub fn run() -> anyhow::Result<()> {
         daemon_receiver,
         activation_sender.subscribe(),
     ))?;
+    timing::mark("bridge ready");
     let activation_receiver = activation_sender.subscribe();
     runtime.spawn(activation::serve(activation_sender));
 
@@ -119,6 +128,7 @@ pub fn run() -> anyhow::Result<()> {
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(move |_| apply_appearance(appearance));
+    timing::mark("gtk application built");
 
     let url = bridge::Bridge::dev_url()
         .map(|dev| format!("{dev}?bridge=127.0.0.1:{}", bridge.port))
@@ -135,16 +145,24 @@ pub fn run() -> anyhow::Result<()> {
                 window.present();
                 return;
             }
+            timing::mark("activate");
             let application_window = gtk::ApplicationWindow::builder()
                 .application(app)
                 .title(window_title())
                 .default_width(1040)
                 .default_height(720)
                 .build();
-            let webview = build_webview(&url, &origins);
-            application_window.set_child(Some(&webview));
+            *window.borrow_mut() = Some(application_window.clone());
             application_window.present();
-            *window.borrow_mut() = Some(application_window);
+            timing::mark("window presented");
+            let url = url.clone();
+            let origins = origins.clone();
+            gtk::glib::idle_add_local_once(move || {
+                timing::mark("webview build start");
+                let webview = build_webview(&url, &origins);
+                timing::mark("webview built");
+                application_window.set_child(Some(&webview));
+            });
         });
     }
 

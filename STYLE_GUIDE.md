@@ -1,6 +1,6 @@
 # TiConnect Style Guide
 
-**Direction: Quiet Grove.** A night-garden console: cream ink on deep teal, rounded surfaces, circular presence marks, soft green-tinted depth. Dark only. Every value comes from the token block.
+**Direction: Quiet Grove.** A botanical console with two lighting conditions: cream ink on deep teal at night, deep pine ink on bone paper by day. Rounded surfaces, circular presence marks, soft tinted depth. Dark is the default; light keeps the same semantic roles. Every value comes from the token block.
 
 ## Brief
 
@@ -10,7 +10,7 @@
 | Audience | Linux users on a trusted office or home LAN, window open all day |
 | Tone | Quiet Grove: botanical field guide, night desk, soft utility |
 | Reference | 1970s botanical field guide on dark stock; rounded instrument panels |
-| Memorable | The selected user card turns cream, square-edged, with a circular monogram and a quiet presence dot |
+| Memorable | The selected user card inverts to the strongest ink/base pair — cream on pine in dark, pine on bone in light — square-edged, with a circular monogram and a quiet presence dot |
 | Restraint | No chat bubbles, photo avatars, gradients, sharp corners, hairline grids, or pairing wizard |
 
 ## Tokens
@@ -41,6 +41,19 @@
   --shadow-soft: 0 1px 2px rgba(6,18,18,0.30), 0 14px 32px rgba(6,18,18,0.28);
   --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+:root[data-theme='light'] {
+  --base: #F4EFE2; --surface: #FBF7EC; --surface-2: #EEE6D4;
+  --rail: #E9E1CF; --backdrop: #D8CFBB;
+  --ink: #24352F; --ink-2: #4F6256; --ink-3: #526458;
+  --line: #D3C9B5; --line-strong: #B9AD95;
+  --accent: #7A4A24;
+
+  --error: #96402A; --success: #3F6A31; --info: #356474; --warning: #755612;
+  --lamp: #658743; --fault: var(--error); --warn: var(--warning);
+
+  --shadow-soft: 0 1px 2px rgba(73,59,35,0.12), 0 14px 32px rgba(73,59,35,0.14);
+}
 ```
 
 Rules:
@@ -50,6 +63,16 @@ Rules:
 - Shadows only on floating layers: request cards, active cards, player, toasts, dialogs.
 - Status colors are dots, rules, and 13px labels only.
 - All numbers in data labels use tabular figures.
+
+## Appearance
+
+`appearance.color_scheme` accepts `system`, `light`, or `dark`.
+
+- `system` removes `data-theme` and follows `prefers-color-scheme`.
+- `light` and `dark` set `data-theme` and pin the theme immediately.
+- Both themes use the same semantic token names. Only the values change.
+- The browser `theme-color` must follow the resolved theme, including live OS changes while `system` is selected.
+- The Appearance control lives in Settings → User, above Presence.
 
 ## Typography
 
@@ -91,7 +114,7 @@ Window 1440 × 900, full-bleed. Minimum 1024 × 720.
 
 Profile replaces the right pane, not the whole window. Users rail and top bar stay. Clicking the conversation header opens profile; back returns to chat; clicking another user switches conversation.
 
-The users rail collapses from 320px to 72px with a chevron control at its top. Expanded: search, full user cards, and a square, edge-to-edge footer pinned to the bottom of the rail holding only the 34px logo and the no-background settings button. Collapsed: monogram-only tiles with presence dots, selected user in cream, logo and settings at the bottom, chat pane expands to fill the space.
+The users rail collapses from 320px to 72px with a chevron control at its top. Expanded: search, full user cards, and a square, edge-to-edge footer pinned to the bottom of the rail holding only the 34px logo and the no-background settings button. Collapsed: monogram-only tiles with presence dots, selected user inverted to the `--ink`/`--base` pair, logo and settings at the bottom, chat pane expands to fill the space.
 
 ## Users
 
@@ -177,7 +200,8 @@ States: invite, participating, controlling, buffering, guest left, host left, sy
 
 ## Settings
 
-Sections: Notifications, Calls, Remote desktop, Media, Storage, About. No pairing or trust section.
+Sections: User, Notifications, Calls, Remote desktop, Media, Storage, About. No pairing or trust section.
+User contains Profile card, Appearance, Presence, and Identity key.
 Media contains autoplay, queue limit, player position, ignore incoming videos, dismiss behavior, watch-party control policy and invite acceptance.
 
 ## Message toasts
@@ -186,8 +210,9 @@ Bottom-right, max three, stack above the video player. Call, remote, and party r
 
 ## Accessibility
 
-- Ink on base 12.0:1; ink on surface 10.4:1; ink-2 8.0:1; ink-3 6.0:1 base and 5.2:1 surface.
-- Status text: error 5.6:1, success 5.7:1, info 6.6:1, warning 7.4:1.
+- Dark: ink on base 12.0:1; ink on surface 10.4:1; ink-2 8.0:1; ink-3 6.0:1 base and 5.2:1 surface.
+- Light: ink on base 11.3:1; ink on surface 12.1:1; ink-2 5.7:1; ink-3 5.5:1 base and 5.9:1 surface.
+- Status text: dark error 5.6:1, success 5.7:1, info 6.6:1, warning 7.4:1; light error 6.0:1, success 5.5:1, info 5.7:1, warning 5.9:1.
 - Focus: 2px accent ring at 2px offset; user cards use a 2px accent border.
 - Scrollbars are custom: 4px pill thumb, transparent track, `--line-strong` idle, `--ink-2` hover, `--accent` while dragging. Used on the message stream and profile pane; never the native scrollbar.
 - Autoplay: video starts muted if audio autoplay is not permitted; provide visible unmute.
@@ -216,8 +241,9 @@ Never in this system:
 | Page | Artboards |
 |---|---|
 | Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `03b — Settings · user`, `04 — Watch party`, `05 — Voice call`, `05b — Call states`, `06 — Sharing · host`, `06b — Sharing states`, `07 — Sharing · viewer` |
+| Light mode | Complete light copies of every Screens and Overlays artboard |
 | Overlays | `05 — In-app requests`, `06 — In-app active`, `07 — Desktop requests`, `08 — YouTube player`, `09 — Message toasts`, `10 — Desktop active`, `11 — Desktop active · states` |
-| Components | Masters and every state |
+| Components | Masters and every state; dark + light palette and token mapping |
 
 Paper MCP has no linked instances; local copies must follow the Components page.
 
@@ -227,7 +253,9 @@ Paper MCP has no linked instances; local copies must follow the Components page.
 - [ ] No user details outside the profile pane
 - [ ] Header opens profile; back returns; rail stays visible
 - [ ] No call/remote cards as messages; system lines only for missed/declined calls
-- [ ] Selected user card is cream, square, full rail width
+- [ ] Selected user card uses the inverted `--ink`/`--base` pair, square, full rail width
+- [ ] Light mode has the same screens, overlays, states, and focus treatment as dark
+- [ ] Appearance offers System / Light / Dark and System follows the OS live
 - [ ] Requests top-right; player and toasts bottom-right
 - [ ] YouTube dismiss and ignore states present
 - [ ] Watch party shared control and sync states present

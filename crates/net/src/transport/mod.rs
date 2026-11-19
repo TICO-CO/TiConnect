@@ -74,6 +74,7 @@ pub enum TransportEvent {
 
 pub trait TrustLookup: Send + Sync {
     fn is_trusted(&self, fingerprint: &str) -> bool;
+    fn node_id_for_fingerprint(&self, fingerprint: &str) -> Option<NodeId>;
 }
 
 #[derive(Clone)]

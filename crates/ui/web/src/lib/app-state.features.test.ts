@@ -203,6 +203,30 @@ describe('AppState feature behavior', () => {
         expect(document.documentElement.dataset.theme).toBeUndefined();
     });
 
+    it('keeps a remote request pending until the host accepts', () => {
+        const { app } = makeApp();
+        const session = {
+            session_id: 'session-1',
+            user_id: 'user-1',
+            fingerprint: 'a'.repeat(64),
+            role: 'host',
+            state: 'requested',
+            indicator: false,
+            expires_at: 1,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({ type: 'remote_session_requested', session });
+        expect(app.remote?.state).toBe('requested');
+        expect(app.remote?.indicator).toBe(false);
+
+        handle({ type: 'remote_session_started', session: { ...session, state: 'active' } });
+        expect(app.remote?.state).toBe('active');
+        expect(app.remote?.indicator).toBe(true);
+    });
+
     it('downloads and caches attachment URLs for playback', async () => {
         const { app, client } = makeApp();
         expect(await app.attachmentUrl('hash-1')).toBe('blob:attachment');
