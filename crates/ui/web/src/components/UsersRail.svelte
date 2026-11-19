@@ -87,7 +87,7 @@
                 <img class="h-full w-full object-contain" src={logoUrl} alt="" />
             </a>
             <button
-                class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                 onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
                 aria-label="Settings"
             >
@@ -187,7 +187,7 @@
             <div class="flex h-9 items-center justify-between">
                 <img class="size-[34px] shrink-0 object-contain" src={logoUrl} alt="TiConnect" />
                 <button
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                     onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
                     aria-label="Settings"
                 >

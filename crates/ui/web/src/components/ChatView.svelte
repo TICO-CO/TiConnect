@@ -382,7 +382,7 @@
                 <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
                 <button
                     type="button"
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                     onclick={() => fileInput?.click()}
                     aria-label="Attach file"
                 >
@@ -390,7 +390,7 @@
                 </button>
                 <button
                     type="button"
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                     onclick={() =>
                         (app.notice =
                             'Voice recording is not wired yet. Attach an audio file instead.')}
