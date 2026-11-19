@@ -197,7 +197,7 @@ export class BridgeClient {
     }
 
     async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
-        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}`;
+        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
         const [value, failure] = await this.upload(path, file);
         if (failure) {
             return [null, failure];
@@ -222,29 +222,44 @@ export class BridgeClient {
         parameters: Record<string, unknown>,
         path: string,
     ): Promise<Result<string, BridgeFailure>> {
-        const [ticket, ticketFailure] = await this.request<RemoteTicket>(method, parameters);
-        if (ticketFailure) {
-            return [null, ticketFailure];
+        const deadline = Date.now() + 15_000;
+        let delay = 200;
+        let lastStatus = 0;
+        for (;;) {
+            const [ticket, ticketFailure] = await this.request<RemoteTicket>(method, parameters);
+            if (ticketFailure) {
+                return [null, ticketFailure];
+            }
+            if (ticket === null || typeof ticket.url !== 'string') {
+                return [
+                    null,
+                    BridgeFailures.requestFailed('bridge did not return a download ticket'),
+                ];
+            }
+            const [response, fetchFailure] = await attemptAsync(() =>
+                fetch(ticket.url, { cache: 'no-store' }),
+            );
+            lastStatus = response?.status ?? 0;
+            if (!fetchFailure && response !== null && response.ok) {
+                const [blob, blobFailure] = await attemptAsync(() => response.blob());
+                if (blobFailure || blob === null) {
+                    return [null, BridgeFailures.requestFailed('download response was empty')];
+                }
+                const [url, urlFailure] = attempt(() => URL.createObjectURL(blob));
+                if (urlFailure || url === null) {
+                    return [null, BridgeFailures.requestFailed('download could not be opened')];
+                }
+                return [url, null];
+            }
+            if (!shouldRetryDownload(fetchFailure !== null, lastStatus)) {
+                return [null, downloadFailure(lastStatus)];
+            }
+            if (Date.now() >= deadline) {
+                return [null, downloadFailure(lastStatus, true)];
+            }
+            await wait(delay);
+            delay = Math.min(delay * 2, 1_000);
         }
-        if (ticket === null || typeof ticket.url !== 'string') {
-            return [null, BridgeFailures.requestFailed('bridge did not return a download ticket')];
-        }
-        const [response, fetchFailure] = await attemptAsync(() => fetch(ticket.url));
-        if (fetchFailure) {
-            return [null, BridgeFailures.requestFailed('download request failed')];
-        }
-        if (response === null || !response.ok) {
-            return [null, BridgeFailures.requestFailed('download request failed')];
-        }
-        const [blob, blobFailure] = await attemptAsync(() => response.blob());
-        if (blobFailure || blob === null) {
-            return [null, BridgeFailures.requestFailed('download response was empty')];
-        }
-        const [url, urlFailure] = attempt(() => URL.createObjectURL(blob));
-        if (urlFailure || url === null) {
-            return [null, BridgeFailures.requestFailed('download could not be opened')];
-        }
-        return [url, null];
     }
 
     private async upload(path: string, file: File): Promise<Result<unknown, BridgeFailure>> {
@@ -314,4 +329,25 @@ export class BridgeClient {
         const message = reply.error?.message ?? 'bridge request failed';
         pendingRequest.fail(BridgeFailures.requestFailed(message));
     }
+}
+
+function shouldRetryDownload(fetchFailed: boolean, status: number): boolean {
+    if (fetchFailed) {
+        return true;
+    }
+    return status !== 401 && status !== 403;
+}
+
+function downloadFailure(status: number, timedOut = false): BridgeFailure {
+    if (timedOut) {
+        return BridgeFailures.requestFailed('download request timed out');
+    }
+    if (status > 0) {
+        return BridgeFailures.requestFailed(`download request failed (${status})`);
+    }
+    return BridgeFailures.requestFailed('download request failed');
+}
+
+function wait(milliseconds: number): Promise<void> {
+    return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }

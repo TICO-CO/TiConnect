@@ -147,7 +147,7 @@ impl Card {
     pub fn from_watch_party(party: &WatchParty, sender: String) -> Self {
         Self {
             id: format!("party:{}", party.party_id),
-            user_id: party.user_id.clone(),
+            user_id: party.host_id.clone(),
             sender,
             preview: "Watch party · How we built TiConnect".to_owned(),
             detail: None,
@@ -203,7 +203,7 @@ impl Card {
     pub fn from_party_pill(party: &WatchParty) -> Self {
         Self {
             id: format!("party-pill:{}", party.party_id),
-            user_id: party.user_id.clone(),
+            user_id: party.host_id.clone(),
             sender: "Watch party".to_owned(),
             preview: "Watch party · 3 watching".to_owned(),
             detail: None,

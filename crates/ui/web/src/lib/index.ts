@@ -42,6 +42,18 @@ export type {
     UserPolicy,
     WatchParty,
     WebSocketEvent,
+    YoutubePreview,
+    YoutubeStream,
 } from './types';
 export { BridgeMessages } from './types';
 export { firstVideoId, parseVideoId } from './youtube';
+export {
+    formatPlayerTime,
+    listenToPlayer,
+    playerUrl,
+    readPlayerMessage,
+    sendCommand,
+    YOUTUBE_ORIGIN,
+    YOUTUBE_ORIGINS,
+    YOUTUBE_WEB_ORIGIN,
+} from './youtube-player';

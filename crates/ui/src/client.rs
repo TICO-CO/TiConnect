@@ -72,6 +72,7 @@ enum Command {
     SendAttachment {
         user_id: String,
         path: String,
+        mime: String,
         reply: Reply<String>,
     },
     AttachmentPath {
@@ -141,15 +142,24 @@ enum Command {
     },
     GetRemoteSession(Reply<Option<RemoteSession>>),
     StartWatchParty {
-        user_id: String,
+        user_ids: Vec<String>,
         video_id: String,
+        reply: Reply<WatchParty>,
+    },
+    InviteWatchParty {
+        party_id: String,
+        user_ids: Vec<String>,
         reply: Reply<WatchParty>,
     },
     AcceptWatchParty {
         party_id: String,
-        reply: Reply<()>,
+        reply: Reply<WatchParty>,
     },
     DeclineWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    LeaveWatchParty {
         party_id: String,
         reply: Reply<()>,
     },
@@ -285,10 +295,16 @@ impl LinkHandle {
         .await
     }
 
-    pub async fn send_attachment(&self, user_id: String, path: String) -> Result<String> {
+    pub async fn send_attachment(
+        &self,
+        user_id: String,
+        path: String,
+        mime: String,
+    ) -> Result<String> {
         self.request(|reply| Command::SendAttachment {
             user_id,
             path,
+            mime,
             reply,
         })
         .await
@@ -396,22 +412,44 @@ impl LinkHandle {
         self.request(Command::GetRemoteSession).await
     }
 
-    pub async fn start_watch_party(&self, user_id: String, video_id: String) -> Result<WatchParty> {
+    pub async fn start_watch_party(
+        &self,
+        user_ids: Vec<String>,
+        video_id: String,
+    ) -> Result<WatchParty> {
         self.request(|reply| Command::StartWatchParty {
-            user_id,
+            user_ids,
             video_id,
             reply,
         })
         .await
     }
 
-    pub async fn accept_watch_party(&self, party_id: String) -> Result<()> {
+    pub async fn invite_watch_party(
+        &self,
+        party_id: String,
+        user_ids: Vec<String>,
+    ) -> Result<WatchParty> {
+        self.request(|reply| Command::InviteWatchParty {
+            party_id,
+            user_ids,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn accept_watch_party(&self, party_id: String) -> Result<WatchParty> {
         self.request(|reply| Command::AcceptWatchParty { party_id, reply })
             .await
     }
 
     pub async fn decline_watch_party(&self, party_id: String) -> Result<()> {
         self.request(|reply| Command::DeclineWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn leave_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::LeaveWatchParty { party_id, reply })
             .await
     }
 
@@ -1039,10 +1077,11 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         Command::SendAttachment {
             user_id,
             path,
+            mime,
             reply,
         } => {
             let result = proxy
-                .send_attachment(&user_id, &path, "")
+                .send_attachment(&user_id, &path, &mime)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -1124,18 +1163,34 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let _ = reply.send(result);
         }
         Command::StartWatchParty {
-            user_id,
+            user_ids,
             video_id,
             reply,
         } => {
-            let result = match proxy.start_watch_party(&user_id, &video_id).await {
+            let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
+            let result = match proxy.start_watch_party(&ids, &video_id).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::InviteWatchParty {
+            party_id,
+            user_ids,
+            reply,
+        } => {
+            let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
+            let result = match proxy.invite_watch_party(&party_id, &ids).await {
                 Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
         Command::AcceptWatchParty { party_id, reply } => {
-            let result = proxy.accept_watch_party(&party_id).await.map_err(bus_error);
+            let result = match proxy.accept_watch_party(&party_id).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
             let _ = reply.send(result);
         }
         Command::DeclineWatchParty { party_id, reply } => {
@@ -1143,6 +1198,10 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .decline_watch_party(&party_id)
                 .await
                 .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::LeaveWatchParty { party_id, reply } => {
+            let result = proxy.leave_watch_party(&party_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::PublishWatchParty {

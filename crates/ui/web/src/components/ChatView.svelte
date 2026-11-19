@@ -17,11 +17,17 @@
     let composer: HTMLTextAreaElement | null = $state(null);
     let audioUrls = $state<Record<string, string>>({});
     let loadingAudio = $state<Record<string, boolean>>({});
+    let imageUrls = $state<Record<string, string>>({});
+    let imageLoading = $state<Record<string, boolean>>({});
+    let imageErrors = $state<Record<string, string>>({});
+    let preview = $state<{ url: string; name: string } | null>(null);
     let prependingOlderMessages = false;
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
     const currentParty = $derived(
-        app.party !== null && app.party.user_id === app.selectedUserId ? app.party : null,
+        app.party !== null && app.party.participants.includes(app.selectedUserId)
+            ? app.party
+            : null,
     );
     const announcementVideo = $derived(
         app.player?.videoId ?? currentParty?.video_id ?? latestVideoId(),
@@ -90,17 +96,76 @@
         }
     }
 
-    function playTogether() {
-        if (latestVideoId() === '') {
-            app.notice = 'Paste a YouTube link in the conversation first.';
-            composer?.focus();
+    async function loadImage(messageId: string, hash: string): Promise<void> {
+        if (imageUrls[messageId] !== undefined || imageLoading[messageId] === true) {
             return;
         }
-        app.openPlayer(latestVideoId());
-        if (selectedUser !== null) {
-            void app.startParty(latestVideoId(), selectedUser.id);
+        const errors = { ...imageErrors };
+        delete errors[messageId];
+        imageErrors = errors;
+        imageLoading = { ...imageLoading, [messageId]: true };
+        const url = await app.attachmentUrl(hash);
+        imageLoading = { ...imageLoading, [messageId]: false };
+        if (url !== '') {
+            imageUrls = { ...imageUrls, [messageId]: url };
+        } else {
+            imageErrors = { ...imageErrors, [messageId]: 'Image unavailable' };
         }
     }
+
+    function showImage(messageId: string, hash: string, name: string): void {
+        const url = imageUrls[messageId];
+        if (url !== undefined) {
+            preview = { url, name };
+            return;
+        }
+        void loadImage(messageId, hash).then(() => {
+            const loaded = imageUrls[messageId];
+            if (loaded !== undefined) {
+                preview = { url: loaded, name };
+            }
+        });
+    }
+
+    function transferLabel(hash: string): string {
+        const transfer = app.transferFor(hash);
+        if (transfer === null || transfer.done) {
+            return '';
+        }
+        if (transfer.total > 0) {
+            const percent = Math.min(100, Math.round((transfer.bytes / transfer.total) * 100));
+            return `Transferring · ${percent}%`;
+        }
+        return 'Transferring…';
+    }
+
+    function imageStatus(messageId: string, hash: string): string {
+        const transfer = app.transferFor(hash);
+        if (transfer?.failed) {
+            return 'Image transfer failed. Tap to retry.';
+        }
+        const transferText = transferLabel(hash);
+        if (transferText !== '') {
+            return transferText;
+        }
+        return imageErrors[messageId] ? 'Image unavailable. Tap to retry.' : 'Loading image…';
+    }
+
+    $effect(() => {
+        for (const message of app.messages) {
+            if (!message.attachment_mime.startsWith('image/')) {
+                continue;
+            }
+            if (imageErrors[message.id] !== undefined) {
+                continue;
+            }
+            const transfer = app.transferFor(message.attachment_hash);
+            if (transfer !== null && (!transfer.done || transfer.failed !== '')) {
+                continue;
+            }
+            void loadImage(message.id, message.attachment_hash);
+        }
+    });
 
     async function loadOlderMessages(): Promise<void> {
         if (stream === null || stream.scrollTop > 48) {
@@ -157,28 +222,46 @@
                     </span>
                 </span>
             </button>
-            <div class="flex shrink-0 gap-2.5">
-                <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                    onclick={() => void app.startCall(selectedUser.id)}
-                >
-                    Call
-                    <Icon name="call" size={15} />
-                </button>
-                <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                    onclick={() => void app.requestRemote(selectedUser.id)}
-                >
-                    Remote desktop
-                    <Icon name="remote" size={15} />
-                </button>
-                <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                    onclick={playTogether}
-                >
-                    Watch party
-                    <Icon name="chevron-right" size={13} />
-                </button>
+            <div class="flex shrink-0 gap-2">
+                <div class="group relative">
+                    <button
+                        class="inline-flex size-10 shrink-0 items-center justify-center rounded-pill border border-line bg-transparent text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                        onclick={() => void app.startCall(selectedUser.id)}
+                        aria-label="Call"
+                    >
+                        <Icon name="call" size={17} />
+                    </button>
+                    <span
+                        class="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-sm border border-line bg-surface-2 px-2 py-1 text-[11px] leading-4 font-bold whitespace-nowrap text-ink opacity-0 shadow-soft transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100"
+                        role="tooltip">Call</span
+                    >
+                </div>
+                <div class="group relative">
+                    <button
+                        class="inline-flex size-10 shrink-0 items-center justify-center rounded-pill border border-line bg-transparent text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                        onclick={() => void app.requestRemote(selectedUser.id)}
+                        aria-label="Remote desktop"
+                    >
+                        <Icon name="remote" size={17} />
+                    </button>
+                    <span
+                        class="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-sm border border-line bg-surface-2 px-2 py-1 text-[11px] leading-4 font-bold whitespace-nowrap text-ink opacity-0 shadow-soft transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100"
+                        role="tooltip">Remote desktop</span
+                    >
+                </div>
+                <div class="group relative">
+                    <button
+                        class="inline-flex size-10 shrink-0 items-center justify-center rounded-pill border border-line bg-transparent text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                        onclick={() => app.openWatchParty([selectedUser.id])}
+                        aria-label="Watch party"
+                    >
+                        <Icon name="party" size={17} />
+                    </button>
+                    <span
+                        class="pointer-events-none absolute top-full left-1/2 z-50 mt-2 -translate-x-1/2 rounded-sm border border-line bg-surface-2 px-2 py-1 text-[11px] leading-4 font-bold whitespace-nowrap text-ink opacity-0 shadow-soft transition-opacity duration-150 group-focus-within:opacity-100 group-hover:opacity-100"
+                        role="tooltip">Watch party</span
+                    >
+                </div>
             </div>
         </header>
         {#if announcementVideo}
@@ -240,7 +323,38 @@
                             </p>
                         {/if}
                         {#if message.attachment_hash}
-                            {#if message.attachment_mime.startsWith('audio/')}
+                            {#if message.attachment_mime.startsWith('image/')}
+                                <button
+                                    class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
+                                    onclick={() =>
+                                        showImage(
+                                            message.id,
+                                            message.attachment_hash,
+                                            message.attachment_name || 'Image',
+                                        )}
+                                >
+                                    {#if imageUrls[message.id] !== undefined}
+                                        <img
+                                            class="max-h-[360px] w-full rounded-sm object-contain"
+                                            src={imageUrls[message.id]}
+                                            alt={message.attachment_name || 'Image attachment'}
+                                        />
+                                    {:else}
+                                        <div
+                                            class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
+                                        >
+                                            {imageStatus(message.id, message.attachment_hash)}
+                                        </div>
+                                    {/if}
+                                    <span class="px-2 py-1.5 text-xs text-ink-3"
+                                        >{message.attachment_name || 'Image'} · {fileSize(
+                                            message.attachment_size,
+                                        )}{transferLabel(message.attachment_hash)
+                                            ? ` · ${transferLabel(message.attachment_hash)}`
+                                            : ''}</span
+                                    >
+                                </button>
+                            {:else if message.attachment_mime.startsWith('audio/')}
                                 <div
                                     class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
                                 >
@@ -259,7 +373,11 @@
                                                     'Voice message'}</strong
                                             >
                                             <span class="text-xs text-ink-3"
-                                                >{fileSize(message.attachment_size)}</span
+                                                >{fileSize(message.attachment_size)}{transferLabel(
+                                                    message.attachment_hash,
+                                                )
+                                                    ? ` · ${transferLabel(message.attachment_hash)}`
+                                                    : ''}</span
                                             >
                                         </span>
                                         {#if audioUrls[message.id] === undefined}
@@ -286,7 +404,11 @@
                             {:else}
                                 <button
                                     class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
-                                    onclick={() => void app.openAttachment(message.attachment_hash)}
+                                    onclick={() =>
+                                        void app.saveAttachment(
+                                            message.attachment_hash,
+                                            message.attachment_name || 'attachment',
+                                        )}
                                 >
                                     <span
                                         class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
@@ -303,7 +425,9 @@
                                         <span class="text-xs text-ink-3"
                                             >BLAKE3 {fingerprintLabel(message.attachment_hash)} · {fileSize(
                                                 message.attachment_size,
-                                            )}</span
+                                            )}{transferLabel(message.attachment_hash)
+                                                ? ` · ${transferLabel(message.attachment_hash)}`
+                                                : ''}</span
                                         >
                                     </span>
                                 </button>
@@ -341,7 +465,7 @@
                                     <button
                                         class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
                                         onclick={() =>
-                                            void app.startParty(videoId, selectedUser.id)}
+                                            void app.startParty(videoId, [selectedUser.id])}
                                     >
                                         Watch party
                                         <Icon name="chevron-right" size={12} />
@@ -410,9 +534,6 @@
                     </div>
                 {/each}
             {/if}
-            {#if app.typing[selectedUser.id]}
-                <p class="m-0 text-xs text-ink-3">{shortName(selectedUser)} is typing…</p>
-            {/if}
             {#if app.messages.length === 0}
                 <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
                     <p
@@ -424,6 +545,11 @@
                         Say hello — messages stay on this network.
                     </p>
                 </div>
+            {/if}
+        </div>
+        <div class="h-[18px] shrink-0 px-7 text-xs leading-4 text-ink-3" aria-live="polite">
+            {#if app.typing[selectedUser.id]}
+                <span>{shortName(selectedUser)} is typing…</span>
             {/if}
         </div>
         <form
@@ -504,6 +630,32 @@
             <p class="m-0 text-step-xs text-ink-3">
                 The rail lists everyone discovered on this LAN.
             </p>
+        </div>
+    {/if}
+    {#if preview}
+        <div
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-backdrop/80 p-8"
+            role="dialog"
+            aria-modal="true"
+            aria-label={preview.name}
+        >
+            <button
+                class="absolute inset-0 cursor-default"
+                onclick={() => (preview = null)}
+                aria-label="Close image preview"
+            ></button>
+            <button
+                class="absolute top-5 right-5 z-10 inline-flex size-9 items-center justify-center rounded-pill border border-line bg-surface text-ink"
+                onclick={() => (preview = null)}
+                aria-label="Close image"
+            >
+                <Icon name="close" size={16} />
+            </button>
+            <img
+                class="relative z-10 max-h-full max-w-full rounded-md object-contain shadow-soft"
+                src={preview.url}
+                alt={preview.name}
+            />
         </div>
     {/if}
 </section>

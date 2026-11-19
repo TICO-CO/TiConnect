@@ -31,6 +31,19 @@ async fn http_get_path(port: u16, host: &str, path: &str) -> String {
     response
 }
 
+async fn http_options(port: u16, host: &str, path: &str, origin: &str) -> String {
+    let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+        .await
+        .expect("connect");
+    let request = format!(
+        "OPTIONS {path} HTTP/1.1\r\nHost: {host}\r\nOrigin: {origin}\r\nAccess-Control-Request-Method: POST\r\nAccess-Control-Request-Headers: authorization,content-type\r\nConnection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).await.expect("write");
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.expect("read");
+    response
+}
+
 async fn socket(
     port: u16,
     origin: Option<&str>,
@@ -94,6 +107,27 @@ async fn asset_requests_require_the_loopback_host() {
     let response = http_get_path(bridge.port, &format!("127.0.0.1:{}", bridge.port), asset).await;
     assert!(response.starts_with("HTTP/1.1 200"), "{response}");
     assert!(!response.contains("not found"), "{response}");
+}
+
+#[tokio::test]
+async fn upload_preflight_is_allowed_for_the_app_origin() {
+    let bridge = start_bridge().await;
+    let host = format!("127.0.0.1:{}", bridge.port);
+    let origin = format!("http://127.0.0.1:{}", bridge.port);
+    let response = http_options(bridge.port, &host, "/attachment", &origin).await;
+    assert!(response.starts_with("HTTP/1.1 204"), "{response}");
+    assert!(
+        response
+            .to_ascii_lowercase()
+            .contains(&format!("access-control-allow-origin: {origin}")),
+        "{response}"
+    );
+    assert!(
+        response
+            .to_ascii_lowercase()
+            .contains("access-control-allow-headers: authorization, content-type"),
+        "{response}"
+    );
 }
 
 #[tokio::test]

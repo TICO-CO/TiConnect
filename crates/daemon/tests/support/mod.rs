@@ -13,6 +13,7 @@ use ticonnect_daemon::messaging::MessagingService;
 use ticonnect_daemon::remote::{NoopRemoteHost, RemoteService};
 use ticonnect_daemon::storage::{DatabaseHandle, NewUser, UserPolicy};
 use ticonnect_daemon::trust::TrustStore;
+use ticonnect_daemon::watch_party::WatchPartyService;
 use ticonnect_media::ringtone::NullRingtone;
 use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
 use ticonnect_settings::Settings;
@@ -29,6 +30,7 @@ pub struct TestNode {
     pub attachments: AttachmentService,
     pub calls: CallService,
     pub remote: RemoteService,
+    pub watch_party: Arc<WatchPartyService>,
     workers: Vec<JoinHandle<()>>,
 }
 
@@ -96,6 +98,7 @@ impl TestNode {
             Arc::new(NoopRemoteHost),
             clock,
         );
+        let watch_party = Arc::new(WatchPartyService::new(public.node_id(), transport.clone()));
 
         let (transfer_tx, transfer_rx) = tokio::sync::mpsc::unbounded_channel();
         messaging.set_transfer_sender(transfer_tx);
@@ -104,6 +107,8 @@ impl TestNode {
         messaging.set_call_channels(call_tx, audio_tx);
         let (remote_tx, remote_rx) = tokio::sync::mpsc::unbounded_channel();
         messaging.set_remote_sender(remote_tx);
+        let (watch_party_tx, watch_party_rx) = tokio::sync::mpsc::unbounded_channel();
+        messaging.set_watch_party_sender(watch_party_tx);
 
         let workers = vec![
             ticonnect_daemon::attachments::spawn(
@@ -113,6 +118,7 @@ impl TestNode {
             ),
             ticonnect_daemon::calls::spawn(calls.clone(), call_rx, audio_rx),
             ticonnect_daemon::remote::spawn(remote.clone(), remote_rx),
+            ticonnect_daemon::watch_party::spawn(watch_party.clone(), watch_party_rx),
         ];
 
         Self {
@@ -126,6 +132,7 @@ impl TestNode {
             attachments,
             calls,
             remote,
+            watch_party,
             workers,
         }
     }

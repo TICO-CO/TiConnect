@@ -227,7 +227,7 @@ impl State {
         if party.role != "guest" {
             return;
         }
-        let sender = self.user_name(&party.user_id);
+        let sender = self.user_name(&party.host_id);
         let card = Card::from_watch_party(&party, sender);
         self.show_card(card);
     }

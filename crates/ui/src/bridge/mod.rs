@@ -2,6 +2,7 @@ pub mod assets;
 pub mod events;
 pub mod protocol;
 pub mod security;
+mod youtube;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,12 +11,13 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use axum::{
     Json, Router,
-    body::Bytes,
+    body::{Body, Bytes},
     extract::{
-        DefaultBodyLimit, Path, Query, State,
+        DefaultBodyLimit, Path, Query, Request as HttpRequest, State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Method, StatusCode, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -34,6 +36,7 @@ use self::protocol::{Reply, Request, RpcError};
 use self::security::Origins;
 
 const TICKET_TTL: Duration = Duration::from_secs(60);
+const STREAM_TICKET_TTL: Duration = Duration::from_secs(3600);
 const AUTH_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_UPLOAD_BYTES: usize = 1024 * 1024 * 1024;
 
@@ -41,6 +44,7 @@ const MAX_UPLOAD_BYTES: usize = 1024 * 1024 * 1024;
 pub enum TicketKind {
     Attachment,
     Avatar,
+    Stream,
 }
 
 #[derive(Debug, Clone)]
@@ -81,15 +85,39 @@ impl BridgeState {
         Ok(ticket)
     }
 
+    pub fn mint_stream_ticket(&self, value: String) -> anyhow::Result<Ticket> {
+        let id = security::generate_token()?;
+        let expires_at = now_seconds() + STREAM_TICKET_TTL.as_secs();
+        let ticket = Ticket {
+            id: id.clone(),
+            kind: TicketKind::Stream,
+            value,
+            expires_at,
+        };
+        let mut tickets = self.tickets.lock().expect("ticket store");
+        tickets.retain(|_, ticket| ticket.expires_at > now_seconds());
+        tickets.insert(id, ticket.clone());
+        Ok(ticket)
+    }
+
     pub fn ticket_url(&self, ticket: &Ticket) -> String {
         let path = match ticket.kind {
             TicketKind::Attachment => format!("/attachment/{}", ticket.value),
             TicketKind::Avatar => format!("/avatar/{}", ticket.value),
+            TicketKind::Stream => "/youtube/media".to_owned(),
         };
         format!(
             "http://127.0.0.1:{}{}?ticket={}",
             self.port, path, ticket.id
         )
+    }
+
+    fn stream_path(&self, id: &str) -> Option<String> {
+        let mut tickets = self.tickets.lock().expect("ticket store");
+        let now = now_seconds();
+        tickets.retain(|_, ticket| ticket.expires_at > now);
+        let ticket = tickets.get(id)?;
+        (ticket.kind == TicketKind::Stream).then(|| ticket.value.clone())
     }
 
     fn take_ticket(&self, id: &str, kind: TicketKind, value: &str) -> Option<Ticket> {
@@ -191,9 +219,53 @@ fn router(state: Arc<BridgeState>) -> Router {
         .route("/attachment/{hash}", get(download_attachment))
         .route("/avatar", post(upload_avatar))
         .route("/avatar/{fingerprint}", get(download_avatar))
+        .route("/youtube/media", get(youtube_media))
         .fallback(index)
         .layer(DefaultBodyLimit::max(MAX_UPLOAD_BYTES))
+        .layer(middleware::from_fn_with_state(state.clone(), cors))
         .with_state(state)
+}
+
+async fn cors(State(state): State<Arc<BridgeState>>, request: HttpRequest, next: Next) -> Response {
+    let origin = security::origin(request.headers()).map(str::to_owned);
+    let allowed = origin
+        .as_deref()
+        .is_some_and(|value| state.origins.allows(Some(value)));
+    if request.method() == Method::OPTIONS {
+        if !state.request_allowed(request.headers()) || !allowed {
+            return forbidden();
+        }
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        add_cors_headers(&mut response, origin.as_deref());
+        return response;
+    }
+    let mut response = next.run(request).await;
+    if allowed {
+        add_cors_headers(&mut response, origin.as_deref());
+    }
+    response
+}
+
+fn add_cors_headers(response: &mut Response, origin: Option<&str>) {
+    let Some(origin) = origin else {
+        return;
+    };
+    if let Ok(value) = HeaderValue::from_str(origin) {
+        response
+            .headers_mut()
+            .insert(header::ACCESS_CONTROL_ALLOW_ORIGIN, value);
+    }
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, POST, OPTIONS"),
+    );
+    response.headers_mut().insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("authorization, content-type"),
+    );
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("Origin"));
 }
 
 async fn index(State(state): State<Arc<BridgeState>>, headers: HeaderMap) -> Response {
@@ -324,6 +396,8 @@ struct UploadQuery {
     user_id: String,
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    mime: Option<String>,
 }
 
 async fn upload_attachment(
@@ -335,15 +409,25 @@ async fn upload_attachment(
     if !state.request_allowed(&headers) || !state.authorized(&headers) {
         return forbidden();
     }
-    let path = temp_path(query.name.as_deref().unwrap_or("attachment"));
+    let (directory, path) = match temp_path(query.name.as_deref().unwrap_or("attachment")) {
+        Ok(value) => value,
+        Err(error) => {
+            return http_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
+        }
+    };
     if let Err(error) = write_private(&path, &body) {
+        let _ = tokio::fs::remove_dir_all(&directory).await;
         return http_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
     }
     let result = state
         .link
-        .send_attachment(query.user_id, path.to_string_lossy().into_owned())
+        .send_attachment(
+            query.user_id,
+            path.to_string_lossy().into_owned(),
+            query.mime.unwrap_or_default(),
+        )
         .await;
-    let _ = tokio::fs::remove_file(&path).await;
+    let _ = tokio::fs::remove_dir_all(&directory).await;
     match result {
         Ok(message_id) => Json(json!({ "message_id": message_id })).into_response(),
         Err(error) => http_error(StatusCode::BAD_GATEWAY, error.to_string()),
@@ -367,6 +451,76 @@ async fn upload_avatar(
 #[derive(Deserialize)]
 struct TicketQuery {
     ticket: String,
+}
+
+async fn youtube_media(
+    State(state): State<Arc<BridgeState>>,
+    headers: HeaderMap,
+    Query(query): Query<TicketQuery>,
+) -> Response {
+    if !state.request_allowed(&headers) {
+        return forbidden();
+    }
+    let Some(value) = state.stream_path(&query.ticket) else {
+        return http_error(StatusCode::GONE, "video ticket expired");
+    };
+    let path = std::path::PathBuf::from(value);
+    let allowed = path.starts_with(std::env::temp_dir())
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("ticonnect-youtube-"));
+    if !allowed {
+        return forbidden();
+    }
+    let data = match tokio::fs::read(&path).await {
+        Ok(data) => data,
+        Err(error) => return http_error(StatusCode::NOT_FOUND, error.to_string()),
+    };
+    let length = data.len();
+    let range = headers
+        .get(header::RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| parse_range(value, length));
+    let (status, start, end) = match range {
+        Some((start, end)) => (StatusCode::PARTIAL_CONTENT, start, end),
+        None => (StatusCode::OK, 0, length.saturating_sub(1)),
+    };
+    let mut response = Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "video/mp4")
+        .header(header::ACCEPT_RANGES, "bytes")
+        .header(header::CONTENT_LENGTH, (end - start + 1).to_string())
+        .header(header::CACHE_CONTROL, "no-store");
+    if status == StatusCode::PARTIAL_CONTENT {
+        response = response.header(
+            header::CONTENT_RANGE,
+            format!("bytes {start}-{end}/{length}"),
+        );
+    }
+    response
+        .body(Body::from(data[start..=end].to_vec()))
+        .unwrap_or_else(|_| http_error(StatusCode::INTERNAL_SERVER_ERROR, "response"))
+}
+
+fn parse_range(value: &str, length: usize) -> Option<(usize, usize)> {
+    let range = value.strip_prefix("bytes=")?;
+    let (start, end) = range.split_once('-')?;
+    if start.is_empty() {
+        let suffix: usize = end.parse().ok()?;
+        let start = length.checked_sub(suffix)?;
+        return Some((start, length.checked_sub(1)?));
+    }
+    let start: usize = start.parse().ok()?;
+    let end = if end.is_empty() {
+        length.checked_sub(1)?
+    } else {
+        end.parse().ok()?
+    };
+    if start > end || start >= length {
+        return None;
+    }
+    Some((start, end.min(length - 1)))
 }
 
 async fn download_attachment(
@@ -475,20 +629,50 @@ fn spawn_fanout(
     });
 }
 
-fn temp_path(name: &str) -> std::path::PathBuf {
-    let safe: String = name
+fn temp_path(name: &str) -> std::io::Result<(std::path::PathBuf, std::path::PathBuf)> {
+    let mut safe: String = name
         .chars()
         .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | '_') {
-                character
-            } else {
+            if character.is_control() || matches!(character, '/' | '\\' | '\0') {
                 '_'
+            } else {
+                character
             }
         })
-        .take(80)
         .collect();
+    if safe.is_empty() || safe == "." || safe == ".." {
+        safe = "attachment".to_owned();
+    }
+    if safe.chars().count() > 200 {
+        if let Some((base, extension)) = safe.rsplit_once('.')
+            && !extension.is_empty()
+            && extension.chars().count() < 32
+        {
+            let keep = 200_usize.saturating_sub(extension.chars().count() + 1);
+            let base: String = base.chars().take(keep).collect();
+            safe = format!("{base}.{extension}");
+        } else {
+            safe = safe.chars().take(200).collect();
+        }
+    }
     let id = security::generate_token().unwrap_or_else(|_| "fallback".to_owned());
-    std::env::temp_dir().join(format!("ticonnect-upload-{id}-{safe}"))
+    let directory = std::env::temp_dir().join(format!("ticonnect-upload-{id}"));
+    create_private_dir(&directory)?;
+    Ok((directory.clone(), directory.join(safe)))
+}
+
+fn create_private_dir(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        let mut builder = std::fs::DirBuilder::new();
+        builder.mode(0o700);
+        builder.create(path)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::create_dir(path)
+    }
 }
 
 fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -525,4 +709,32 @@ fn http_error(status: StatusCode, message: impl AsRef<str>) -> Response {
     let mut headers = HeaderMap::new();
     headers.insert(header::CACHE_CONTROL, "no-store".parse().unwrap());
     (status, headers, message.as_ref().to_owned()).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::temp_path;
+
+    #[test]
+    fn upload_path_preserves_the_original_file_name() {
+        let (directory, path) = temp_path("holiday photo.png").expect("temp path");
+        assert_eq!(
+            path.file_name().and_then(|name| name.to_str()),
+            Some("holiday photo.png")
+        );
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
+
+    #[test]
+    fn upload_path_keeps_the_extension_for_long_names() {
+        let name = format!("{}.webm", "x".repeat(260));
+        let (directory, path) = temp_path(&name).expect("temp path");
+        let stored = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .expect("name");
+        assert!(stored.ends_with(".webm"), "{stored}");
+        assert!(stored.len() <= 200, "{}", stored.len());
+        std::fs::remove_dir_all(directory).expect("cleanup");
+    }
 }

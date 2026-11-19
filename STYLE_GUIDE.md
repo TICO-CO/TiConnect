@@ -240,7 +240,7 @@ Never in this system:
 
 | Page | Artboards |
 |---|---|
-| Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `03b — Settings · user`, `04 — Watch party`, `05 — Voice call`, `05b — Call states`, `06 — Sharing · host`, `06b — Sharing states`, `07 — Sharing · viewer` |
+| Screens | `01 — Chat`, `01b — Chat · rail collapsed`, `02 — User profile`, `03 — Settings`, `03b — Settings · user`, `04 — Watch party`, `04b — Watch party · start`, `05 — Voice call`, `05b — Call states`, `06 — Sharing · host`, `06b — Sharing states`, `07 — Sharing · viewer` |
 | Light mode | Complete light copies of every Screens and Overlays artboard |
 | Overlays | `05 — In-app requests`, `06 — In-app active`, `07 — Desktop requests`, `08 — YouTube player`, `09 — Message toasts`, `10 — Desktop active`, `11 — Desktop active · states` |
 | Components | Masters and every state; dark + light palette and token mapping |

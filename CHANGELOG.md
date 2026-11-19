@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Add group watch parties with host-authoritative sync, participant rosters,
+  late invites, and per-guest leave.
+- Make the watch party page a group composer: select people, paste a YouTube
+  link, send the link, or start a party.
+- Drive the YouTube player with real playback state and host-synced commands.
+- Fix attachment uploads and downloads in the Vite lab with scoped bridge CORS.
+- Preserve attachment filenames and browser MIME types across the bridge.
+- Render image attachments inline and save other attachments without opening a
+  new webview.
+- Surface attachment transfer progress and failures.
+- Allow blob audio playback in the webview CSP.
+- Bundle GStreamer plugins for voice capture and media playback on Nix.
 - Add voice-message recording and inline audio playback in the web UI.
 - Add local history clearing for all conversations and per-user conversations.
 - Report real local storage usage and identity creation time in settings.

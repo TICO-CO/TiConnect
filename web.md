@@ -25,6 +25,8 @@ Progress:
 - [x] Frontend tests; manual desktop matrix remains pending.
 - [x] Voice recording, inline audio playback, history clearing, storage usage,
   identity creation date, editable discovery, and appearance selection.
+- [x] Group watch parties with participant selection, late invites, real YouTube
+  playback sync, image attachment previews, and scoped dev-bridge CORS.
 
 ## Decision
 

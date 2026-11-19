@@ -56,11 +56,17 @@ pub trait Daemon {
     fn get_call_metrics(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn start_watch_party(
         &self,
-        user_id: &str,
+        user_ids: &[&str],
         video_id: &str,
     ) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn accept_watch_party(&self, party_id: &str) -> zbus::Result<()>;
+    fn invite_watch_party(
+        &self,
+        party_id: &str,
+        user_ids: &[&str],
+    ) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_watch_party(&self, party_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn decline_watch_party(&self, party_id: &str) -> zbus::Result<()>;
+    fn leave_watch_party(&self, party_id: &str) -> zbus::Result<()>;
     fn publish_watch_party(
         &self,
         party_id: &str,

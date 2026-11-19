@@ -207,10 +207,12 @@ export const DEMO_DETAILS: UserDetails = {
 
 export const DEMO_PARTY: WatchParty = {
     party_id: 'party-demo',
-    user_id: demoPeer.id,
+    host_id: DEMO_BOOTSTRAP.identity.node_id,
     video_id: 'M7lc1UVf-VE',
     role: 'host',
     state: 'active',
+    participants: [DEMO_BOOTSTRAP.identity.node_id, demoPeer.id],
+    invited: [],
     position_ms: 372_000,
     playing: true,
     revision: 4,

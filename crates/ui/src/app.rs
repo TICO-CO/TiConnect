@@ -30,6 +30,17 @@ fn audio_only_media_allowed(is_audio: bool, is_video: bool) -> bool {
     is_audio && !is_video
 }
 
+fn youtube_frame(uri: &str) -> bool {
+    [
+        "https://www.youtube-nocookie.com/",
+        "https://www.youtube.com/",
+        "https://consent.youtube.com/",
+        "https://accounts.google.com/",
+    ]
+    .iter()
+    .any(|prefix| uri.starts_with(prefix))
+}
+
 fn apply_appearance(appearance: Appearance) {
     let Some(settings) = gtk::Settings::default() else {
         return;
@@ -49,6 +60,9 @@ fn build_webview(url: &str, origins: &Origins) -> webkit6::WebView {
     settings.set_enable_write_console_messages_to_stdout(dev);
     settings.set_allow_file_access_from_file_urls(false);
     settings.set_allow_universal_access_from_file_urls(false);
+    if std::env::var_os("TICONNECT_DISABLE_GPU").is_some_and(|value| !value.is_empty()) {
+        settings.set_hardware_acceleration_policy(webkit6::HardwareAccelerationPolicy::Never);
+    }
 
     let webview = webkit6::WebView::builder()
         .network_session(&session)
@@ -76,14 +90,19 @@ fn build_webview(url: &str, origins: &Origins) -> webkit6::WebView {
         let Some(action) = navigation.navigation_action() else {
             return false;
         };
-        let uri = action
-            .request()
-            .and_then(|request| request.uri())
-            .map(|uri| uri.to_string())
-            .unwrap_or_default();
-        if origins.allows_navigation(&uri) {
+        let Some(request) = action.request() else {
+            return false;
+        };
+        let Some(uri) = request.uri() else {
+            return false;
+        };
+        let uri = uri.to_string();
+        if origins.allows_navigation(&uri) || youtube_frame(&uri) {
             false
         } else {
+            if origins.dev_mode() {
+                eprintln!("blocked webview navigation: {uri}");
+            }
             decision.ignore();
             true
         }
@@ -209,7 +228,7 @@ fn glib_timeout_add(
 
 #[cfg(test)]
 mod tests {
-    use super::{audio_only_media_allowed, window_title_from};
+    use super::{audio_only_media_allowed, window_title_from, youtube_frame};
 
     #[test]
     fn media_permissions_allow_only_audio_capture() {
@@ -217,6 +236,15 @@ mod tests {
         assert!(!audio_only_media_allowed(false, false));
         assert!(!audio_only_media_allowed(true, true));
         assert!(!audio_only_media_allowed(false, true));
+    }
+
+    #[test]
+    fn youtube_frame_allows_consent_and_account_navigation() {
+        assert!(youtube_frame("https://www.youtube-nocookie.com/embed/x"));
+        assert!(youtube_frame("https://www.youtube.com/embed/x"));
+        assert!(youtube_frame("https://consent.youtube.com/m?continue=x"));
+        assert!(youtube_frame("https://accounts.google.com/ServiceLogin"));
+        assert!(!youtube_frame("https://example.com/"));
     }
 
     #[test]

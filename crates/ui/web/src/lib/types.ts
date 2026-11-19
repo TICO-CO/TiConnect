@@ -86,15 +86,32 @@ export interface ConversationSummary {
 
 export interface WatchParty {
     party_id: string;
-    user_id: string;
+    host_id: string;
     video_id: string;
     role: string;
     state: string;
+    participants: string[];
+    invited: string[];
     position_ms: number;
     playing: boolean;
     revision: number;
     actor: string;
     updated_at: number;
+}
+
+export interface YoutubeStream {
+    video_id: string;
+    url: string;
+}
+
+export interface YoutubePreview {
+    video_id: string;
+    title: string;
+    channel: string;
+    description: string;
+    thumbnail_url: string;
+    thumbnail_data: string | null;
+    duration_seconds: number;
 }
 
 export interface Call {

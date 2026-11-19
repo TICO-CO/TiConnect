@@ -10,6 +10,7 @@ license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 anyhow = "1"
+base64 = "0.22"
 ticonnect-core = { path = "crates/core" }
 ticonnect-logging = { path = "crates/logging" }
 ticonnect-settings = { path = "crates/settings" }
@@ -50,6 +51,7 @@ spake2 = "0.4"
 subtle = "2"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 x509-parser = { version = "0.18", features = ["verify"] }
 gtk4 = { version = "0.11", default-features = false, features = ["v4_14"] }

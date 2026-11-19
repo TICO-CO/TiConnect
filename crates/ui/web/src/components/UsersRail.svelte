@@ -59,11 +59,11 @@
             <Icon name="expand" />
         </button>
         <div
-            class="flex scroll min-h-0 w-full flex-1 flex-col items-center gap-2.5 overflow-y-auto"
+            class="-mx-3 flex scroll min-h-0 w-[72px] flex-1 flex-col items-center gap-2.5 overflow-x-hidden overflow-y-auto"
         >
             {#each filteredUsers as user (user.id)}
                 <button
-                    class="flex size-12 shrink-0 items-center justify-center rounded-md border-0 bg-transparent hover:bg-surface data-selected:bg-ink data-selected:hover:bg-ink"
+                    class="flex h-12 w-full shrink-0 items-center justify-center rounded-none border-0 bg-transparent hover:bg-surface data-selected:bg-ink data-selected:hover:bg-ink"
                     data-selected={app.selectedUserId === user.id ? '' : undefined}
                     onclick={() => selectUser(user.id)}
                     aria-label={shortName(user)}
@@ -83,6 +83,13 @@
             class="-mx-3 mt-auto -mb-3 flex w-[72px] flex-col items-center gap-2 border-t border-line bg-surface py-3"
         >
             <a class="logo-mark size-[34px] shrink-0" href="#/chat" aria-label="TiConnect"></a>
+            <button
+                class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                onclick={() => app.navigate({ kind: 'watch-party' })}
+                aria-label="Watch party"
+            >
+                <Icon name="party" size={15} />
+            </button>
             <button
                 class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                 onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
@@ -118,14 +125,16 @@
             />
             <kbd class="font-text text-xs text-ink-3">/</kbd>
         </label>
-        <div class="-mx-3 flex scroll min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3">
+        <div
+            class="-mx-3 flex scroll min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto"
+        >
             {#each filteredUsers as user (user.id)}
                 {@const summary = summaryFor(user.id)}
                 {@const selected = app.selectedUserId === user.id}
                 {@const muted = user.policy === 'mute' || user.policy === 'ignore'}
                 {@const addressChanged = summary?.last_body.includes('Address changed') ?? false}
                 <button
-                    class="group flex h-16 w-full shrink-0 items-center gap-2.5 rounded-md border-0 bg-transparent px-3 text-left text-ink hover:bg-surface data-selected:-mx-3 data-selected:w-[320px] data-selected:rounded-none data-selected:bg-ink data-selected:px-6 data-selected:text-base data-selected:hover:bg-ink"
+                    class="group flex h-16 w-full shrink-0 items-center gap-2.5 rounded-none border-0 bg-transparent px-6 text-left text-ink hover:bg-surface data-selected:bg-ink data-selected:text-base data-selected:hover:bg-ink"
                     data-selected={selected ? '' : undefined}
                     onclick={() => selectUser(user.id)}
                     aria-current={selected ? 'page' : undefined}
@@ -184,13 +193,22 @@
             <div class="flex h-9 items-center justify-between">
                 <span class="logo-mark size-[34px] shrink-0" role="img" aria-label="TiConnect"
                 ></span>
-                <button
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
-                    onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
-                    aria-label="Settings"
-                >
-                    <Icon name="settings" size={16} />
-                </button>
+                <div class="flex items-center gap-1">
+                    <button
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                        onclick={() => app.navigate({ kind: 'watch-party' })}
+                        aria-label="Watch party"
+                    >
+                        <Icon name="party" size={16} />
+                    </button>
+                    <button
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                        onclick={() => app.navigate({ kind: 'settings', section: 'user' })}
+                        aria-label="Settings"
+                    >
+                        <Icon name="settings" size={16} />
+                    </button>
+                </div>
             </div>
         </footer>
     {/if}

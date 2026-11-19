@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { BridgeClient, resolveBridge } from './bridge';
 
@@ -42,5 +42,57 @@ describe('BridgeClient', () => {
             message: 'bridge is not connected',
         });
         expect(result).toBeNull();
+    });
+});
+
+describe('BridgeClient downloads', () => {
+    it('retries a transient failure with a fresh ticket', async () => {
+        const client = new BridgeClient({
+            httpBaseUrl: 'http://127.0.0.1:41000',
+            webSocketUrl: 'ws://127.0.0.1:41000/ws',
+            token: null,
+            development: false,
+        });
+        let ticket = 0;
+        const request = vi.fn(async () => [
+            { url: `http://127.0.0.1:41000/attachment/hash?ticket=${++ticket}` },
+            null,
+        ]);
+        (client as unknown as { request: typeof request }).request = request;
+        const fetchMock = vi
+            .fn()
+            .mockResolvedValueOnce(new Response('', { status: 502 }))
+            .mockResolvedValueOnce(new Response(new Blob(['image']), { status: 200 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const [url, failure] = await client.downloadAttachment('hash');
+
+        expect(failure).toBeNull();
+        expect(url).toBe('blob:test');
+        expect(request).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0]?.[0]).not.toBe(fetchMock.mock.calls[1]?.[0]);
+    });
+
+    it('does not retry forbidden downloads', async () => {
+        const client = new BridgeClient({
+            httpBaseUrl: 'http://127.0.0.1:41000',
+            webSocketUrl: 'ws://127.0.0.1:41000/ws',
+            token: null,
+            development: false,
+        });
+        const request = vi.fn(async () => [
+            { url: 'http://127.0.0.1:41000/attachment/hash?ticket=1' },
+            null,
+        ]);
+        (client as unknown as { request: typeof request }).request = request;
+        const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 403 }));
+        vi.stubGlobal('fetch', fetchMock);
+
+        const [url, failure] = await client.downloadAttachment('hash');
+
+        expect(url).toBeNull();
+        expect(failure?.message).toBe('download request failed (403)');
+        expect(request).toHaveBeenCalledTimes(1);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 });

@@ -9,8 +9,9 @@ static ASSETS: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/assets");
 
 pub const CSP: &str = "default-src 'self'; connect-src 'self' ws://127.0.0.1:*; \
 img-src 'self' data: blob: https://i.ytimg.com https://img.youtube.com; \
+media-src 'self' blob: data: https://*.googlevideo.com; \
 style-src 'self' 'unsafe-inline'; script-src 'self'; \
-frame-src https://www.youtube-nocookie.com https://www.youtube.com; \
+frame-src https://www.youtube-nocookie.com https://www.youtube.com https://consent.youtube.com https://accounts.google.com; \
 object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
 
 pub fn index() -> Response {
@@ -58,4 +59,14 @@ pub fn security_headers() -> HeaderMap {
     );
     headers.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     headers
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CSP;
+
+    #[test]
+    fn csp_allows_blob_media() {
+        assert!(CSP.contains("media-src 'self' blob: data:"));
+    }
 }

@@ -40,9 +40,10 @@ Ctrl-C in the supervisor pane stops both nodes.
 
 Interactive labs start the Vite dev server at `http://127.0.0.1:5173` and point
 both UIs at it. Edits under `crates/ui/web` hot-reload without rebuilding the
-Rust binary. The Vite log is `$LAB_DIR/vite.log`. Port `5173` must be free. Use
-`LAB_HOT_RELOAD=0 make lab` to load the embedded bundle instead. Automated
-`make lab-smoke` always uses the embedded bundle.
+Rust binary. The Vite log is `$LAB_DIR/vite.log`. An existing TiConnect dev
+server on port `5173` is restarted automatically. Use `LAB_HOT_RELOAD=0 make lab`
+to load the embedded bundle instead. Automated `make lab-smoke` always uses the
+embedded bundle.
 
 Pane commands:
 
@@ -69,6 +70,23 @@ automatically and the user list populates without manual pairing.
 The lab sets distinct display names and UI window titles for the two nodes.
 Both UIs can run at the same time against their separate buses. Both overlays
 anchor top-right and overlap, so run one `ovl` at a time for clear testing.
+
+Group watch parties need at least three nodes. The daemon integration test
+starts three nodes itself:
+
+```sh
+cargo test -p ticonnect-daemon --test watch_party_group
+```
+
+For manual group testing, run `make lab` twice from the same workspace only
+after stopping the first lab, or use the integration test. Voice recording and
+YouTube playback need the GStreamer plugins exported by `nix develop`
+(`GST_PLUGIN_SYSTEM_PATH_1_0`). Check with:
+
+```sh
+nix develop -c gst-inspect-1.0 appsink
+nix develop -c gst-inspect-1.0 pulsesrc
+```
 
 Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
 stops. Run the automated harness check with:

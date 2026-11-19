@@ -119,13 +119,47 @@ start_bus() {
     fail "private D-Bus did not start"
 }
 
+stop_existing_dev_server() {
+    local pids
+    pids="$(ss -ltnpH "sport = :5173" 2>/dev/null |
+        sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u || true)"
+    if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser 5173/tcp 2>/dev/null | tr ' ' '\n' |
+            grep -E '^[0-9]+$' | sort -u || true)"
+    fi
+    [ -n "$pids" ] ||
+        fail "port 5173 is in use but the owning process could not be identified"
+    local pid args cwd
+    for pid in $pids; do
+        args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+        cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+        if [ "$cwd" != "$ROOT/crates/ui/web" ] &&
+            [[ "$args" != *"$ROOT/crates/ui/web"* ]]; then
+            fail "port 5173 is held by an unrelated process (pid $pid): $args"
+        fi
+    done
+    printf 'lab: restarting UI dev server on port 5173\n'
+    kill $pids 2>/dev/null || true
+    for _ in $(seq 1 50); do
+        if ! (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    kill -9 $pids 2>/dev/null || true
+    sleep 0.2
+    if (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+        fail "port 5173 is still in use after stopping the existing dev server"
+    fi
+}
+
 start_dev_server() {
     command -v bun >/dev/null 2>&1 ||
         fail "bun is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
     command -v curl >/dev/null 2>&1 ||
         fail "curl is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
     if (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
-        fail "port 5173 is already in use; stop the existing dev server or set LAB_HOT_RELOAD=0"
+        stop_existing_dev_server
     fi
     (
         cd "$ROOT/crates/ui/web"
@@ -189,6 +223,45 @@ node_id() {
     cli "$1" id show | awk '/^node_id:/ {print $2}'
 }
 
+gio_env() {
+    if [ -n "${GIO_EXTRA_MODULES:-}" ]; then
+        return 0
+    fi
+    local dir
+    dir="$(ls -d /nix/store/*-glib-networking-*/lib/gio/modules 2>/dev/null |
+        head -n 1)"
+    [ -n "$dir" ] ||
+        fail "glib-networking is not available; run make lab from nix develop"
+    GIO_EXTRA_MODULES="$dir"
+    export GIO_EXTRA_MODULES
+}
+
+gstreamer_env() {
+    if [ -n "${GST_PLUGIN_SYSTEM_PATH_1_0:-}" ]; then
+        GST_PLUGIN_SYSTEM_PATH="${GST_PLUGIN_SYSTEM_PATH:-$GST_PLUGIN_SYSTEM_PATH_1_0}"
+        export GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_SYSTEM_PATH
+        return 0
+    fi
+    local lib version dir
+    lib="$(ldd "$BIN" 2>/dev/null | awk '/libgstreamer-1\.0\.so/ {print $3; exit}')"
+    [ -n "$lib" ] ||
+        fail "cannot resolve libgstreamer-1.0; run make lab from nix develop"
+    version="$(basename "$(dirname "$(dirname "$lib")")" |
+        sed -n 's/.*-gstreamer-\(.*\)$/\1/p')"
+    [ -n "$version" ] || fail "cannot determine GStreamer version from $lib"
+    local -a dirs=()
+    for dir in /nix/store/*-gstreamer-"$version"/lib/gstreamer-1.0 \
+        /nix/store/*-gst-plugins-*-"$version"/lib/gstreamer-1.0 \
+        /nix/store/*-gst-libav-"$version"/lib/gstreamer-1.0; do
+        [ -d "$dir" ] && dirs+=("$dir")
+    done
+    [ "${#dirs[@]}" -gt 0 ] ||
+        fail "no GStreamer $version plugins found; run make lab from nix develop"
+    GST_PLUGIN_SYSTEM_PATH_1_0="$(IFS=:; printf '%s' "${dirs[*]}")"
+    GST_PLUGIN_SYSTEM_PATH="$GST_PLUGIN_SYSTEM_PATH_1_0"
+    export GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_SYSTEM_PATH
+}
+
 write_node_files() {
     local node="$1" bus="$2" dir="$3" id="$4" user_id="$5" label="$6" user_label="$7"
     mkdir -p "$dir/bin"
@@ -214,6 +287,14 @@ export TICONNECT_BIN='$BIN'
 export TICONNECT_UI_TITLE='TiConnect · $label'
 export LD_LIBRARY_PATH='${LD_LIBRARY_PATH:-}'
 export TICONNECT_UI_TIMING='${TICONNECT_UI_TIMING:-}'
+export GST_PLUGIN_SYSTEM_PATH_1_0='${GST_PLUGIN_SYSTEM_PATH_1_0:-}'
+export GST_PLUGIN_SYSTEM_PATH='${GST_PLUGIN_SYSTEM_PATH:-}'
+export GIO_EXTRA_MODULES='${GIO_EXTRA_MODULES:-}'
+export TICONNECT_YTDLP='${TICONNECT_YTDLP:-}'
+export TICONNECT_DISABLE_GPU='${TICONNECT_DISABLE_GPU:-}'
+export WEBKIT_DISABLE_DMABUF_RENDERER='${WEBKIT_DISABLE_DMABUF_RENDERER:-}'
+export LIBGL_ALWAYS_SOFTWARE='${LIBGL_ALWAYS_SOFTWARE:-}'
+export GALLIUM_DRIVER='${GALLIUM_DRIVER:-}'
 export LAB_DIR='$WORK'
 export LAB_NODE_DIR='$dir'
 export LAB_NODE='$node'
@@ -361,6 +442,15 @@ mkdir -p "$WORK/bin"
 if [ "$SMOKE" = "0" ] && [ "$HOT_RELOAD" = "1" ]; then
     start_dev_server
 fi
+gstreamer_env
+gio_env
+if [ -z "${TICONNECT_YTDLP:-}" ]; then
+    TICONNECT_YTDLP="$(ls -d /nix/store/*-yt-dlp-*/bin/yt-dlp 2>/dev/null |
+        sort | tail -n 1 || true)"
+fi
+[ -n "${TICONNECT_YTDLP:-}" ] ||
+    fail "yt-dlp is required; run make lab from nix develop"
+export TICONNECT_YTDLP
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
 write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair
@@ -416,13 +506,12 @@ done
 printf 'Lab tab %s is ready.\n' "$TAB_NAME"
 printf 'Close the tab, run lab-stop, or press Ctrl-C here to stop.\n'
 misses=0
-while zellij_tab_exists; do
-    misses=0
-    sleep 1
-done
-# Three failed queries in a row mean the Zellij server is gone.
-while ! zellij_query_tabs >/dev/null 2>&1; do
-    misses=$((misses + 1))
-    [ "$misses" -ge 3 ] && break
+while :; do
+    if zellij_tab_exists; then
+        misses=0
+    else
+        misses=$((misses + 1))
+        [ "$misses" -ge 3 ] && break
+    fi
     sleep 1
 done

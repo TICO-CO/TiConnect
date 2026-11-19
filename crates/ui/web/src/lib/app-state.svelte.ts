@@ -25,6 +25,8 @@ import type {
     UserPolicy,
     WatchParty,
     WebSocketEvent,
+    YoutubePreview,
+    YoutubeStream,
 } from './types';
 import { firstVideoId } from './youtube';
 
@@ -48,6 +50,13 @@ export interface PlayerState {
     channel: string;
     positionMs: number;
     playing: boolean;
+}
+
+export interface TransferState {
+    bytes: number;
+    total: number;
+    done: boolean;
+    failed: string;
 }
 
 interface CallLog {
@@ -92,12 +101,14 @@ export class AppState {
     call = $state<Call | null>(null);
     remote = $state<RemoteSession | null>(null);
     party = $state<WatchParty | null>(null);
+    watchPartySelection = $state<string[]>([]);
     route = $state<Route>({ kind: 'chat', id: '' });
     collapsed = $state(false);
     draft = $state('');
     errorMessage = $state('');
     notice = $state('');
     toasts = $state<Toast[]>([]);
+    transfers = $state<Record<string, TransferState>>({});
     player = $state<PlayerState | null>(null);
     typing = $state<Record<string, boolean>>({});
     callLogs = $state<CallLog[]>([]);
@@ -109,6 +120,7 @@ export class AppState {
     private avatarHashes = new SvelteMap<string, string>();
     private avatarPending = new SvelteMap<string, string>();
     private attachmentUrls = new SvelteMap<string, string>();
+    private attachmentPending = new SvelteMap<string, Promise<string>>();
     private lastRouteKind = '';
     preferences = $state<Preferences>({ ...DEFAULT_PREFERENCES });
     settings = $state<Record<string, string>>({});
@@ -125,6 +137,7 @@ export class AppState {
     recordingSeconds = $state(0);
     demo = false;
     private client: BridgeClient | null = null;
+    private videoPreviews = new SvelteMap<string, YoutubePreview>();
     private reconnectTimer: number | null = null;
     private reconnectDelay = 1_000;
     private refreshTimer: number | null = null;
@@ -422,6 +435,7 @@ export class AppState {
     private releaseAttachments(): void {
         this.attachmentUrls.forEach((url) => URL.revokeObjectURL(url));
         this.attachmentUrls.clear();
+        this.attachmentPending.clear();
     }
 
     private releaseAvatars(): void {
@@ -771,6 +785,20 @@ export class AppState {
         void this.loadRoute();
     }
 
+    openWatchParty(userIds: string[] = []): void {
+        const selfId = this.bootstrap?.identity.node_id ?? '';
+        this.watchPartySelection = userIds.filter(
+            (userId, index) => userId !== selfId && userIds.indexOf(userId) === index,
+        );
+        this.navigate({ kind: 'watch-party' });
+    }
+
+    takeWatchPartySelection(): string[] {
+        const selection = this.watchPartySelection;
+        this.watchPartySelection = [];
+        return selection;
+    }
+
     setSection(section: SettingsSection): void {
         this.navigate({ kind: 'settings', section });
     }
@@ -778,7 +806,9 @@ export class AppState {
     backToChat(): void {
         const id =
             this.route.kind === 'watch-party'
-                ? (this.party?.user_id ?? this.lastChatUserId)
+                ? (this.party?.participants.find((item) => !this.isSelf(item)) ??
+                  this.party?.host_id ??
+                  this.lastChatUserId)
                 : this.selectedUserId || this.lastChatUserId;
         this.navigate({ kind: 'chat', id });
     }
@@ -1087,7 +1117,7 @@ export class AppState {
         }
     }
 
-    async openAttachment(hash: string): Promise<void> {
+    async saveAttachment(hash: string, name: string): Promise<void> {
         if (this.client === null || hash === '') {
             this.notice = 'This attachment is not available in the demo.';
             return;
@@ -1097,9 +1127,21 @@ export class AppState {
             this.notice = failure.message;
             return;
         }
-        if (url !== null) {
-            window.open(url, '_blank', 'noopener');
+        if (url === null) {
+            return;
         }
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = name || 'attachment';
+        anchor.rel = 'noopener';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }
+
+    async openAttachment(hash: string): Promise<void> {
+        await this.saveAttachment(hash, 'attachment');
     }
 
     async attachmentUrl(hash: string): Promise<string> {
@@ -1110,6 +1152,21 @@ export class AppState {
         if (cached !== undefined) {
             return cached;
         }
+        const pending = this.attachmentPending.get(hash);
+        if (pending !== undefined) {
+            return pending;
+        }
+        if (this.client === null) {
+            return '';
+        }
+        const task = this.fetchAttachmentUrl(hash).finally(() => {
+            this.attachmentPending.delete(hash);
+        });
+        this.attachmentPending.set(hash, task);
+        return task;
+    }
+
+    private async fetchAttachmentUrl(hash: string): Promise<string> {
         if (this.client === null) {
             return '';
         }
@@ -1291,18 +1348,21 @@ export class AppState {
         this.remote = null;
     }
 
-    async startParty(videoId: string, userId: string): Promise<void> {
+    async startParty(videoId: string, userIds: string[]): Promise<void> {
+        const selfId = this.bootstrap?.identity.node_id ?? '';
         if (this.client === null) {
             this.party = {
                 party_id: 'demo-party',
-                user_id: userId,
+                host_id: selfId,
                 video_id: videoId,
                 role: 'host',
                 state: 'active',
+                participants: [selfId, ...userIds],
+                invited: [],
                 position_ms: 0,
                 playing: true,
                 revision: 1,
-                actor: this.bootstrap?.identity.node_id ?? '',
+                actor: selfId,
                 updated_at: nowSeconds(),
             };
             this.openPlayer(videoId, 0, true);
@@ -1310,7 +1370,7 @@ export class AppState {
             return;
         }
         const [party, failure] = await this.client.request<WatchParty>('start_watch_party', {
-            user_id: userId,
+            user_ids: userIds,
             video_id: videoId,
         });
         if (failure) {
@@ -1321,6 +1381,93 @@ export class AppState {
         this.navigate({ kind: 'watch-party' });
     }
 
+    async inviteParty(userIds: string[]): Promise<void> {
+        if (this.client === null || this.party === null) {
+            return;
+        }
+        const [party, failure] = await this.client.request<WatchParty>('invite_watch_party', {
+            party_id: this.party.party_id,
+            user_ids: userIds,
+        });
+        if (failure) {
+            this.notice = failure.message;
+            return;
+        }
+        this.party = party;
+    }
+
+    async youtubePreview(videoId: string): Promise<YoutubePreview | null> {
+        const cached = this.videoPreviews.get(videoId);
+        if (cached !== undefined) {
+            return cached;
+        }
+        if (this.client === null) {
+            const preview: YoutubePreview = {
+                video_id: videoId,
+                title: `YouTube video ${videoId}`,
+                channel: 'YouTube',
+                description: '',
+                thumbnail_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+                thumbnail_data: null,
+                duration_seconds: 0,
+            };
+            this.videoPreviews.set(videoId, preview);
+            return preview;
+        }
+        const [preview, failure] = await this.client.request<YoutubePreview>('youtube_preview', {
+            video_id: videoId,
+        });
+        if (failure || preview === null) {
+            return null;
+        }
+        this.videoPreviews.set(videoId, preview);
+        return preview;
+    }
+
+    async youtubeStream(videoId: string): Promise<string | null> {
+        if (this.client === null) {
+            return null;
+        }
+        const [stream, failure] = await this.client.request<YoutubeStream>('youtube_stream', {
+            video_id: videoId,
+        });
+        if (failure) {
+            this.notice = `Video stream unavailable: ${failure.message}`;
+            return null;
+        }
+        if (stream === null) {
+            this.notice = 'Video stream unavailable.';
+            return null;
+        }
+        return stream.url;
+    }
+
+    async sendVideoToUsers(userIds: string[], videoId: string): Promise<void> {
+        if (userIds.length === 0) {
+            this.notice = 'Select at least one person.';
+            return;
+        }
+        const body = `https://www.youtube.com/watch?v=${videoId}`;
+        if (this.client === null) {
+            this.notice = 'Video link sent for this demo.';
+            return;
+        }
+        let failed = 0;
+        for (const userId of userIds) {
+            const [, failure] = await this.client.request<string>('send_message', {
+                user_id: userId,
+                body,
+            });
+            if (failure) {
+                failed += 1;
+            }
+        }
+        this.notice =
+            failed === 0
+                ? `Video sent to ${userIds.length} ${userIds.length === 1 ? 'person' : 'people'}.`
+                : `Video sent to ${userIds.length - failed} of ${userIds.length} people.`;
+    }
+
     async acceptParty(): Promise<void> {
         if (this.client === null || this.party === null) {
             if (this.party !== null) {
@@ -1328,14 +1475,16 @@ export class AppState {
             }
             return;
         }
-        const [, failure] = await this.client.request('accept_watch_party', {
+        const [party, failure] = await this.client.request<WatchParty>('accept_watch_party', {
             party_id: this.party.party_id,
         });
         if (failure) {
             this.notice = failure.message;
             return;
         }
-        await this.loadParty();
+        if (party !== null) {
+            this.party = party;
+        }
         this.navigate({ kind: 'watch-party' });
     }
 
@@ -1365,7 +1514,20 @@ export class AppState {
         }
     }
 
+    async leaveParty(): Promise<void> {
+        if (this.client !== null && this.party !== null) {
+            await this.client.request('leave_watch_party', { party_id: this.party.party_id });
+        }
+        this.party = null;
+        this.closePlayer();
+        this.backToChat();
+    }
+
     async endParty(): Promise<void> {
+        if (this.party !== null && this.party.role === 'guest') {
+            await this.leaveParty();
+            return;
+        }
         if (this.client !== null && this.party !== null) {
             await this.client.request('end_watch_party', { party_id: this.party.party_id });
         }
@@ -1429,8 +1591,8 @@ export class AppState {
     openPlayer(videoId: string, positionMs = 0, playing = true): void {
         this.player = {
             videoId,
-            title: 'How we built TiConnect for the LAN',
-            channel: 'TiConnect Labs',
+            title: `YouTube video ${videoId}`,
+            channel: 'YouTube',
             positionMs,
             playing,
         };
@@ -1450,6 +1612,34 @@ export class AppState {
 
     dismissNotice(): void {
         this.notice = '';
+    }
+
+    transferFor(hash: string): TransferState | null {
+        return this.transfers[hash] ?? null;
+    }
+
+    private setTransfer(hash: string, bytes: number, total: number): void {
+        if (hash === '') {
+            return;
+        }
+        this.transfers = {
+            ...this.transfers,
+            [hash]: { bytes, total, done: false, failed: '' },
+        };
+    }
+
+    private finishTransfer(hash: string, reason: string): void {
+        if (hash === '') {
+            return;
+        }
+        const current = this.transfers[hash] ?? { bytes: 0, total: 0, done: false, failed: '' };
+        this.transfers = {
+            ...this.transfers,
+            [hash]: { ...current, done: true, failed: reason },
+        };
+        if (reason !== '') {
+            this.notice = `Attachment transfer failed: ${reason}`;
+        }
     }
 
     private handleEvent(event: WebSocketEvent): void {
@@ -1545,6 +1735,22 @@ export class AppState {
             case 'settings_changed':
                 void this.loadSettings();
                 break;
+            case 'transfer_progress':
+                this.setTransfer(
+                    String(event.hash ?? ''),
+                    Number(event.bytes ?? 0),
+                    Number(event.total ?? 0),
+                );
+                break;
+            case 'transfer_done':
+                this.finishTransfer(String(event.hash ?? ''), '');
+                break;
+            case 'transfer_failed':
+                this.finishTransfer(
+                    String(event.hash ?? ''),
+                    String(event.reason ?? 'transfer failed'),
+                );
+                break;
             case 'error':
                 this.notice = String(event.message ?? 'bridge error');
                 break;
@@ -1620,11 +1826,26 @@ export class AppState {
     }
 
     userName(userId: string): string {
+        const identity = this.bootstrap?.identity;
+        if (identity?.node_id === userId) {
+            return identity.display_name.trim() || 'You';
+        }
         const user = this.users.find((item) => item.id === userId);
         if (user === undefined) {
             return userId.slice(0, 8);
         }
         return user.display_name.trim() || user.id.slice(0, 8);
+    }
+
+    isSelf(userId: string): boolean {
+        return this.bootstrap?.identity.node_id === userId;
+    }
+
+    participantAvatar(userId: string): string {
+        if (this.isSelf(userId)) {
+            return this.selfAvatarUrl || this.avatarUrl(this.bootstrap?.identity.fingerprint ?? '');
+        }
+        return this.avatarUrl(this.userById(userId)?.fingerprint ?? '');
     }
 
     userById(userId: string): User | null {

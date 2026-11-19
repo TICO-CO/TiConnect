@@ -235,3 +235,127 @@ describe('AppState feature behavior', () => {
         expect(client.downloadAttachment).toHaveBeenCalledWith('hash-1');
     });
 });
+
+describe('group watch party behavior', () => {
+    const groupParty = {
+        party_id: 'party-1',
+        host_id: 'node-1',
+        video_id: 'dQw4w9WgXcQ',
+        role: 'host',
+        state: 'ringing',
+        participants: ['node-1'],
+        invited: ['user-1', 'user-2'],
+        position_ms: 0,
+        playing: false,
+        revision: 0,
+        actor: '',
+        updated_at: 1,
+    };
+
+    it('starts a group party with every selected user', async () => {
+        const { app, client } = makeApp();
+        app.bootstrap = {
+            identity: {
+                node_id: 'node-1',
+                fingerprint: 'fingerprint',
+                display_name: 'Host',
+                avatar_hash: '',
+                created_at: 1,
+            },
+            status: {
+                transport_state: 'online',
+                active_sessions: 2,
+                outbox_depth: 0,
+                user_count: 2,
+            },
+            settings: {},
+            appearance: 'system',
+            autostart: false,
+            version: '0.0.6',
+            online: true,
+        };
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'start_watch_party') {
+                return [groupParty, null];
+            }
+            return [null, null];
+        });
+
+        await app.startParty('dQw4w9WgXcQ', ['user-1', 'user-2']);
+
+        expect(client.request).toHaveBeenCalledWith('start_watch_party', {
+            user_ids: ['user-1', 'user-2'],
+            video_id: 'dQw4w9WgXcQ',
+        });
+        expect(app.party?.participants).toEqual(['node-1']);
+        expect(app.party?.invited).toEqual(['user-1', 'user-2']);
+    });
+
+    it('sends a video link to multiple people', async () => {
+        const { app, client } = makeApp();
+        await app.sendVideoToUsers(['user-1', 'user-2'], 'dQw4w9WgXcQ');
+
+        expect(client.request).toHaveBeenCalledWith('send_message', {
+            user_id: 'user-1',
+            body: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        });
+        expect(client.request).toHaveBeenCalledWith('send_message', {
+            user_id: 'user-2',
+            body: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+        });
+    });
+
+    it('tracks transfer progress events', () => {
+        const { app } = makeApp();
+        (app as unknown as { handleEvent: (event: unknown) => void }).handleEvent({
+            type: 'transfer_progress',
+            hash: 'abc',
+            bytes: 50,
+            total: 100,
+        });
+        expect(app.transferFor('abc')).toEqual({
+            bytes: 50,
+            total: 100,
+            done: false,
+            failed: '',
+        });
+        (app as unknown as { handleEvent: (event: unknown) => void }).handleEvent({
+            type: 'transfer_failed',
+            hash: 'abc',
+            reason: 'peer disconnected',
+        });
+        expect(app.transferFor('abc')?.failed).toBe('peer disconnected');
+    });
+});
+
+describe('attachment download deduplication', () => {
+    it('shares one download across concurrent attachment URL requests', async () => {
+        const { app, client } = makeApp();
+        let resolveDownload: (value: [string | null, null]) => void = () => {};
+        const pending = new Promise<[string | null, null]>((resolve) => {
+            resolveDownload = resolve;
+        });
+        client.downloadAttachment.mockReturnValue(pending);
+
+        const first = app.attachmentUrl('hash-1');
+        const second = app.attachmentUrl('hash-1');
+        expect(client.downloadAttachment).toHaveBeenCalledTimes(1);
+
+        resolveDownload(['blob:attachment', null]);
+        expect(await first).toBe('blob:attachment');
+        expect(await second).toBe('blob:attachment');
+        expect(await app.attachmentUrl('hash-1')).toBe('blob:attachment');
+        expect(client.downloadAttachment).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('watch party navigation', () => {
+    it('opens the watch party page with preselected users', () => {
+        const { app } = makeApp();
+        app.openWatchParty(['user-1', 'user-1']);
+
+        expect(app.route).toEqual({ kind: 'watch-party' });
+        expect(app.takeWatchPartySelection()).toEqual(['user-1']);
+        expect(app.takeWatchPartySelection()).toEqual([]);
+    });
+});

@@ -267,18 +267,46 @@ async fn dispatch_inner(
         "start_watch_party" => {
             let input: StartWatchParty = params(value)?;
             Ok(json!(
-                link.start_watch_party(input.user_id, input.video_id)
+                link.start_watch_party(input.user_ids, input.video_id)
+                    .await?
+            ))
+        }
+        "youtube_preview" => {
+            let input: VideoId = params(value)?;
+            crate::bridge::youtube::preview(&input.video_id)
+                .await
+                .map(|preview| json!(preview))
+                .map_err(|error| RpcError::new("youtube_unavailable", error.to_string()))
+        }
+        "youtube_stream" => {
+            let input: VideoId = params(value)?;
+            let path = crate::bridge::youtube::download(&input.video_id)
+                .await
+                .map_err(|error| RpcError::new("youtube_unavailable", error.to_string()))?;
+            let ticket = state
+                .mint_stream_ticket(path.to_string_lossy().into_owned())
+                .map_err(|error| RpcError::new("internal", error.to_string()))?;
+            Ok(json!({"video_id": input.video_id, "url": state.ticket_url(&ticket)}))
+        }
+        "invite_watch_party" => {
+            let input: InviteWatchParty = params(value)?;
+            Ok(json!(
+                link.invite_watch_party(input.party_id, input.user_ids)
                     .await?
             ))
         }
         "accept_watch_party" => {
             let input: PartyId = params(value)?;
-            link.accept_watch_party(input.party_id).await?;
-            Ok(Value::Null)
+            Ok(json!(link.accept_watch_party(input.party_id).await?))
         }
         "decline_watch_party" => {
             let input: PartyId = params(value)?;
             link.decline_watch_party(input.party_id).await?;
+            Ok(Value::Null)
+        }
+        "leave_watch_party" => {
+            let input: PartyId = params(value)?;
+            link.leave_watch_party(input.party_id).await?;
             Ok(Value::Null)
         }
         "publish_watch_party" => {
@@ -408,8 +436,19 @@ struct SessionId {
 
 #[derive(Deserialize)]
 struct StartWatchParty {
-    user_id: String,
+    user_ids: Vec<String>,
     video_id: String,
+}
+
+#[derive(Deserialize)]
+struct VideoId {
+    video_id: String,
+}
+
+#[derive(Deserialize)]
+struct InviteWatchParty {
+    party_id: String,
+    user_ids: Vec<String>,
 }
 
 #[derive(Deserialize)]

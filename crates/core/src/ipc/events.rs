@@ -21,9 +21,10 @@ use super::{
     TRANSFER_PHASE, TRANSFER_REASON, TRANSFER_SIZE, TRANSFER_USER_ID, USER_ADDRESSES,
     USER_APP_VERSION, USER_AVATAR_HASH, USER_CONNECTED, USER_DESKTOP, USER_DISPLAY_NAME,
     USER_DISPLAY_SERVER, USER_FINGERPRINT, USER_ID, USER_LAST_SEEN, USER_MAC, USER_OS, USER_POLICY,
-    USER_PORT, USER_SOURCE, USER_TRUSTED_AT, WATCH_PARTY_ACTOR, WATCH_PARTY_ID,
-    WATCH_PARTY_PLAYING, WATCH_PARTY_POSITION_MS, WATCH_PARTY_REVISION, WATCH_PARTY_ROLE,
-    WATCH_PARTY_STATE, WATCH_PARTY_UPDATED_AT, WATCH_PARTY_USER_ID, WATCH_PARTY_VIDEO_ID,
+    USER_PORT, USER_SOURCE, USER_TRUSTED_AT, WATCH_PARTY_ACTOR, WATCH_PARTY_HOST_ID,
+    WATCH_PARTY_ID, WATCH_PARTY_INVITED, WATCH_PARTY_PARTICIPANTS, WATCH_PARTY_PLAYING,
+    WATCH_PARTY_POSITION_MS, WATCH_PARTY_REVISION, WATCH_PARTY_ROLE, WATCH_PARTY_STATE,
+    WATCH_PARTY_UPDATED_AT, WATCH_PARTY_VIDEO_ID,
 };
 
 #[derive(Debug, Error)]
@@ -133,10 +134,12 @@ pub struct User {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WatchParty {
     pub party_id: String,
-    pub user_id: String,
+    pub host_id: String,
     pub video_id: String,
     pub role: String,
     pub state: String,
+    pub participants: Vec<String>,
+    pub invited: Vec<String>,
     pub position_ms: u64,
     pub playing: bool,
     pub revision: u64,
@@ -385,16 +388,33 @@ pub fn parse_user(values: &HashMap<String, OwnedVariant>) -> Result<User> {
 pub fn parse_watch_party(values: &HashMap<String, OwnedVariant>) -> Result<WatchParty> {
     Ok(WatchParty {
         party_id: required_string(values, WATCH_PARTY_ID)?,
-        user_id: optional_string(values, WATCH_PARTY_USER_ID)?,
+        host_id: optional_string(values, WATCH_PARTY_HOST_ID)?,
         video_id: optional_string(values, WATCH_PARTY_VIDEO_ID)?,
         role: optional_string(values, WATCH_PARTY_ROLE)?,
         state: optional_string(values, WATCH_PARTY_STATE)?,
+        participants: optional_list(values, WATCH_PARTY_PARTICIPANTS),
+        invited: optional_list(values, WATCH_PARTY_INVITED),
         position_ms: optional_u64(values, WATCH_PARTY_POSITION_MS)?,
         playing: optional_bool(values, WATCH_PARTY_PLAYING)?,
         revision: optional_u64(values, WATCH_PARTY_REVISION)?,
         actor: optional_string(values, WATCH_PARTY_ACTOR)?,
         updated_at: optional_u64(values, WATCH_PARTY_UPDATED_AT)?,
     })
+}
+
+fn optional_list(values: &HashMap<String, OwnedVariant>, key: &str) -> Vec<String> {
+    let Some(value) = values.get(key) else {
+        return Vec::new();
+    };
+    let Ok(value) = <&str>::try_from(value) else {
+        return Vec::new();
+    };
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 pub fn parse_user_details(values: &HashMap<String, OwnedVariant>) -> Result<UserDetails> {

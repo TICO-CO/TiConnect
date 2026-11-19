@@ -878,31 +878,59 @@ impl DaemonService {
 
     async fn start_watch_party(
         &self,
-        user_id: &str,
+        user_ids: Vec<String>,
         video_id: &str,
     ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
         let snapshot = self
             .state
             .watch_party()
-            .start(user_id, video_id)
+            .start(&ids, video_id)
             .await
             .map_err(watch_party_error)?;
         Ok(watch_party_variant(&snapshot))
     }
 
-    async fn accept_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
-        self.state
+    async fn invite_watch_party(
+        &self,
+        party_id: &str,
+        user_ids: Vec<String>,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
+        let snapshot = self
+            .state
+            .watch_party()
+            .invite(party_id, &ids)
+            .await
+            .map_err(watch_party_error)?;
+        Ok(watch_party_variant(&snapshot))
+    }
+
+    async fn accept_watch_party(
+        &self,
+        party_id: &str,
+    ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let snapshot = self
+            .state
             .watch_party()
             .accept(party_id)
             .await
             .map_err(watch_party_error)?;
-        Ok(())
+        Ok(watch_party_variant(&snapshot))
     }
 
     async fn decline_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
         self.state
             .watch_party()
             .decline(party_id)
+            .await
+            .map_err(watch_party_error)
+    }
+
+    async fn leave_watch_party(&self, party_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .watch_party()
+            .leave(party_id)
             .await
             .map_err(watch_party_error)
     }
@@ -1631,8 +1659,16 @@ fn watch_party_variant(snapshot: &WatchPartySnapshot) -> HashMap<String, OwnedVa
             string_variant(snapshot.party_id.clone()),
         ),
         (
-            ipc::WATCH_PARTY_USER_ID.to_owned(),
-            string_variant(snapshot.user_id.clone()),
+            ipc::WATCH_PARTY_HOST_ID.to_owned(),
+            string_variant(snapshot.host_id.clone()),
+        ),
+        (
+            ipc::WATCH_PARTY_PARTICIPANTS.to_owned(),
+            string_variant(snapshot.participants.join(",")),
+        ),
+        (
+            ipc::WATCH_PARTY_INVITED.to_owned(),
+            string_variant(snapshot.invited.join(",")),
         ),
         (
             ipc::WATCH_PARTY_VIDEO_ID.to_owned(),

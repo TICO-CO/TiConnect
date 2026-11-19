@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { AppState } from '../lib';
-    import { clock, shortName } from '../lib';
+    import { clock, playerUrl, shortName, YOUTUBE_ORIGIN } from '../lib';
     import Avatar from './Avatar.svelte';
     import Icon from './Icon.svelte';
 
@@ -12,6 +12,7 @@
     let playerFrame: HTMLIFrameElement | null = $state(null);
     let muted = $state(false);
     let now = $state(Date.now());
+    const playerOrigin = typeof window === 'undefined' ? '' : window.location.origin;
 
     $effect(() => {
         const timer = window.setInterval(() => {
@@ -41,7 +42,9 @@
             : null,
     );
     const partyInvite = $derived(
-        app.party !== null && app.party.state === 'ringing' ? app.party : null,
+        app.party !== null && app.party.state === 'ringing' && app.party.role === 'guest'
+            ? app.party
+            : null,
     );
     const activeParty = $derived(
         app.party !== null && app.party.state !== 'ringing' && app.route.kind !== 'watch-party'
@@ -65,7 +68,7 @@
     function post(command: string): void {
         playerFrame?.contentWindow?.postMessage(
             JSON.stringify({ event: 'command', func: command, args: [] }),
-            '*',
+            YOUTUBE_ORIGIN,
         );
     }
 
@@ -153,7 +156,7 @@
         </article>
     {/if}
     {#if partyInvite}
-        {@const partyUser = app.userById(partyInvite.user_id)}
+        {@const partyUser = app.userById(partyInvite.host_id)}
         <article
             class="pointer-events-auto flex flex-col rounded-lg border border-line-strong bg-surface px-4 py-3.5 shadow-soft"
         >
@@ -161,7 +164,7 @@
                 <Avatar
                     user={partyUser}
                     image={partyUser ? app.avatarUrl(partyUser.fingerprint) : ''}
-                    name={app.userName(partyInvite.user_id)}
+                    name={app.userName(partyInvite.host_id)}
                     size={32}
                 />
                 <span
@@ -171,7 +174,7 @@
                 <span class="text-xs text-ink-3 tabular-nums">{clock(partyInvite.updated_at)}</span>
             </div>
             <h2 class="mt-2 mb-0 font-display text-[19px] leading-6 font-normal tracking-[-0.01em]">
-                {app.userName(partyInvite.user_id)}
+                {app.userName(partyInvite.host_id)}
             </h2>
             <p class="mt-0.5 mb-0 text-[13px] text-ink-2">Watch party · {partyTitle()}</p>
             <div class="mt-3 flex justify-end gap-2">
@@ -262,7 +265,7 @@
                 class="flex size-[30px] items-center justify-center rounded-full border border-line-strong"
                 ><Icon name="play" size={12} color="var(--color-ink-2)" /></span
             >
-            <span>Watch party · 3 watching</span>
+            <span>Watch party · {activeParty.participants.length} watching</span>
             <span
                 class="ml-auto rounded-pill border border-line-strong px-2.5 py-1 text-xs text-ink-2"
                 >Open</span
@@ -354,16 +357,16 @@
                 <iframe
                     class="size-full border-0"
                     bind:this={playerFrame}
-                    src={`https://www.youtube-nocookie.com/embed/${app.player.videoId}?enablejsapi=1&rel=0&autoplay=1`}
+                    src={playerUrl(app.player.videoId, playerOrigin, true)}
                     title={app.player.title}
-                    allow="autoplay; encrypted-media; picture-in-picture"
+                    allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
                     allowfullscreen
                 ></iframe>
             </div>
             <div class="flex flex-col gap-0.5 py-2.5">
                 <strong class="text-[15px]">{app.player.title}</strong>
                 <span class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                    >{app.player.channel} · 18:42</span
+                    >{app.player.channel} · LAN</span
                 >
             </div>
             <div class="flex items-center gap-2">

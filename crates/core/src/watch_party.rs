@@ -4,14 +4,7 @@ use thiserror::Error;
 use crate::wire::{Frame, FrameKind, MAX_WATCH_PARTY_FRAME, WireError};
 
 pub const MAX_VIDEO_ID: usize = 32;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WatchPartyCommand {
-    pub revision: u64,
-    pub actor: String,
-    pub position_ms: u64,
-    pub playing: bool,
-}
+pub const MAX_PARTY_PARTICIPANTS: usize = 16;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WatchPartyFrame {
@@ -25,9 +18,24 @@ pub enum WatchPartyFrame {
     Decline {
         party_id: [u8; 16],
     },
+    Leave {
+        party_id: [u8; 16],
+    },
     Command {
         party_id: [u8; 16],
-        command: WatchPartyCommand,
+        position_ms: u64,
+        playing: bool,
+    },
+    Sync {
+        party_id: [u8; 16],
+        state: String,
+        participants: Vec<String>,
+        invited: Vec<String>,
+        position_ms: u64,
+        playing: bool,
+        revision: u64,
+        actor: String,
+        updated_at: u64,
     },
     End {
         party_id: [u8; 16],
@@ -40,16 +48,28 @@ impl WatchPartyFrame {
             Self::Invite { party_id, .. }
             | Self::Accept { party_id }
             | Self::Decline { party_id }
+            | Self::Leave { party_id }
             | Self::Command { party_id, .. }
+            | Self::Sync { party_id, .. }
             | Self::End { party_id } => *party_id,
         }
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, WatchPartyError> {
-        if let Self::Invite { video_id, .. } = self
-            && !valid_video_id(video_id)
-        {
-            return Err(WatchPartyError::InvalidVideoId);
+        match self {
+            Self::Invite { video_id, .. } if !valid_video_id(video_id) => {
+                return Err(WatchPartyError::InvalidVideoId);
+            }
+            Self::Sync {
+                participants,
+                invited,
+                ..
+            } if participants.len() > MAX_PARTY_PARTICIPANTS
+                || invited.len() > MAX_PARTY_PARTICIPANTS =>
+            {
+                return Err(WatchPartyError::TooManyParticipants);
+            }
+            _ => {}
         }
         let bytes = postcard::to_allocvec(self)
             .map_err(|error| WatchPartyError::Encode(error.to_string()))?;
@@ -91,6 +111,9 @@ pub enum WatchPartyError {
     #[error("watch party frame is too large")]
     TooLarge,
 
+    #[error("watch party has too many participants")]
+    TooManyParticipants,
+
     #[error("watch party frame could not be encoded: {0}")]
     Encode(String),
 
@@ -124,17 +147,27 @@ mod tests {
             WatchPartyFrame::Decline {
                 party_id: [3_u8; 16],
             },
-            WatchPartyFrame::Command {
+            WatchPartyFrame::Leave {
                 party_id: [4_u8; 16],
-                command: WatchPartyCommand {
-                    revision: 7,
-                    actor: "018f0000-0000-7000-8000-000000000001".to_owned(),
-                    position_ms: 42_000,
-                    playing: true,
-                },
+            },
+            WatchPartyFrame::Command {
+                party_id: [5_u8; 16],
+                position_ms: 42_000,
+                playing: true,
+            },
+            WatchPartyFrame::Sync {
+                party_id: [6_u8; 16],
+                state: "active".to_owned(),
+                participants: vec!["host".to_owned(), "guest".to_owned()],
+                invited: vec!["pending".to_owned()],
+                position_ms: 42_000,
+                playing: true,
+                revision: 7,
+                actor: "guest".to_owned(),
+                updated_at: 1_700_000_000_000,
             },
             WatchPartyFrame::End {
-                party_id: [5_u8; 16],
+                party_id: [7_u8; 16],
             },
         ];
 
@@ -152,5 +185,23 @@ mod tests {
         assert!(!valid_video_id(""));
         assert!(!valid_video_id("../bad"));
         assert!(!valid_video_id(&"x".repeat(MAX_VIDEO_ID + 1)));
+    }
+
+    #[test]
+    fn rejects_oversized_participant_lists() {
+        let frame = WatchPartyFrame::Sync {
+            party_id: [1_u8; 16],
+            state: "active".to_owned(),
+            participants: (0..=MAX_PARTY_PARTICIPANTS)
+                .map(|index| format!("participant-{index}"))
+                .collect(),
+            invited: Vec::new(),
+            position_ms: 0,
+            playing: false,
+            revision: 0,
+            actor: String::new(),
+            updated_at: 0,
+        };
+        assert_eq!(frame.encode(), Err(WatchPartyError::TooManyParticipants));
     }
 }

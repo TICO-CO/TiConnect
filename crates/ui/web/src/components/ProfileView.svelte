@@ -1,7 +1,6 @@
 <script lang="ts">
     import type { AppState } from '../lib';
     import { clock, fingerprintLabel, relativeSeen, shortName } from '../lib';
-    import { firstVideoId } from '../lib';
     import Avatar from './Avatar.svelte';
     import Icon from './Icon.svelte';
 
@@ -12,9 +11,6 @@
     let { app }: Props = $props();
     const details = $derived(app.details);
     const user = $derived(details?.user ?? app.userById(app.selectedUserId));
-    const partyVideo = $derived(
-        app.party !== null && app.party.user_id === user?.id ? app.party.video_id : '',
-    );
 
     function startCall() {
         if (user !== null) {
@@ -26,21 +22,6 @@
         if (user !== null) {
             void app.requestRemote(user.id);
         }
-    }
-
-    function watchTogether() {
-        if (user === null) {
-            return;
-        }
-        const messageVideo = app.messages
-            .map((message) => firstVideoId(message.body))
-            .find((videoId) => videoId !== null);
-        const videoId = partyVideo || messageVideo;
-        if (!videoId) {
-            app.notice = 'Open a conversation with a YouTube link first.';
-            return;
-        }
-        void app.startParty(videoId, user.id);
     }
 
     function clearHistory(): void {
@@ -65,7 +46,7 @@
         if (remote !== null && remote.user_id === user?.id) {
             return remote.role === 'host' ? 'Sharing screen' : 'Viewing screen';
         }
-        if (app.party?.user_id === user?.id) {
+        if (app.party !== null && user !== null && app.party.participants.includes(user.id)) {
             return 'Watch party active';
         }
         return 'None';
@@ -127,7 +108,7 @@
                 </button>
                 <button
                     class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                    onclick={watchTogether}
+                    onclick={() => (user ? app.openWatchParty([user.id]) : undefined)}
                 >
                     Watch party
                     <Icon name="chevron-right" size={13} />

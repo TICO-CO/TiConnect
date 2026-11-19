@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Bootstrap, Message, StorageUsage, User, UserDetails } from '../lib';
+import type { Bootstrap, Message, StorageUsage, User, UserDetails, WatchParty } from '../lib';
 import { AppState, dateLabel } from '../lib';
 import ChatView from './ChatView.svelte';
 import ProfileView from './ProfileView.svelte';
 import SettingsView from './SettingsView.svelte';
+import WatchPartyView from './WatchPartyView.svelte';
 
 const CREATED_AT = new Date(2025, 0, 2, 12, 0, 0).getTime();
 const USER: User = {
@@ -218,5 +219,178 @@ describe('feature surfaces', () => {
         await waitFor(() =>
             expect(document.querySelector('audio')?.getAttribute('src')).toBe('blob:voice'),
         );
+    });
+});
+
+describe('group watch party page', () => {
+    it('selects people and starts a group party', async () => {
+        const app = makeApp();
+        const second: User = {
+            ...USER,
+            id: 'user-2',
+            display_name: 'NINA-LAPTOP',
+            fingerprint: '4e2c8a17d9b3f605e8a1',
+        };
+        app.users = [USER, second];
+        app.route = { kind: 'watch-party' };
+        app.party = null;
+        render(WatchPartyView, { app });
+
+        await fireEvent.input(screen.getByLabelText('YouTube link'), {
+            target: { value: 'https://youtu.be/dQw4w9WgXcQ' },
+        });
+        await fireEvent.click(screen.getByLabelText('Select MIKA-PC'));
+        await fireEvent.click(screen.getByLabelText('Select NINA-LAPTOP'));
+        await fireEvent.click(screen.getByRole('button', { name: 'Start watch party' }));
+
+        const started = app.party as WatchParty | null;
+        expect(started?.video_id).toBe('dQw4w9WgXcQ');
+        expect(started?.participants).toEqual(['node-1', 'user-1', 'user-2']);
+        expect(app.route).toEqual({ kind: 'watch-party' });
+    });
+
+    it('filters people and keeps selections across queries', async () => {
+        const app = makeApp();
+        const nina: User = {
+            ...USER,
+            id: 'user-2',
+            display_name: 'NINA-LAPTOP',
+            fingerprint: '4e2c8a17d9b3f605e8a1',
+        };
+        const attic: User = {
+            ...USER,
+            id: 'user-3',
+            display_name: 'ATTIC-NAS',
+            fingerprint: '2b5d8c1e4f7a9d3b6e8c',
+        };
+        app.users = [USER, nina, attic];
+        app.route = { kind: 'watch-party' };
+        app.party = null;
+        render(WatchPartyView, { app });
+
+        await fireEvent.click(screen.getByLabelText('Select MIKA-PC'));
+        const search = screen.getByLabelText('Search people');
+        await fireEvent.input(search, { target: { value: 'nina' } });
+
+        expect(screen.queryByLabelText('Select MIKA-PC')).toBeNull();
+        expect(screen.getByLabelText('Select NINA-LAPTOP')).toBeTruthy();
+        expect(screen.getByText('People · 1')).toBeTruthy();
+
+        await fireEvent.input(search, { target: { value: 'nothing' } });
+        expect(screen.getByText('No one matches “nothing”.')).toBeTruthy();
+
+        await fireEvent.input(search, { target: { value: '' } });
+        const mika = screen.getByLabelText('Select MIKA-PC') as HTMLInputElement;
+        expect(mika.checked).toBe(true);
+    });
+
+    it('filters invitees in an active party', async () => {
+        const app = makeApp();
+        const nina: User = {
+            ...USER,
+            id: 'user-2',
+            display_name: 'NINA-LAPTOP',
+            fingerprint: '4e2c8a17d9b3f605e8a1',
+        };
+        app.users = [USER, nina];
+        app.route = { kind: 'watch-party' };
+        app.party = {
+            party_id: 'party-1',
+            host_id: 'node-1',
+            video_id: 'dQw4w9WgXcQ',
+            role: 'host',
+            state: 'active',
+            participants: ['node-1'],
+            invited: [],
+            position_ms: 0,
+            playing: false,
+            revision: 1,
+            actor: 'node-1',
+            updated_at: 1,
+        };
+        render(WatchPartyView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Invite people' }));
+        const search = screen.getByLabelText('Search invitees');
+        await fireEvent.input(search, { target: { value: 'nina' } });
+
+        expect(screen.queryByLabelText('Invite MIKA-PC')).toBeNull();
+        expect(screen.getByLabelText('Invite NINA-LAPTOP')).toBeTruthy();
+
+        await fireEvent.input(search, { target: { value: 'nothing' } });
+        expect(screen.getByText('No one matches “nothing”.')).toBeTruthy();
+    });
+
+    it('shows YouTube metadata before sending a watch request', async () => {
+        const app = makeApp();
+        app.route = { kind: 'watch-party' };
+        app.party = null;
+        vi.spyOn(app, 'youtubePreview').mockResolvedValue({
+            video_id: 'dQw4w9WgXcQ',
+            title: 'How we built TiConnect for the LAN',
+            channel: 'TiConnect Labs',
+            description: 'A walkthrough of LAN discovery and watch parties.',
+            thumbnail_url: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
+            thumbnail_data: 'data:image/jpeg;base64,aGk=',
+            duration_seconds: 213,
+        });
+        render(WatchPartyView, { app });
+
+        await fireEvent.input(screen.getByLabelText('YouTube link'), {
+            target: { value: 'https://youtu.be/dQw4w9WgXcQ' },
+        });
+
+        await waitFor(() =>
+            expect(screen.getByText('How we built TiConnect for the LAN')).toBeTruthy(),
+        );
+        expect(screen.getByText('TiConnect Labs · YouTube')).toBeTruthy();
+        expect(screen.getByText('A walkthrough of LAN discovery and watch parties.')).toBeTruthy();
+        expect(screen.getByAltText('Video thumbnail').getAttribute('src')).toBe(
+            'data:image/jpeg;base64,aGk=',
+        );
+    });
+
+    it('keeps the link usable when metadata is unavailable', async () => {
+        const app = makeApp();
+        app.route = { kind: 'watch-party' };
+        app.party = null;
+        vi.spyOn(app, 'youtubePreview').mockResolvedValue(null);
+        render(WatchPartyView, { app });
+
+        await fireEvent.input(screen.getByLabelText('YouTube link'), {
+            target: { value: 'https://youtu.be/dQw4w9WgXcQ' },
+        });
+
+        await waitFor(() =>
+            expect(
+                screen.getByText('Preview unavailable. You can still send the link.'),
+            ).toBeTruthy(),
+        );
+        await fireEvent.error(screen.getByAltText('Video thumbnail'));
+        expect(screen.getByText('Thumbnail unavailable')).toBeTruthy();
+    });
+
+    it('renders real participant counts instead of demo numbers', () => {
+        const app = makeApp();
+        app.users = [USER];
+        app.route = { kind: 'watch-party' };
+        app.party = {
+            party_id: 'party-1',
+            host_id: 'node-1',
+            video_id: 'dQw4w9WgXcQ',
+            role: 'host',
+            state: 'active',
+            participants: ['node-1', 'user-1'],
+            invited: [],
+            position_ms: 0,
+            playing: false,
+            revision: 1,
+            actor: 'node-1',
+            updated_at: 1,
+        };
+        render(WatchPartyView, { app });
+
+        expect(screen.getByText('Watching · 2')).toBeTruthy();
+        expect(screen.getAllByRole('button', { name: 'End party' }).length).toBeGreaterThan(0);
     });
 });
