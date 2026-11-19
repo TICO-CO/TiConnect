@@ -205,6 +205,10 @@ impl AttachmentStore {
         remove_if_exists(&self.partial_path(hash))
     }
 
+    pub fn remove(&self, hash: AttachmentHash) -> Result<(), StoreError> {
+        remove_if_exists(&self.path_for(hash))
+    }
+
     pub fn cleanup_orphans(&self) -> Result<usize, StoreError> {
         let partial = self.root.join(PARTIAL_DIR);
         let mut removed = 0;

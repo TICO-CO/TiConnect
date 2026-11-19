@@ -659,7 +659,7 @@ fn message_value(
 async fn connect() -> Result<DaemonProxy<'static>> {
     let connection = ipc::connect()
         .await
-        .context("connect to the TiConnect IPC bus")?;
+        .context("connect to the TiConnect IPC session bus")?;
     DaemonProxy::new(&connection)
         .await
         .context("create daemon proxy")

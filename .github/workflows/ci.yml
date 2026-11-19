@@ -108,6 +108,12 @@ jobs:
       - name: Test
         run: dbus-run-session -- cargo test --workspace --all-targets
 
+      - name: Rust feature tests
+        run: |
+          dbus-run-session -- cargo test -p ticonnect-daemon --test messages --test identity
+          dbus-run-session -- cargo test -p ticonnect-runtime --test dbus
+          dbus-run-session -- cargo test -p ticonnect-ui --test bridge
+
       - name: Set up Bun
         if: hashFiles('crates/ui/web/package.json') != ''
         uses: oven-sh/setup-bun@v2
@@ -121,6 +127,11 @@ jobs:
         if: hashFiles('crates/ui/web/package.json') != ''
         working-directory: crates/ui/web
         run: bun run format:check && bun run lint && bun run check && bun run test
+
+      - name: Web feature tests
+        if: hashFiles('crates/ui/web/package.json') != ''
+        working-directory: crates/ui/web
+        run: bun run test:features
 
       - name: Web build
         if: hashFiles('crates/ui/web/package.json') != ''

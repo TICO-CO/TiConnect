@@ -3,7 +3,7 @@
 
     import type { Preferences } from '../lib';
     import type { AppState } from '../lib';
-    import { fingerprintLabel } from '../lib';
+    import { dateLabel, fileSize, fingerprintLabel } from '../lib';
     import { DEFAULT_PREFERENCES } from '../lib';
     import { SETTINGS_SECTIONS, type SettingsSection } from '../lib';
     import Avatar from './Avatar.svelte';
@@ -55,6 +55,19 @@
 
     function setEnabled(key: string, next: boolean): void {
         app.setDraftSetting(key, String(next));
+    }
+
+    function setAppearance(next: string): void {
+        setValue('appearance.color_scheme', next);
+        app.applyAppearance();
+    }
+
+    function clearHistory(userId = ''): void {
+        const scope = userId === '' ? 'all local messages and attachments' : 'this conversation';
+        if (!window.confirm(`Clear ${scope}? This cannot be undone.`)) {
+            return;
+        }
+        void app.clearHistory(userId);
     }
 
     function setPreference<K extends keyof Preferences>(key: K, next: Preferences[K]): void {
@@ -199,6 +212,31 @@
                     <h2
                         class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
                     >
+                        Appearance
+                    </h2>
+                    <div class="flex items-center justify-between gap-6">
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Color scheme</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >System follows the desktop preference</span
+                            >
+                        </div>
+                        <div class="inline-flex shrink-0 gap-1">
+                            {#each ['system', 'light', 'dark'] as appearance (appearance)}
+                                <button
+                                    class="min-h-8 rounded-pill border border-line bg-transparent px-3.5 text-xs font-bold text-ink-2 capitalize aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-base"
+                                    aria-pressed={value('appearance.color_scheme', 'system') ===
+                                        appearance}
+                                    onclick={() => setAppearance(appearance)}>{appearance}</button
+                                >
+                            {/each}
+                        </div>
+                    </div>
+                </section>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
                         Presence
                     </h2>
                     <div
@@ -296,7 +334,7 @@
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
                     >
                         <div class="flex flex-col gap-0.5"><span>First seen</span></div>
-                        <strong>12 Oct</strong>
+                        <strong>{dateLabel(app.bootstrap?.identity.created_at ?? 0)}</strong>
                     </div>
                 </section>
             {:else if section === 'notifications'}
@@ -808,14 +846,15 @@
                                 >Attachments and message database</span
                             >
                         </div>
-                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
-                            >Placeholder · not measured</span
+                        <span class="text-right text-xs tracking-[0.06em] text-ink-3 uppercase"
+                            >{app.storageUsage.message_count} messages · {fileSize(
+                                app.storageUsage.attachment_bytes + app.storageUsage.database_bytes,
+                            )}<br />{app.storageUsage.attachment_count} attachments</span
                         >
                     </div>
                     <button
                         class="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
-                        onclick={() => (app.notice = 'Clearing local history is not wired yet.')}
-                        >Clear local history</button
+                        onclick={() => clearHistory()}>Clear local history</button
                     >
                 </section>
             {:else}
@@ -870,14 +909,38 @@
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
                     >
                         <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Discovery</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Find devices on the LAN</span
+                            >
+                        </div>
+                        <button
+                            class="toggle"
+                            aria-label="Discovery"
+                            aria-pressed={enabled('discovery.enabled', true)}
+                            onclick={() =>
+                                setEnabled(
+                                    'discovery.enabled',
+                                    !enabled('discovery.enabled', true),
+                                )}
+                        ></button>
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
                             <strong class="text-sm">mDNS</strong><span
                                 class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >_ticonnect._udp.local.</span
                             >
                         </div>
-                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
-                            >{enabled('discovery.mdns', true) ? 'On' : 'Off'}</span
-                        >
+                        <button
+                            class="toggle"
+                            aria-label="mDNS discovery"
+                            aria-pressed={enabled('discovery.mdns', true)}
+                            onclick={() =>
+                                setEnabled('discovery.mdns', !enabled('discovery.mdns', true))}
+                        ></button>
                     </div>
                     <div
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
@@ -888,9 +951,16 @@
                                 >UDP beacon on the LAN</span
                             >
                         </div>
-                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
-                            >{enabled('discovery.broadcast', true) ? 'On' : 'Off'}</span
-                        >
+                        <button
+                            class="toggle"
+                            aria-label="Broadcast discovery"
+                            aria-pressed={enabled('discovery.broadcast', true)}
+                            onclick={() =>
+                                setEnabled(
+                                    'discovery.broadcast',
+                                    !enabled('discovery.broadcast', true),
+                                )}
+                        ></button>
                     </div>
                     <div
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
@@ -900,9 +970,18 @@
                                 class="text-xs tracking-[0.04em] text-ink-3 uppercase">Seconds</span
                             >
                         </div>
-                        <span class="text-xs tracking-[0.06em] text-ink-3 uppercase"
-                            >{value('discovery.beacon_interval_secs', '5')}</span
-                        >
+                        <input
+                            class="min-h-9 w-full max-w-24 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
+                            type="number"
+                            min="1"
+                            max="3600"
+                            value={value('discovery.beacon_interval_secs', '5')}
+                            oninput={(event) =>
+                                setValue(
+                                    'discovery.beacon_interval_secs',
+                                    (event.currentTarget as HTMLInputElement).value,
+                                )}
+                        />
                     </div>
                 </section>
             {/if}

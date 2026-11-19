@@ -20,7 +20,7 @@ fails to acquire the name and exits non-zero.
 | `Ping` | `() -> s` | Returns `pong`. |
 | `GetVersion` | `() -> s` | Returns the daemon package version. |
 | `GetStatus` | `() -> a{sv}` | Returns live daemon status. |
-| `GetIdentity` | `() -> a{sv}` | Returns node id, fingerprint, display name, and avatar hash. |
+| `GetIdentity` | `() -> a{sv}` | Returns node id, fingerprint, display name, avatar hash, and identity creation time. |
 | `GetAvatar` | `(s) -> ay` | Returns a cached or local PNG avatar for a fingerprint. |
 | `SetAvatar` | `(ay) -> ()` | Stores a normalized PNG profile photo. |
 | `ClearAvatar` | `() -> ()` | Removes the local profile photo. |
@@ -34,7 +34,9 @@ fails to acquire the name and exits non-zero.
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
 | `GetMessage` | `(s) -> a{sv}` | Returns one stored message by id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
-| `CountMessages` | `(s) -> u` | Returns the number of stored text messages in a conversation. |
+| `CountMessages` | `(s) -> u` | Returns the number of stored messages in a conversation. |
+| `ClearHistory` | `(s) -> u` | Deletes local messages, queued outbox rows, and unreferenced attachments for one user; an empty user id clears all history. |
+| `GetStorageUsage` | `() -> a{sv}` | Returns message count, attachment count and bytes, and SQLite database bytes. |
 | `ListConversationSummaries` | `() -> aa{sv}` | Returns last message, unread count, and conversation id per user. |
 | `MarkRead` | `(s as) -> ()` | Marks inbound messages read locally and queues receipts when enabled. |
 | `MarkConversationRead` | `(s) -> ()` | Marks every unread inbound message in a conversation read and queues receipts when enabled. |
@@ -113,6 +115,18 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `fingerprint` | `s` | Lowercase hex BLAKE3 fingerprint of the Ed25519 public key. |
 | `display_name` | `s` | Effective `identity.display_name`, possibly empty. |
 | `avatar_hash` | `s` | BLAKE3 hex hash of the local PNG avatar, or empty. |
+| `created_at` | `u64` | Unix milliseconds when the local identity was created, or its key metadata fallback. |
+
+## Storage usage keys
+
+`GetStorageUsage` returns:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `message_count` | `u64` | Stored non-ack messages. |
+| `attachment_count` | `u64` | Rows in the attachments table. |
+| `attachment_bytes` | `u64` | Sum of attachment sizes. |
+| `database_bytes` | `u64` | SQLite page count multiplied by page size. |
 
 ## Setting keys
 

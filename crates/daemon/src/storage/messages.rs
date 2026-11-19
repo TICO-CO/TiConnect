@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use rusqlite::{Connection, OptionalExtension, params};
@@ -84,6 +85,132 @@ pub struct ConversationSummary {
     pub last_body: Option<String>,
     pub last_sent_at: Option<i64>,
     pub unread_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClearHistoryOutcome {
+    pub messages: u32,
+    pub attachments: Vec<String>,
+}
+
+pub fn clear_history(
+    connection: &Connection,
+    user_id: Option<&str>,
+) -> Result<ClearHistoryOutcome, StorageError> {
+    let transaction = connection.unchecked_transaction()?;
+    let filter = if user_id.is_some() {
+        "conversation_id IN (SELECT id FROM conversations WHERE user_id = ?1)"
+    } else {
+        "1 = 1"
+    };
+
+    let mut scoped = transaction.prepare(&format!(
+        "SELECT id, attachment_hash FROM messages WHERE {filter}"
+    ))?;
+    let rows = if let Some(user_id) = user_id {
+        scoped
+            .query_map(params![user_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    } else {
+        scoped
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    drop(scoped);
+    let count = u32::try_from(rows.len())
+        .map_err(|_| StorageError::InvalidData("message count overflow".to_owned()))?;
+    let mut scoped_hashes: HashSet<String> = rows
+        .into_iter()
+        .filter_map(|(_, hash)| hash)
+        .filter(|hash| !hash.is_empty())
+        .collect();
+    if user_id.is_none() {
+        let mut attachments = transaction.prepare("SELECT hash FROM attachments")?;
+        scoped_hashes.extend(
+            attachments
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?,
+        );
+    }
+
+    let delete_outbox =
+        format!("DELETE FROM outbox WHERE message_id IN (SELECT id FROM messages WHERE {filter})");
+    let delete_messages = format!("DELETE FROM messages WHERE {filter}");
+    if let Some(user_id) = user_id {
+        transaction.execute(&delete_outbox, params![user_id])?;
+        transaction.execute(&delete_messages, params![user_id])?;
+    } else {
+        transaction.execute(&delete_outbox, [])?;
+        transaction.execute(&delete_messages, [])?;
+    }
+
+    let mut remaining_statement = transaction.prepare(
+        "SELECT DISTINCT attachment_hash FROM messages WHERE attachment_hash IS NOT NULL",
+    )?;
+    let remaining: HashSet<String> = remaining_statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?
+        .into_iter()
+        .collect();
+    drop(remaining_statement);
+
+    if user_id.is_none() {
+        transaction.execute("DELETE FROM transfer_partials", [])?;
+    }
+    let mut attachments = Vec::new();
+    for hash in scoped_hashes {
+        if remaining.contains(&hash) {
+            continue;
+        }
+        let removed =
+            transaction.execute("DELETE FROM attachments WHERE hash = ?1", params![hash])?;
+        transaction.execute(
+            "DELETE FROM transfer_partials WHERE hash = ?1",
+            params![hash],
+        )?;
+        if removed > 0 {
+            attachments.push(hash);
+        }
+    }
+    transaction.commit()?;
+    Ok(ClearHistoryOutcome {
+        messages: count,
+        attachments,
+    })
+}
+
+pub fn storage_usage(connection: &Connection) -> Result<StorageStats, StorageError> {
+    let message_count: i64 = connection.query_row(
+        "SELECT COUNT(*) FROM messages WHERE kind != 'ack'",
+        [],
+        |row| row.get(0),
+    )?;
+    let (attachment_count, attachment_bytes): (i64, i64) = connection.query_row(
+        "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM attachments",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    let page_count: i64 = connection.query_row("PRAGMA page_count", [], |row| row.get(0))?;
+    let page_size: i64 = connection.query_row("PRAGMA page_size", [], |row| row.get(0))?;
+    let database_bytes = page_count.saturating_mul(page_size).max(0);
+    Ok(StorageStats {
+        message_count: u64::try_from(message_count).unwrap_or_default(),
+        attachment_count: u64::try_from(attachment_count).unwrap_or_default(),
+        attachment_bytes: u64::try_from(attachment_bytes).unwrap_or_default(),
+        database_bytes: u64::try_from(database_bytes).unwrap_or_default(),
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StorageStats {
+    pub message_count: u64,
+    pub attachment_count: u64,
+    pub attachment_bytes: u64,
+    pub database_bytes: u64,
 }
 
 pub fn conversation_summaries(

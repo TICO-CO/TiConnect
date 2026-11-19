@@ -10,6 +10,7 @@ import {
     type Preferences,
     savePreferences,
 } from './preferences';
+import { attemptAsync } from './result';
 import { activationRoute, parseRoute, type Route, routeHash, type SettingsSection } from './routes';
 import type {
     Bootstrap,
@@ -18,6 +19,7 @@ import type {
     ConversationSummary,
     Message,
     RemoteSession,
+    StorageUsage,
     User,
     UserDetails,
     UserPolicy,
@@ -100,12 +102,21 @@ export class AppState {
     avatarUrls = $state<Record<string, string>>({});
     private avatarHashes = new SvelteMap<string, string>();
     private avatarPending = new SvelteMap<string, string>();
+    private attachmentUrls = new SvelteMap<string, string>();
     private lastRouteKind = '';
     preferences = $state<Preferences>({ ...DEFAULT_PREFERENCES });
     settings = $state<Record<string, string>>({});
     settingsDraft = $state<Record<string, string>>({});
     autostart = $state(false);
     autostartDraft = $state(false);
+    storageUsage = $state<StorageUsage>({
+        message_count: 0,
+        attachment_count: 0,
+        attachment_bytes: 0,
+        database_bytes: 0,
+    });
+    recording = $state(false);
+    recordingSeconds = $state(0);
     demo = false;
     private client: BridgeClient | null = null;
     private reconnectTimer: number | null = null;
@@ -116,6 +127,11 @@ export class AppState {
     private readMessageIds = new SvelteSet<string>();
     private removeHashListener: (() => void) | null = null;
     private removeBridgeListener: (() => void) | null = null;
+    private recorder: MediaRecorder | null = null;
+    private recordingChunks: Blob[] = [];
+    private recordingStream: MediaStream | null = null;
+    private recordingTimer: number | null = null;
+    private discardRecording = false;
 
     get selectedUserId(): string {
         if (this.route.kind === 'chat' || this.route.kind === 'profile') {
@@ -149,8 +165,10 @@ export class AppState {
         if (this.typingTimer !== null) {
             window.clearTimeout(this.typingTimer);
         }
+        this.cancelRecording();
         this.client?.close();
         this.releaseAvatars();
+        this.releaseAttachments();
     }
 
     private startDemo(screenName: string): void {
@@ -169,6 +187,13 @@ export class AppState {
         this.settingsDraft = { ...seed.bootstrap.settings };
         this.autostart = seed.bootstrap.autostart;
         this.autostartDraft = seed.bootstrap.autostart;
+        this.storageUsage = {
+            message_count: 128,
+            attachment_count: 7,
+            attachment_bytes: 18_400_000,
+            database_bytes: 2_900_000,
+        };
+        this.applyAppearance();
         this.connectedSince = Object.fromEntries(
             seed.users
                 .filter((user) => user.connected)
@@ -225,6 +250,7 @@ export class AppState {
         this.settingsDraft = { ...bootstrap.settings };
         this.autostart = bootstrap.autostart;
         this.autostartDraft = bootstrap.autostart;
+        this.applyAppearance();
         this.route = parseRoute(window.location.hash);
         this.syncAvatars();
         await this.refresh();
@@ -380,6 +406,11 @@ export class AppState {
         this.avatarUrls = remaining;
     }
 
+    private releaseAttachments(): void {
+        this.attachmentUrls.forEach((url) => URL.revokeObjectURL(url));
+        this.attachmentUrls.clear();
+    }
+
     private releaseAvatars(): void {
         Object.values(this.avatarUrls).forEach((url) => URL.revokeObjectURL(url));
         if (
@@ -429,6 +460,10 @@ export class AppState {
         if (this.route.kind === 'settings') {
             if (previousKind !== 'settings') {
                 await this.loadSettings();
+            }
+            this.applyAppearance();
+            if (this.route.section === 'storage') {
+                await this.loadStorageUsage();
             }
             return;
         }
@@ -686,6 +721,7 @@ export class AppState {
         const [enabled] = await this.client.request<boolean>('autostart_get');
         this.autostart = enabled ?? false;
         this.autostartDraft = this.autostart;
+        this.applyAppearance();
     }
 
     private async loadCall(): Promise<void> {
@@ -734,6 +770,159 @@ export class AppState {
         this.navigate({ kind: 'chat', id });
     }
 
+    applyAppearance(): void {
+        if (typeof document === 'undefined') {
+            return;
+        }
+        const appearance =
+            this.settingsDraft['appearance.color_scheme'] ??
+            this.settings['appearance.color_scheme'] ??
+            this.bootstrap?.appearance ??
+            'system';
+        const root = document.documentElement;
+        if (appearance === 'light' || appearance === 'dark') {
+            root.dataset.theme = appearance;
+            root.style.colorScheme = appearance;
+        } else {
+            delete root.dataset.theme;
+            root.style.colorScheme = 'light dark';
+        }
+    }
+
+    async loadStorageUsage(): Promise<void> {
+        if (this.client === null) {
+            return;
+        }
+        const [usage, failure] = await this.client.request<StorageUsage>('storage_usage');
+        if (failure) {
+            this.notice = failure.message;
+            return;
+        }
+        if (usage !== null) {
+            this.storageUsage = usage;
+        }
+    }
+
+    async clearHistory(userId = ''): Promise<void> {
+        if (this.client === null) {
+            this.notice = 'History clearing is not available in the demo.';
+            return;
+        }
+        const [, failure] = await this.client.request('clear_history', { user_id: userId });
+        if (failure) {
+            this.notice = failure.message;
+            return;
+        }
+        this.notice = userId === '' ? 'Local history cleared.' : 'Conversation history cleared.';
+        this.releaseAttachments();
+        this.messages = [];
+        this.messageOffset = 0;
+        this.hasOlderMessages = false;
+        await this.refresh();
+        await this.loadStorageUsage();
+        if (this.route.kind === 'settings') {
+            return;
+        }
+        if (this.route.kind === 'chat' && this.route.id !== '') {
+            await this.loadMessages(this.route.id);
+        } else if (this.route.kind === 'profile' && this.route.id !== '') {
+            await this.loadDetails(this.route.id);
+        }
+    }
+
+    async startRecording(): Promise<void> {
+        if (this.recording) {
+            return;
+        }
+        if (typeof navigator === 'undefined' || navigator.mediaDevices === undefined) {
+            this.notice = 'Microphone capture is not available.';
+            return;
+        }
+        if (typeof MediaRecorder === 'undefined') {
+            this.notice = 'Voice recording is not supported by this webview.';
+            return;
+        }
+        const [stream, streamFailure] = await attemptAsync<MediaStream, Error>(() =>
+            navigator.mediaDevices.getUserMedia({ audio: true }),
+        );
+        if (streamFailure !== null || stream === null) {
+            this.releaseRecording();
+            this.notice = `Microphone unavailable: ${streamFailure?.message ?? 'permission denied'}`;
+            return;
+        }
+        this.recordingStream = stream;
+        const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
+        const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+        this.recorder =
+            mimeType === undefined
+                ? new MediaRecorder(this.recordingStream)
+                : new MediaRecorder(this.recordingStream, { mimeType });
+        this.recordingChunks = [];
+        this.discardRecording = false;
+        this.recorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                this.recordingChunks.push(event.data);
+            }
+        };
+        this.recorder.onstop = () => {
+            const recorder = this.recorder;
+            const type = recorder?.mimeType || 'audio/webm';
+            const chunks = this.recordingChunks;
+            this.releaseRecording();
+            if (this.discardRecording || chunks.length === 0) {
+                return;
+            }
+            const extension = type.includes('ogg') ? 'ogg' : 'webm';
+            const file = new File(
+                [new Blob(chunks, { type })],
+                `voice-${Date.now()}.${extension}`,
+                { type },
+            );
+            void this.sendFile(file);
+        };
+        this.recorder.start();
+        this.recording = true;
+        this.recordingSeconds = 0;
+        this.recordingTimer = window.setInterval(() => {
+            this.recordingSeconds += 1;
+            if (this.recordingSeconds >= 300) {
+                void this.stopRecording();
+            }
+        }, 1_000);
+    }
+
+    async stopRecording(): Promise<void> {
+        if (!this.recording || this.recorder === null) {
+            return;
+        }
+        if (this.recorder.state !== 'inactive') {
+            this.recorder.stop();
+        } else {
+            this.releaseRecording();
+        }
+    }
+
+    cancelRecording(): void {
+        this.discardRecording = true;
+        if (this.recorder !== null && this.recorder.state !== 'inactive') {
+            this.recorder.stop();
+        } else {
+            this.releaseRecording();
+        }
+    }
+
+    private releaseRecording(): void {
+        if (this.recordingTimer !== null) {
+            window.clearInterval(this.recordingTimer);
+            this.recordingTimer = null;
+        }
+        this.recordingStream?.getTracks().forEach((track) => track.stop());
+        this.recordingStream = null;
+        this.recorder = null;
+        this.recording = false;
+        this.recordingSeconds = 0;
+    }
+
     async sendMessage(): Promise<void> {
         if (this.client === null || this.route.kind !== 'chat' || this.draft.trim() === '') {
             return;
@@ -777,10 +966,37 @@ export class AppState {
     }
 
     async sendFile(file: File): Promise<void> {
-        if (this.client === null || this.route.kind !== 'chat') {
+        if (this.route.kind !== 'chat') {
             return;
         }
         const userId = this.route.id;
+        if (this.demo) {
+            const message: Message = {
+                id: `demo-${Date.now()}`,
+                conversation_id: 'conv-mika',
+                user_id: userId,
+                sender_id: this.bootstrap?.identity.node_id ?? '',
+                local_sender: true,
+                seq: this.messages.length + 1,
+                sent_at: Date.now(),
+                received_at: Date.now(),
+                body: '',
+                attachment_hash: 'demo',
+                attachment_name: file.name,
+                attachment_size: file.size,
+                attachment_mime: file.type,
+                attachment_path: '',
+                state: 'sent',
+                notify: false,
+            };
+            this.appendMessage(message);
+            this.updateSummary(message);
+            this.notice = 'Attachment preview added for this demo.';
+            return;
+        }
+        if (this.client === null) {
+            return;
+        }
         const [messageId, failure] = await this.client.uploadAttachment(userId, file);
         if (failure) {
             this.notice = failure.message;
@@ -825,6 +1041,26 @@ export class AppState {
         if (url !== null) {
             window.open(url, '_blank', 'noopener');
         }
+    }
+
+    async attachmentUrl(hash: string): Promise<string> {
+        if (hash === '') {
+            return '';
+        }
+        const cached = this.attachmentUrls.get(hash);
+        if (cached !== undefined) {
+            return cached;
+        }
+        if (this.client === null) {
+            return '';
+        }
+        const [url, failure] = await this.client.downloadAttachment(hash);
+        if (failure || url === null) {
+            this.notice = failure?.message ?? 'Attachment download failed.';
+            return '';
+        }
+        this.attachmentUrls.set(hash, url);
+        return url;
     }
 
     updateDraft(value: string): void {
@@ -1120,6 +1356,8 @@ export class AppState {
         }
         this.notice = 'Settings saved.';
         await this.loadSettings();
+        this.applyAppearance();
+        await this.loadStorageUsage();
         this.bootstrap =
             this.bootstrap === null ? null : { ...this.bootstrap, autostart: this.autostart };
     }

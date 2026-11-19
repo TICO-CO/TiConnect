@@ -45,6 +45,7 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
         fingerprint: 'b371f09a2c5d4e6f8190',
         display_name: 'MIKA-PC',
         avatar_hash: '',
+        created_at: now - 90 * 86_400_000,
     },
     status: {
         transport_state: 'connected',

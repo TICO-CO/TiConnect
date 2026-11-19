@@ -25,6 +25,10 @@ fn window_title_from(label: Option<&str>) -> String {
         .to_owned()
 }
 
+fn audio_only_media_allowed(is_audio: bool, is_video: bool) -> bool {
+    is_audio && !is_video
+}
+
 fn apply_appearance(appearance: Appearance) {
     let Some(settings) = gtk::Settings::default() else {
         return;
@@ -50,6 +54,12 @@ fn build_webview(url: &str, origins: &Origins) -> webkit6::WebView {
         .build();
     webview.set_settings(&settings);
     webview.connect_permission_request(|_, request| {
+        if let Some(media) = request.downcast_ref::<webkit6::UserMediaPermissionRequest>()
+            && audio_only_media_allowed(media.is_for_audio_device(), media.is_for_video_device())
+        {
+            media.allow();
+            return true;
+        }
         request.deny();
         true
     });
@@ -181,7 +191,15 @@ fn glib_timeout_add(
 
 #[cfg(test)]
 mod tests {
-    use super::window_title_from;
+    use super::{audio_only_media_allowed, window_title_from};
+
+    #[test]
+    fn media_permissions_allow_only_audio_capture() {
+        assert!(audio_only_media_allowed(true, false));
+        assert!(!audio_only_media_allowed(false, false));
+        assert!(!audio_only_media_allowed(true, true));
+        assert!(!audio_only_media_allowed(false, true));
+    }
 
     #[test]
     fn window_title_defaults_and_accepts_lab_label() {

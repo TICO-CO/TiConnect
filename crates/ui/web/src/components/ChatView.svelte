@@ -15,6 +15,8 @@
     let stream: HTMLDivElement | null = $state(null);
     let fileInput: HTMLInputElement | null = $state(null);
     let composer: HTMLTextAreaElement | null = $state(null);
+    let audioUrls = $state<Record<string, string>>({});
+    let loadingAudio = $state<Record<string, boolean>>({});
     let prependingOlderMessages = false;
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
@@ -74,6 +76,18 @@
             void app.sendFile(file);
         }
         input.value = '';
+    }
+
+    async function loadAudio(messageId: string, hash: string): Promise<void> {
+        if (audioUrls[messageId] !== undefined || loadingAudio[messageId]) {
+            return;
+        }
+        loadingAudio = { ...loadingAudio, [messageId]: true };
+        const url = await app.attachmentUrl(hash);
+        loadingAudio = { ...loadingAudio, [messageId]: false };
+        if (url !== '') {
+            audioUrls = { ...audioUrls, [messageId]: url };
+        }
     }
 
     function playTogether() {
@@ -226,25 +240,74 @@
                             </p>
                         {/if}
                         {#if message.attachment_hash}
-                            <button
-                                class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
-                                onclick={() => void app.openAttachment(message.attachment_hash)}
-                            >
-                                <span
-                                    class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                    ><Icon name="file" size={18} color="var(--color-ink-2)" /></span
+                            {#if message.attachment_mime.startsWith('audio/')}
+                                <div
+                                    class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
                                 >
-                                <span class="flex flex-col gap-0.5">
-                                    <strong class="text-[14px]"
-                                        >{message.attachment_name || 'Attachment'}</strong
+                                    <div class="flex items-center gap-3">
+                                        <span
+                                            class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                            ><Icon
+                                                name="mic"
+                                                size={18}
+                                                color="var(--color-ink-2)"
+                                            /></span
+                                        >
+                                        <span class="flex min-w-0 flex-col gap-0.5">
+                                            <strong class="truncate text-[14px]"
+                                                >{message.attachment_name ||
+                                                    'Voice message'}</strong
+                                            >
+                                            <span class="text-xs text-ink-3"
+                                                >{fileSize(message.attachment_size)}</span
+                                            >
+                                        </span>
+                                        {#if audioUrls[message.id] === undefined}
+                                            <button
+                                                class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
+                                                onclick={() =>
+                                                    void loadAudio(
+                                                        message.id,
+                                                        message.attachment_hash,
+                                                    )}
+                                                disabled={loadingAudio[message.id] === true}
+                                            >
+                                                {loadingAudio[message.id] === true
+                                                    ? 'Loading…'
+                                                    : 'Play'}
+                                            </button>
+                                        {/if}
+                                    </div>
+                                    {#if audioUrls[message.id] !== undefined}
+                                        <audio class="w-full" controls src={audioUrls[message.id]}
+                                        ></audio>
+                                    {/if}
+                                </div>
+                            {:else}
+                                <button
+                                    class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
+                                    onclick={() => void app.openAttachment(message.attachment_hash)}
+                                >
+                                    <span
+                                        class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                        ><Icon
+                                            name="file"
+                                            size={18}
+                                            color="var(--color-ink-2)"
+                                        /></span
                                     >
-                                    <span class="text-xs text-ink-3"
-                                        >BLAKE3 {fingerprintLabel(message.attachment_hash)} · {fileSize(
-                                            message.attachment_size,
-                                        )}</span
-                                    >
-                                </span>
-                            </button>
+                                    <span class="flex flex-col gap-0.5">
+                                        <strong class="text-[14px]"
+                                            >{message.attachment_name || 'Attachment'}</strong
+                                        >
+                                        <span class="text-xs text-ink-3"
+                                            >BLAKE3 {fingerprintLabel(message.attachment_hash)} · {fileSize(
+                                                message.attachment_size,
+                                            )}</span
+                                        >
+                                    </span>
+                                </button>
+                            {/if}
                         {/if}
                         {#if firstVideoId(message.body)}
                             {@const videoId = firstVideoId(message.body) ?? ''}
@@ -388,16 +451,40 @@
                 >
                     <Icon name="paperclip" size={16} color="var(--color-ink-2)" />
                 </button>
-                <button
-                    type="button"
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
-                    onclick={() =>
-                        (app.notice =
-                            'Voice recording is not wired yet. Attach an audio file instead.')}
-                    aria-label="Record voice message"
-                >
-                    <Icon name="mic" size={16} color="var(--color-ink-2)" />
-                </button>
+                {#if app.recording}
+                    <span
+                        class="inline-flex h-8 items-center gap-1.5 rounded-pill border border-error bg-error/10 px-3 text-xs font-bold text-error tabular-nums"
+                        role="status"
+                    >
+                        <span class="size-1.5 rounded-full bg-error"></span>
+                        {sessionClock(app.recordingSeconds)}
+                    </span>
+                    <button
+                        type="button"
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-error hover:bg-error/10"
+                        onclick={() => app.cancelRecording()}
+                        aria-label="Cancel voice message"
+                    >
+                        <Icon name="close" size={16} color="var(--color-error)" />
+                    </button>
+                    <button
+                        type="button"
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-error bg-error/10 text-error hover:bg-error/20"
+                        onclick={() => void app.stopRecording()}
+                        aria-label="Stop and send voice message"
+                    >
+                        <Icon name="check" size={16} color="var(--color-error)" />
+                    </button>
+                {:else}
+                    <button
+                        type="button"
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                        onclick={() => void app.startRecording()}
+                        aria-label="Record voice message"
+                    >
+                        <Icon name="mic" size={16} color="var(--color-ink-2)" />
+                    </button>
+                {/if}
                 <button
                     type="submit"
                     class="ml-auto flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent"

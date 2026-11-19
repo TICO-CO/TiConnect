@@ -23,6 +23,8 @@ Progress:
 - [x] Remote desktop consent without a PIN.
 - [x] Native overlay request and toast surfaces restyled; active session cards added.
 - [x] Frontend tests; manual desktop matrix remains pending.
+- [x] Voice recording, inline audio playback, history clearing, storage usage,
+  identity creation date, editable discovery, and appearance selection.
 
 ## Decision
 
@@ -84,7 +86,8 @@ Server event:
 
 Methods mirror `LinkHandle` plus host-only operations:
 
-- every current `crates/ui/src/client.rs` command
+- every current `crates/ui/src/client.rs` command, including `clear_history` and
+  `storage_usage`
 - `settings_save`, `autostart_get`, `autostart_set`
 - `POST /attachment?user_id=` uploads browser `<input type=file>` bytes and
   returns the message id
@@ -171,7 +174,7 @@ allowed only when `TICONNECT_DEV_URL` is set and the origin is
 - Make targets: `web-install`, `web-dev`, `web-build`, `web-check`.
 - CI:
   - `bun install --frozen-lockfile`, `bun run check`, `bun run test`,
-    `bun run build`
+    `bun run test:features`, `bun run build`
   - `git diff --exit-code crates/ui/assets`
   - add `libwebkitgtk-6.0-dev` to the apt install steps
   - headless runs set `WEBKIT_DISABLE_DMABUF_RENDERER=1`
@@ -199,6 +202,9 @@ Frontend:
 
 - Vitest: bridge reconnect/backoff, message ordering and state, settings
   parsing, composer behavior
+- feature suites: MediaRecorder voice upload/cancel, history clearing,
+  storage usage, discovery/appearance settings, first-seen date, inline audio
+- component suites: Settings, Profile, and Chat feature controls
 - axe-core accessibility smoke
 - optional Playwright smoke against a mock bridge
 

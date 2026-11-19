@@ -10,15 +10,18 @@
         "format": "prettier --write .",
         "format:check": "prettier --check .",
         "lint": "eslint .",
-        "test": "vitest run"
+        "test": "vitest run",
+        "test:features": "vitest run src/lib/app-state.features.test.ts src/components/features.test.ts"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.3.1",
         "@tailwindcss/vite": "4.3.5",
+        "@testing-library/svelte": "5.4.2",
         "eslint": "10.15.0",
         "eslint-config-prettier": "10.1.8",
         "eslint-plugin-simple-import-sort": "14.0.0",
         "eslint-plugin-svelte": "3.24.1",
+        "jsdom": "31.0.1",
         "prettier": "3.10.1",
         "prettier-plugin-svelte": "4.1.1",
         "prettier-plugin-tailwindcss": "0.8.1",

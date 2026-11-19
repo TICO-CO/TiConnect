@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add voice-message recording and inline audio playback in the web UI.
+- Add local history clearing for all conversations and per-user conversations.
+- Report real local storage usage and identity creation time in settings.
+- Make discovery controls editable and add system/light/dark appearance.
+
 - Replace the GTK4/libadwaita/relm4 interface with a WebKitGTK 6.0 host and a
   Svelte frontend.
 - Add the loopback HTTP + WebSocket bridge with token, origin, and host checks.

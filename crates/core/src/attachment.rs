@@ -165,6 +165,7 @@ pub fn mime_from_name(name: &str) -> &'static str {
         Some("opus") => "audio/opus",
         Some("wav") => "audio/wav",
         Some("flac") => "audio/flac",
+        Some("webm") => "audio/webm",
         Some("mp4" | "m4a") => "audio/mp4",
         Some("txt") => "text/plain",
         Some("pdf") => "application/pdf",
@@ -277,6 +278,7 @@ mod tests {
     fn extension_mime_is_stable() {
         assert_eq!(mime_from_name("photo.PNG"), "image/png");
         assert_eq!(mime_from_name("clip.opus"), "audio/opus");
+        assert_eq!(mime_from_name("voice.webm"), "audio/webm");
         assert_eq!(mime_from_name("unknown"), "application/octet-stream");
     }
 }

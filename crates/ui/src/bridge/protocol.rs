@@ -181,6 +181,11 @@ async fn dispatch_inner(
             let input: ConversationId = params(value)?;
             Ok(json!(link.count_messages(input.conversation_id).await?))
         }
+        "clear_history" => {
+            let input: UserId = params(value)?;
+            Ok(json!(link.clear_history(input.user_id).await?))
+        }
+        "storage_usage" => Ok(json!(link.storage_usage().await?)),
         "send_message" => {
             let input: SendMessage = params(value)?;
             Ok(json!(link.send_message(input.user_id, input.body).await?))

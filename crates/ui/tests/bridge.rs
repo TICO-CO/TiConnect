@@ -174,4 +174,24 @@ async fn websocket_dispatches_rpc_and_reports_daemon_unavailable() {
             .unwrap()
             .contains("/attachment/abc?ticket=")
     );
+
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            r#"{"id":5,"method":"clear_history","params":{"user_id":""}}"#.into(),
+        ))
+        .await
+        .expect("send clear history");
+    let reply = next_json(&mut socket).await;
+    assert_eq!(reply["ok"], false);
+    assert_eq!(reply["error"]["code"], "daemon_unavailable");
+
+    socket
+        .send(tokio_tungstenite::tungstenite::Message::Text(
+            r#"{"id":6,"method":"storage_usage","params":{}}"#.into(),
+        ))
+        .await
+        .expect("send storage usage");
+    let reply = next_json(&mut socket).await;
+    assert_eq!(reply["ok"], false);
+    assert_eq!(reply["error"]["code"], "daemon_unavailable");
 }

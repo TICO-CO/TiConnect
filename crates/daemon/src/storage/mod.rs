@@ -20,7 +20,7 @@ use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 pub use attachments::AttachmentRecord;
 pub use conversations::Conversation;
 pub use error::StorageError;
-pub use messages::{InsertOutcome, MessageState, StoredMessage};
+pub use messages::{ClearHistoryOutcome, InsertOutcome, MessageState, StorageStats, StoredMessage};
 pub use outbox::OutboxEntry;
 pub use profiles::UserProfile;
 pub use transfer_partials::TransferPartial;
@@ -78,6 +78,8 @@ enum Command {
         reply: Reply<Vec<StoredMessage>>,
     },
     CountHistory(String, Reply<u32>),
+    ClearHistory(Option<String>, Reply<ClearHistoryOutcome>),
+    StorageUsage(Reply<StorageStats>),
     RecordsBetween {
         conversation_id: String,
         sender_id: String,
@@ -381,6 +383,21 @@ impl DatabaseHandle {
     pub async fn count_history(&self, conversation_id: &str) -> Result<u32, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::CountHistory(conversation_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn clear_history(
+        &self,
+        user_id: Option<&str>,
+    ) -> Result<ClearHistoryOutcome, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ClearHistory(user_id.map(str::to_owned), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn storage_usage(&self) -> Result<StorageStats, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::StorageUsage(reply))?;
         receive(receiver).await
     }
 
@@ -709,6 +726,12 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::CountHistory(conversation_id, reply) => {
             let _ = reply.send(messages::count(connection, &conversation_id));
+        }
+        Command::ClearHistory(user_id, reply) => {
+            let _ = reply.send(messages::clear_history(connection, user_id.as_deref()));
+        }
+        Command::StorageUsage(reply) => {
+            let _ = reply.send(messages::storage_usage(connection));
         }
         Command::RecordsBetween {
             conversation_id,

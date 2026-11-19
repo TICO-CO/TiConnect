@@ -43,6 +43,13 @@
         void app.startParty(videoId, user.id);
     }
 
+    function clearHistory(): void {
+        if (user === null || !window.confirm('Clear this conversation? This cannot be undone.')) {
+            return;
+        }
+        void app.clearHistory(user.id);
+    }
+
     function firstSeen(timestamp: number): string {
         if (timestamp <= 0) {
             return 'Unknown';
@@ -352,7 +359,7 @@
                     </div>
                     <button
                         class="mt-3 border-0 bg-transparent p-0 text-sm font-bold text-ink"
-                        onclick={() => (app.notice = 'Local history clearing is not wired yet.')}
+                        onclick={clearHistory}
                     >
                         Clear local history
                     </button>

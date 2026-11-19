@@ -14,6 +14,7 @@ const METADATA_FILE: &str = "identity.toml";
 pub struct PublicIdentity {
     node_id: NodeId,
     fingerprint: Fingerprint,
+    created_at: i64,
 }
 
 impl PublicIdentity {
@@ -23,6 +24,10 @@ impl PublicIdentity {
 
     pub fn fingerprint(&self) -> Fingerprint {
         self.fingerprint
+    }
+
+    pub fn created_at(&self) -> i64 {
+        self.created_at
     }
 }
 
@@ -48,12 +53,13 @@ impl Identity {
         };
 
         let fingerprint = Fingerprint::of(&key_pair.verifying_key());
-        let node_id = if created {
+        let (node_id, created_at) = if created {
             let node_id = NodeId::generate();
-            write_metadata(&metadata_path, node_id)?;
-            node_id
+            let created_at = now_unix_ms();
+            write_metadata(&metadata_path, node_id, created_at)?;
+            (node_id, created_at)
         } else {
-            read_node_id(&metadata_path)?
+            read_metadata(&metadata_path)?
         };
 
         tracing::info!(
@@ -67,6 +73,7 @@ impl Identity {
             public: PublicIdentity {
                 node_id,
                 fingerprint,
+                created_at,
             },
         })
     }
@@ -86,6 +93,7 @@ impl std::fmt::Debug for Identity {
             .debug_struct("Identity")
             .field("node_id", &self.public.node_id)
             .field("fingerprint", &self.public.fingerprint)
+            .field("created_at", &self.public.created_at)
             .finish_non_exhaustive()
     }
 }
@@ -101,7 +109,7 @@ fn load_key(path: &Path, bytes: &[u8]) -> Result<IdentityKeyPair, IdentityError>
     Ok(IdentityKeyPair::from_secret_bytes(secret))
 }
 
-fn read_node_id(path: &Path) -> Result<NodeId, IdentityError> {
+fn read_metadata(path: &Path) -> Result<(NodeId, i64), IdentityError> {
     let contents = match fs::read_to_string(path) {
         Ok(contents) => contents,
         Err(error) if error.kind() == io::ErrorKind::NotFound => {
@@ -119,12 +127,23 @@ fn read_node_id(path: &Path) -> Result<NodeId, IdentityError> {
         .node_id
         .parse()
         .map_err(IdentityError::InvalidNodeId)?;
-    Ok(node_id)
+    let created_at = if metadata.created_at > 0 {
+        metadata.created_at
+    } else {
+        fs::metadata(path)
+            .and_then(|metadata| metadata.modified())
+            .ok()
+            .and_then(|modified| modified.duration_since(std::time::UNIX_EPOCH).ok())
+            .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+            .unwrap_or(0)
+    };
+    Ok((node_id, created_at))
 }
 
-fn write_metadata(path: &Path, node_id: NodeId) -> Result<(), IdentityError> {
+fn write_metadata(path: &Path, node_id: NodeId, created_at: i64) -> Result<(), IdentityError> {
     let metadata = IdentityMetadata {
         node_id: node_id.to_string(),
+        created_at,
     };
     let contents = toml::to_string(&metadata)
         .map_err(|error| IdentityError::MetadataEncoding(error.to_string()))?;
@@ -210,6 +229,16 @@ fn check_key_permissions(_path: &Path) -> Result<(), IdentityError> {
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 struct IdentityMetadata {
     node_id: String,
+    #[serde(default)]
+    created_at: i64,
+}
+
+fn now_unix_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or(0)
 }
 
 #[derive(Debug, Error)]

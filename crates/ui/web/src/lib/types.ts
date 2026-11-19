@@ -3,6 +3,7 @@ export interface Identity {
     fingerprint: string;
     display_name: string;
     avatar_hash: string;
+    created_at: number;
 }
 
 export interface Status {
@@ -23,6 +24,13 @@ export interface Bootstrap {
 }
 
 export type UserPolicy = 'accept' | 'mute' | 'ignore';
+
+export interface StorageUsage {
+    message_count: number;
+    attachment_count: number;
+    attachment_bytes: number;
+    database_bytes: number;
+}
 
 export interface User {
     id: string;

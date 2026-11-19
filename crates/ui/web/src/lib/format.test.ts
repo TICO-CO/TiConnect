@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    dateLabel,
     fileSize,
     fingerprintLabel,
     initials,
@@ -24,6 +25,18 @@ describe('format', () => {
 
     it('formats fingerprints', () => {
         expect(fingerprintLabel('b371f09a2c5d4e6f8190')).toBe('B3:71F0…8190');
+    });
+
+    it('formats identity dates', () => {
+        expect(dateLabel(0)).toBe('Unknown');
+        const timestamp = new Date(2026, 0, 2, 12, 0, 0).getTime();
+        expect(dateLabel(timestamp)).toBe(
+            new Date(timestamp).toLocaleDateString([], {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+            }),
+        );
     });
 
     it('formats sizes and durations', () => {

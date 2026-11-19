@@ -292,3 +292,213 @@ fn temp_dir() -> PathBuf {
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("ticonnect-messages-{}-{id}", std::process::id()))
 }
+
+#[tokio::test]
+async fn clearing_history_scopes_messages_and_unreferenced_attachments() {
+    use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
+    use ticonnect_core::message::MessageKind;
+    use ticonnect_daemon::storage::{AttachmentRecord, TransferPartial};
+
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let first = NodeId::generate();
+    let second = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([83_u8; 32]);
+    for (id, fingerprint) in [
+        (first.to_string(), "first".to_owned()),
+        (second.to_string(), "second".to_owned()),
+    ] {
+        database
+            .insert_user(NewUser {
+                id,
+                fingerprint,
+                public_key: Some(identity.verifying_key().to_bytes()),
+                display_name: None,
+                policy: UserPolicy::Accept,
+                trusted_at: 1,
+                last_seen: None,
+            })
+            .await
+            .expect("user");
+    }
+
+    let first_conversation = conversation_id(local, first);
+    let second_conversation = conversation_id(local, second);
+    database
+        .ensure_conversation(&first_conversation, &first.to_string(), 1)
+        .await
+        .expect("first conversation");
+    database
+        .ensure_conversation(&second_conversation, &second.to_string(), 1)
+        .await
+        .expect("second conversation");
+
+    let first_record = MessageRecord::text(
+        first_conversation.clone(),
+        local.to_string(),
+        1,
+        1_700_000_000_000,
+        "first",
+    );
+    let envelope = first_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            first_record.clone(),
+            1_700_000_000_000,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("first message");
+    database
+        .enqueue_outbox(&first_record.message_id.to_string(), 0, i64::MAX)
+        .await
+        .expect("first outbox");
+
+    let hash = AttachmentHash::of(b"attachment");
+    let attachment = AttachmentRef::new(hash, "clip.webm", 10, "audio/webm").expect("attachment");
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: hash.to_hex(),
+            size: 10,
+            path: "/tmp/clip.webm".to_owned(),
+            mime: "audio/webm".to_owned(),
+            name: "clip.webm".to_owned(),
+            created_at: 1,
+        })
+        .await
+        .expect("attachment");
+    let attachment_record = MessageRecord::new(
+        first_conversation.clone(),
+        local.to_string(),
+        2,
+        1_700_000_000_001,
+        MessageKind::Audio,
+        None,
+    )
+    .with_attachment(&attachment)
+    .expect("attachment message");
+    let envelope = attachment_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            attachment_record.clone(),
+            1_700_000_000_001,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("attachment message");
+    database
+        .enqueue_outbox(&attachment_record.message_id.to_string(), 0, i64::MAX)
+        .await
+        .expect("attachment outbox");
+    database
+        .upsert_transfer_partial(TransferPartial {
+            hash: hash.to_hex(),
+            user_id: first.to_string(),
+            size: 10,
+            bytes_received: 4,
+            temp_path: "/tmp/clip.webm.part".to_owned(),
+            ranges: "0:4".to_owned(),
+            updated_at: 1,
+        })
+        .await
+        .expect("transfer partial");
+
+    let second_record = MessageRecord::text(
+        second_conversation.clone(),
+        local.to_string(),
+        1,
+        1_700_000_000_002,
+        "second",
+    );
+    let envelope = second_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            second_record,
+            1_700_000_000_002,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("second message");
+
+    let outcome = database
+        .clear_history(Some(&first.to_string()))
+        .await
+        .expect("clear first");
+    assert_eq!(outcome.messages, 2);
+    assert_eq!(outcome.attachments, vec![hash.to_hex()]);
+    assert_eq!(
+        database
+            .count_history(&first_conversation)
+            .await
+            .expect("first count"),
+        0
+    );
+    assert_eq!(
+        database
+            .count_history(&second_conversation)
+            .await
+            .expect("second count"),
+        1
+    );
+    assert!(
+        database
+            .get_attachment(&hash.to_hex())
+            .await
+            .expect("attachment")
+            .is_none()
+    );
+    assert!(
+        database
+            .get_transfer_partial(&hash.to_hex())
+            .await
+            .expect("partial")
+            .is_none()
+    );
+    assert_eq!(database.outbox_depth().await.expect("outbox depth"), 0);
+
+    let usage = database.storage_usage().await.expect("usage");
+    assert_eq!(usage.message_count, 1);
+    assert_eq!(usage.attachment_count, 0);
+    assert!(usage.database_bytes > 0);
+
+    let orphan_hash = AttachmentHash::of(b"orphan-attachment").to_hex();
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: orphan_hash.clone(),
+            size: 3,
+            path: "/tmp/orphan.bin".to_owned(),
+            mime: "application/octet-stream".to_owned(),
+            name: "orphan.bin".to_owned(),
+            created_at: 2,
+        })
+        .await
+        .expect("orphan attachment");
+
+    let outcome = database.clear_history(None).await.expect("clear all");
+    assert_eq!(outcome.messages, 1);
+    assert_eq!(outcome.attachments, vec![orphan_hash.clone()]);
+    assert!(
+        database
+            .get_attachment(&orphan_hash)
+            .await
+            .expect("orphan")
+            .is_none()
+    );
+    assert_eq!(
+        database
+            .storage_usage()
+            .await
+            .expect("usage")
+            .attachment_count,
+        0
+    );
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}

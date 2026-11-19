@@ -4,8 +4,8 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, Call, Candidate, ConversationSummary, Message, MessageState, RemoteSession, User,
-    UserPolicy, WatchParty,
+    self, Call, Candidate, ConversationSummary, Message, MessageState, RemoteSession, StorageUsage,
+    User, UserPolicy, WatchParty,
 };
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
@@ -59,6 +59,11 @@ enum Command {
         conversation_id: String,
         reply: Reply<u32>,
     },
+    ClearHistory {
+        user_id: String,
+        reply: Reply<u32>,
+    },
+    StorageUsage(Reply<StorageUsage>),
     SendMessage {
         user_id: String,
         body: String,
@@ -260,6 +265,15 @@ impl LinkHandle {
             reply,
         })
         .await
+    }
+
+    pub async fn clear_history(&self, user_id: String) -> Result<u32> {
+        self.request(|reply| Command::ClearHistory { user_id, reply })
+            .await
+    }
+
+    pub async fn storage_usage(&self) -> Result<StorageUsage> {
+        self.request(Command::StorageUsage).await
     }
 
     pub async fn send_message(&self, user_id: String, body: String) -> Result<String> {
@@ -1000,6 +1014,17 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .count_messages(&conversation_id)
                 .await
                 .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::ClearHistory { user_id, reply } => {
+            let result = proxy.clear_history(&user_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::StorageUsage(reply) => {
+            let result = match proxy.get_storage_usage().await {
+                Ok(values) => events::parse_storage_usage(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
             let _ = reply.send(result);
         }
         Command::SendMessage {

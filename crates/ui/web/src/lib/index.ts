@@ -7,6 +7,7 @@ export type { BridgeFailure } from './bridge-failures';
 export { BridgeFailures } from './bridge-failures';
 export {
     clock,
+    dateLabel,
     dayLabel,
     fileSize,
     fingerprintLabel,
@@ -35,6 +36,7 @@ export type {
     RpcError,
     RpcResponse,
     Status,
+    StorageUsage,
     User,
     UserDetails,
     UserPolicy,

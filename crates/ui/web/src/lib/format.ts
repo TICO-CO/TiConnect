@@ -49,6 +49,17 @@ export function dayLabel(timestamp: number): string {
     return stamp;
 }
 
+export function dateLabel(timestamp: number): string {
+    if (timestamp <= 0) {
+        return 'Unknown';
+    }
+    return new Date(timestamp).toLocaleDateString([], {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
 export function sessionClock(seconds: number): string {
     const safe = Math.max(0, Math.floor(seconds));
     const hours = Math.floor(safe / 3600);

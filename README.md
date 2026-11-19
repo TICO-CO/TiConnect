@@ -224,9 +224,11 @@ Keyboard shortcuts:
 | `Escape` | Close a dialog |
 
 Settings are written directly to `config.toml` through `ticonnect-settings`; the
-daemon reloads the file and emits `SettingsChanged`. Autostart is controlled by
-the XDG entry at `$XDG_CONFIG_HOME/autostart/ticonnect.desktop`. The UI never
-calls a `SetSetting` D-Bus method.
+daemon reloads the file and emits `SettingsChanged`. The UI exposes editable
+discovery controls and a system/light/dark appearance selector, and can clear
+all local message history or one conversation after confirmation. Autostart is
+controlled by the XDG entry at `$XDG_CONFIG_HOME/autostart/ticonnect.desktop`.
+The UI never calls a `SetSetting` D-Bus method.
 
 ## Overlay
 
@@ -400,9 +402,11 @@ Settings keys:
   daemon continues headless.
 
 D-Bus messaging methods are `SendMessage`, `ListMessages`, `MarkRead`,
-`MarkConversationRead`, `GetMessageState`, `SetUserPolicy`, and `SetDnd`.
-Signals are `MessageReceived`, `MessageStateChanged`, `SyncCompleted`, and
-`PolicyChanged`.
+`MarkConversationRead`, `ClearHistory`, `GetMessageState`, `GetStorageUsage`,
+`SetUserPolicy`, and `SetDnd`. Signals are `MessageReceived`,
+`MessageStateChanged`, `SyncCompleted`, and `PolicyChanged`. `ClearHistory` with
+an empty user id clears all local messages and unreferenced attachments; the UI
+confirms before calling it.
 
 ## Attachments
 
@@ -412,6 +416,9 @@ Signals are `MessageReceived`, `MessageStateChanged`, `SyncCompleted`, and
 - Messages carry name, size, MIME, and hash. Transfers use a dedicated QUIC
   bidirectional stream, 64 KiB chunks, persisted missing ranges, and a final
   hash check before publication.
+- The web UI can record a voice note with the microphone. Voice notes upload as
+  `audio/webm` attachments with an `audio/ogg` fallback and play inline; other
+  audio files play the same way.
 - `ticonnect send-file <user> <path> [--mime TYPE]` sends an attachment.
 - `ticonnect download <hash> <destination>` saves it.
 - `ticonnect transfer status <hash>` and `ticonnect transfer cancel <hash>`

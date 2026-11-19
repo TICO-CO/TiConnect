@@ -358,6 +358,10 @@ impl DaemonService {
                 ipc::IDENTITY_AVATAR_HASH.to_owned(),
                 string_variant(self.state.profile().avatar_hash().unwrap_or_default()),
             ),
+            (
+                ipc::IDENTITY_CREATED_AT.to_owned(),
+                OwnedVariant::from(u64::try_from(identity.created_at()).unwrap_or_default()),
+            ),
         ])
     }
 }
@@ -720,6 +724,48 @@ impl DaemonService {
             .count_messages(conversation_id)
             .await
             .map_err(messaging_error)
+    }
+
+    async fn clear_history(&self, user_id: &str) -> Result<u32, ServiceError> {
+        let filter = (!user_id.is_empty()).then_some(user_id);
+        let outcome = self
+            .state
+            .database()
+            .clear_history(filter)
+            .await
+            .map_err(database_error)?;
+        self.state
+            .attachments()
+            .remove_stored(&outcome.attachments)
+            .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        Ok(outcome.messages)
+    }
+
+    async fn get_storage_usage(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        let usage = self
+            .state
+            .database()
+            .storage_usage()
+            .await
+            .map_err(database_error)?;
+        Ok(HashMap::from([
+            (
+                ipc::STORAGE_MESSAGE_COUNT.to_owned(),
+                OwnedVariant::from(usage.message_count),
+            ),
+            (
+                ipc::STORAGE_ATTACHMENT_COUNT.to_owned(),
+                OwnedVariant::from(usage.attachment_count),
+            ),
+            (
+                ipc::STORAGE_ATTACHMENT_BYTES.to_owned(),
+                OwnedVariant::from(usage.attachment_bytes),
+            ),
+            (
+                ipc::STORAGE_DATABASE_BYTES.to_owned(),
+                OwnedVariant::from(usage.database_bytes),
+            ),
+        ]))
     }
 
     async fn mark_read(

@@ -245,6 +245,16 @@ impl AttachmentService {
         Ok(self.inner.store.cleanup_orphans()?)
     }
 
+    pub fn remove_stored(&self, hashes: &[String]) -> Result<(), AttachmentsError> {
+        for hash in hashes {
+            let Ok(hash) = hash.parse::<AttachmentHash>() else {
+                continue;
+            };
+            self.inner.store.remove(hash)?;
+        }
+        Ok(())
+    }
+
     async fn on_message(
         &self,
         user_id: &str,

@@ -3,7 +3,14 @@ use std::fs;
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
+use ticonnect_core::id::NodeId;
+use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::ipc;
+use ticonnect_core::message::{MessageKind, MessageRecord, conversation_id};
+use ticonnect_daemon::storage::{
+    AttachmentRecord, DatabaseHandle, MessageState, NewUser, UserPolicy,
+};
 use tokio::process::Command;
 use zbus::OwnedVariant;
 use zbus::proxy;
@@ -32,6 +39,8 @@ trait Daemon {
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
+    fn clear_history(&self, user_id: &str) -> zbus::Result<u32>;
+    fn get_storage_usage(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
     fn send_attachment(&self, user_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
@@ -151,6 +160,22 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         <&str>::try_from(&identity[ipc::IDENTITY_DISPLAY_NAME]).expect("display name"),
         ""
     );
+    assert!(u64::try_from(&identity[ipc::IDENTITY_CREATED_AT]).expect("identity created_at") > 0);
+
+    let usage = proxy.get_storage_usage().await.expect("storage usage");
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_MESSAGE_COUNT]).expect("message count"),
+        0
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_COUNT]).expect("attachment count"),
+        0
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_BYTES]).expect("attachment bytes"),
+        0
+    );
+    assert!(u64::try_from(&usage[ipc::STORAGE_DATABASE_BYTES]).expect("database bytes") > 0);
 
     let settings = proxy.list_settings().await.expect("settings");
     assert!(settings.contains_key("dnd.enabled"));
@@ -248,6 +273,129 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         u32::try_from(&discovery[ipc::DISCOVERY_CANDIDATE_COUNT]).expect("candidate count"),
         0
     );
+
+    let local_node = <&str>::try_from(&identity[ipc::IDENTITY_NODE_ID])
+        .expect("node id")
+        .parse::<NodeId>()
+        .expect("parse node id");
+    let user = NodeId::generate();
+    let database = DatabaseHandle::spawn(data_dir.join("ticonnect.db"))
+        .await
+        .expect("test database");
+    let identity_key = IdentityKeyPair::from_secret_bytes([91_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "feature-test".to_owned(),
+            public_key: Some(identity_key.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("insert user");
+    let conversation = conversation_id(local_node, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("ensure conversation");
+
+    let text = MessageRecord::text(
+        conversation.clone(),
+        local_node.to_string(),
+        1,
+        1_700_000_000_000,
+        "local history",
+    );
+    database
+        .insert_message(
+            text.clone(),
+            1_700_000_000_000,
+            vec![0_u8; 64],
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("insert text");
+
+    let bytes = b"voice feature attachment";
+    let hash = AttachmentHash::of(bytes);
+    let path = data_dir
+        .join("attachments")
+        .join(&hash.to_hex()[..2])
+        .join(hash.to_hex());
+    fs::create_dir_all(path.parent().expect("attachment parent")).expect("attachment dir");
+    fs::write(&path, bytes).expect("attachment file");
+    let attachment = AttachmentRef::new(hash, "voice.webm", bytes.len() as u64, "audio/webm")
+        .expect("attachment");
+    let attachment_message = MessageRecord::new(
+        conversation.clone(),
+        local_node.to_string(),
+        2,
+        1_700_000_000_001,
+        MessageKind::Audio,
+        None,
+    )
+    .with_attachment(&attachment)
+    .expect("attachment message");
+    database
+        .insert_message(
+            attachment_message,
+            1_700_000_000_001,
+            vec![0_u8; 64],
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("insert attachment message");
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: hash.to_hex(),
+            size: bytes.len() as u64,
+            path: path.to_string_lossy().into_owned(),
+            mime: "audio/webm".to_owned(),
+            name: "voice.webm".to_owned(),
+            created_at: 1,
+        })
+        .await
+        .expect("insert attachment row");
+
+    let usage = proxy.get_storage_usage().await.expect("feature usage");
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_MESSAGE_COUNT]).expect("message count"),
+        2
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_COUNT]).expect("attachment count"),
+        1
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_BYTES]).expect("attachment bytes"),
+        bytes.len() as u64
+    );
+
+    assert_eq!(
+        proxy
+            .clear_history(&user.to_string())
+            .await
+            .expect("clear history"),
+        2
+    );
+    assert!(!path.exists(), "attachment file was not removed");
+    assert_eq!(
+        u64::try_from(
+            &proxy.get_storage_usage().await.expect("cleared usage")[ipc::STORAGE_MESSAGE_COUNT]
+        )
+        .expect("message count"),
+        0
+    );
+    assert!(
+        proxy
+            .list_messages(&conversation, 10, 0)
+            .await
+            .expect("cleared messages")
+            .is_empty()
+    );
+    drop(database);
 
     assert!(config_dir.join("identity.key").is_file());
     assert!(config_dir.join("identity.toml").is_file());

@@ -41,6 +41,7 @@ pub const IDENTITY_NODE_ID: &str = "node_id";
 pub const IDENTITY_FINGERPRINT: &str = "fingerprint";
 pub const IDENTITY_DISPLAY_NAME: &str = "display_name";
 pub const IDENTITY_AVATAR_HASH: &str = "avatar_hash";
+pub const IDENTITY_CREATED_AT: &str = "created_at";
 
 pub const USER_ID: &str = "id";
 pub const USER_FINGERPRINT: &str = "fingerprint";
@@ -60,6 +61,11 @@ pub const USER_DESKTOP: &str = "desktop";
 pub const USER_DISPLAY_SERVER: &str = "display_server";
 pub const USER_APP_VERSION: &str = "app_version";
 pub const BLOCKED_AT: &str = "blocked_at";
+
+pub const STORAGE_MESSAGE_COUNT: &str = "message_count";
+pub const STORAGE_ATTACHMENT_COUNT: &str = "attachment_count";
+pub const STORAGE_ATTACHMENT_BYTES: &str = "attachment_bytes";
+pub const STORAGE_DATABASE_BYTES: &str = "database_bytes";
 
 pub const CANDIDATE_NODE_ID: &str = "node_id";
 pub const CANDIDATE_FINGERPRINT: &str = "fingerprint";
