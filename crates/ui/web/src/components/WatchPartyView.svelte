@@ -106,10 +106,12 @@
         const cached = previewCache.get(id);
         if (cached !== undefined) {
             preview = { status: 'ready', data: cached };
+            app.prefetchYouTubeStream(id);
             return;
         }
         preview = { status: 'loading', data: null };
         const timer = window.setTimeout(() => {
+            app.prefetchYouTubeStream(id);
             void app.youtubePreview(id).then((data) => {
                 if (request !== previewRequest) {
                     return;
@@ -317,6 +319,12 @@
                                             ? ''
                                             : ' · YouTube'}</span
                                     >
+                                    {#if app.videoPreparing(videoId ?? '')}
+                                        <span
+                                            class="text-xs tracking-[0.06em] text-accent uppercase"
+                                            >Preparing video…</span
+                                        >
+                                    {/if}
                                     {#if preview.status === 'loading'}
                                         <div
                                             class="mt-1 flex flex-col gap-1.5"
@@ -496,6 +504,9 @@
                             <p class="m-0 text-step-xs text-ink-3">
                                 Join the watch party for {playerTitle}.
                             </p>
+                            {#if app.videoPreparing(party.video_id)}
+                                <p class="m-0 text-step-xs text-accent">Preparing video…</p>
+                            {/if}
                             <div class="mt-2 flex gap-2.5">
                                 <button
                                     class="inline-flex min-h-9 items-center justify-center rounded-pill border border-error bg-transparent px-[18px] text-step-xs font-bold text-error hover:bg-error/12"

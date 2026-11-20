@@ -261,6 +261,8 @@ impl WatchPartyService {
                 return Err(WatchPartyError::NotFound);
             };
             stored.invited.extend(users.iter().cloned());
+            stored.revision = stored.revision.saturating_add(1);
+            stored.actor = local_id;
             stored.updated_at = now_unix_ms();
         }
         let frame = WatchPartyFrame::Invite {
@@ -427,6 +429,8 @@ impl WatchPartyService {
                 party.invited.remove(&node_id);
                 party.participants.insert(node_id);
                 party.refresh_state();
+                party.revision = party.revision.saturating_add(1);
+                party.actor = party.host_id.clone();
                 party.updated_at = now_unix_ms();
                 self.store(party);
                 self.broadcast_sync().await?;
@@ -473,7 +477,7 @@ impl WatchPartyService {
                 if party.host_id != node_id {
                     return Err(WatchPartyError::WrongUser);
                 }
-                if revision < party.revision {
+                if revision <= party.revision {
                     return Ok(());
                 }
                 party.state = state;
@@ -577,6 +581,8 @@ impl WatchPartyService {
         party.participants.remove(user_id);
         party.invited.remove(user_id);
         party.refresh_state();
+        party.revision = party.revision.saturating_add(1);
+        party.actor = party.host_id.clone();
         party.updated_at = now_unix_ms();
         self.store(party);
         self.broadcast_sync().await?;
@@ -592,6 +598,8 @@ impl WatchPartyService {
             party.invited.remove(user_id);
         }
         party.refresh_state();
+        party.revision = party.revision.saturating_add(1);
+        party.actor = party.host_id.clone();
         party.updated_at = now_unix_ms();
         self.store(party);
         if let Err(error) = self.broadcast_sync().await {
@@ -658,6 +666,8 @@ impl WatchPartyService {
             updated.invited.remove(user);
         }
         updated.refresh_state();
+        updated.revision = updated.revision.saturating_add(1);
+        updated.actor = updated.host_id.clone();
         updated.updated_at = now_unix_ms();
         let snapshot = self.store(updated);
         self.emit(WatchPartyEvent::Changed(snapshot.clone()));

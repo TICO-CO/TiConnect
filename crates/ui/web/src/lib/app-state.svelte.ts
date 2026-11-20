@@ -138,6 +138,10 @@ export class AppState {
     demo = false;
     private client: BridgeClient | null = null;
     private videoPreviews = new SvelteMap<string, YoutubePreview>();
+    private videoStreamPending = new SvelteMap<string, Promise<string | null>>();
+    private preparedVideos = new SvelteSet<string>();
+    private prefetchAttempts = new SvelteSet<string>();
+    preparingVideos = new SvelteSet<string>();
     private reconnectTimer: number | null = null;
     private reconnectDelay = 1_000;
     private refreshTimer: number | null = null;
@@ -323,7 +327,7 @@ export class AppState {
         this.summaries = loadedSummaries ?? [];
         const [party, partyFailure] = await this.client.request<WatchParty | null>('watch_party');
         if (!partyFailure) {
-            this.party = party;
+            this.adoptParty(party);
         }
     }
 
@@ -772,7 +776,29 @@ export class AppState {
             return;
         }
         const [loaded] = await this.client.request<WatchParty | null>('watch_party');
-        this.party = loaded;
+        this.adoptParty(loaded);
+        if (loaded !== null) {
+            this.prefetchYouTubeStream(loaded.video_id);
+        }
+    }
+
+    private adoptParty(party: WatchParty | null): void {
+        if (party === null) {
+            this.party = null;
+            return;
+        }
+        const current = this.party;
+        if (current === null || current.party_id !== party.party_id) {
+            this.party = party;
+            return;
+        }
+        if (party.revision < current.revision) {
+            return;
+        }
+        if (party.revision === current.revision && party.updated_at <= current.updated_at) {
+            return;
+        }
+        this.party = party;
     }
 
     navigate(route: Route): void {
@@ -1377,7 +1403,8 @@ export class AppState {
             this.notice = failure.message;
             return;
         }
-        this.party = party;
+        this.adoptParty(party);
+        this.prefetchYouTubeStream(videoId);
         this.navigate({ kind: 'watch-party' });
     }
 
@@ -1393,7 +1420,7 @@ export class AppState {
             this.notice = failure.message;
             return;
         }
-        this.party = party;
+        this.adoptParty(party);
     }
 
     async youtubePreview(videoId: string): Promise<YoutubePreview | null> {
@@ -1425,6 +1452,42 @@ export class AppState {
     }
 
     async youtubeStream(videoId: string): Promise<string | null> {
+        return this.loadYoutubeStream(videoId, true);
+    }
+
+    prefetchYouTubeStream(videoId: string): void {
+        if (
+            videoId === '' ||
+            this.client === null ||
+            this.preparedVideos.has(videoId) ||
+            this.prefetchAttempts.has(videoId) ||
+            this.videoStreamPending.has(videoId)
+        ) {
+            return;
+        }
+        this.prefetchAttempts.add(videoId);
+        void this.loadYoutubeStream(videoId, false);
+    }
+
+    videoPreparing(videoId: string): boolean {
+        return this.preparingVideos.has(videoId);
+    }
+
+    private loadYoutubeStream(videoId: string, notify: boolean): Promise<string | null> {
+        const pending = this.videoStreamPending.get(videoId);
+        if (pending !== undefined) {
+            return pending;
+        }
+        const task = this.fetchYoutubeStream(videoId, notify).finally(() => {
+            this.videoStreamPending.delete(videoId);
+            this.preparingVideos.delete(videoId);
+        });
+        this.preparingVideos.add(videoId);
+        this.videoStreamPending.set(videoId, task);
+        return task;
+    }
+
+    private async fetchYoutubeStream(videoId: string, notify: boolean): Promise<string | null> {
         if (this.client === null) {
             return null;
         }
@@ -1432,13 +1495,18 @@ export class AppState {
             video_id: videoId,
         });
         if (failure) {
-            this.notice = `Video stream unavailable: ${failure.message}`;
+            if (notify) {
+                this.notice = `Video stream unavailable: ${failure.message}`;
+            }
             return null;
         }
         if (stream === null) {
-            this.notice = 'Video stream unavailable.';
+            if (notify) {
+                this.notice = 'Video stream unavailable.';
+            }
             return null;
         }
+        this.preparedVideos.add(videoId);
         return stream.url;
     }
 
@@ -1483,7 +1551,8 @@ export class AppState {
             return;
         }
         if (party !== null) {
-            this.party = party;
+            this.adoptParty(party);
+            this.prefetchYouTubeStream(party.video_id);
         }
         this.navigate({ kind: 'watch-party' });
     }
@@ -1510,7 +1579,7 @@ export class AppState {
             playing,
         });
         if (!failure && party !== null) {
-            this.party = party;
+            this.adoptParty(party);
         }
     }
 
@@ -1725,9 +1794,12 @@ export class AppState {
                 }
                 break;
             case 'watch_party_requested':
-            case 'watch_party_changed':
-                this.party = event.party as WatchParty;
+            case 'watch_party_changed': {
+                const party = event.party as WatchParty;
+                this.adoptParty(party);
+                this.prefetchYouTubeStream(party.video_id);
                 break;
+            }
             case 'watch_party_ended':
                 this.party = null;
                 this.closePlayer();

@@ -5,6 +5,49 @@ use std::time::Duration;
 use support::{TestNode, connect_pair, wait_for, wait_true};
 
 #[tokio::test]
+async fn accepting_while_host_plays_keeps_playback_state() {
+    let host = TestNode::start("party-late-host").await;
+    let guest = TestNode::start("party-late-guest").await;
+    connect_pair(&host, &guest).await;
+
+    let party = host
+        .watch_party
+        .start(&[guest.node_id().to_string().as_str()], "dQw4w9WgXcQ")
+        .await
+        .expect("start party");
+    wait_true(Duration::from_secs(5), || async {
+        guest.watch_party.snapshot().is_some()
+    })
+    .await
+    .expect("guest invite");
+    host.watch_party
+        .publish(&party.party_id, 42_000, true)
+        .await
+        .expect("host plays");
+    let revision_before_accept = host.watch_party.snapshot().expect("host party").revision;
+
+    guest
+        .watch_party
+        .accept(&party.party_id)
+        .await
+        .expect("guest accepts");
+
+    wait_true(Duration::from_secs(5), || async {
+        guest.watch_party.snapshot().is_some_and(|snapshot| {
+            snapshot.playing && snapshot.position_ms == 42_000 && snapshot.participants.len() == 2
+        })
+    })
+    .await
+    .expect("guest joins active playback");
+
+    let host_snapshot = host.watch_party.snapshot().expect("host party");
+    assert!(host_snapshot.revision > revision_before_accept);
+
+    guest.shutdown().await;
+    host.shutdown().await;
+}
+
+#[tokio::test]
 async fn group_watch_party_syncs_roster_and_playback() {
     let host = TestNode::start("party-host").await;
     let first = TestNode::start("party-first").await;

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppState } from './app-state.svelte';
 import { BridgeClient } from './bridge';
-import type { StorageUsage } from './types';
+import type { StorageUsage, WatchParty, YoutubeStream } from './types';
 
 const USAGE: StorageUsage = {
     message_count: 4,
@@ -303,6 +303,108 @@ describe('group watch party behavior', () => {
             user_id: 'user-2',
             body: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
         });
+    });
+
+    it('does not let a stale accept reply overwrite newer playback state', async () => {
+        const { app, client } = makeApp();
+        const invited: WatchParty = {
+            ...groupParty,
+            role: 'guest',
+            participants: ['node-1'],
+            invited: [],
+        };
+        app.party = invited;
+        let resolveAccept: (value: [WatchParty | null, null]) => void = () => {};
+        const accepting = new Promise<[WatchParty | null, null]>((resolve) => {
+            resolveAccept = resolve;
+        });
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'accept_watch_party') {
+                return accepting;
+            }
+            return [null, null];
+        });
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        const request = app.acceptParty();
+        handle({
+            type: 'watch_party_changed',
+            party: {
+                ...invited,
+                participants: ['node-1', 'guest'],
+                playing: true,
+                position_ms: 42_000,
+                revision: 2,
+            },
+        });
+        resolveAccept([
+            {
+                ...invited,
+                participants: ['node-1', 'guest'],
+                playing: false,
+                position_ms: 0,
+                revision: 1,
+            },
+            null,
+        ]);
+        await request;
+
+        expect(app.party?.playing).toBe(true);
+        expect(app.party?.position_ms).toBe(42_000);
+        expect(app.party?.revision).toBe(2);
+    });
+
+    it('prefetches a video stream once for concurrent callers', async () => {
+        const { app, client } = makeApp();
+        let resolveStream: (value: [YoutubeStream | null, null]) => void = () => {};
+        const stream = new Promise<[YoutubeStream | null, null]>((resolve) => {
+            resolveStream = resolve;
+        });
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'youtube_stream') {
+                return stream;
+            }
+            return [null, null];
+        });
+
+        app.prefetchYouTubeStream('video-1');
+        expect(app.videoPreparing('video-1')).toBe(true);
+        const playing = app.youtubeStream('video-1');
+        expect(client.request).toHaveBeenCalledTimes(1);
+
+        resolveStream([{ video_id: 'video-1', url: 'http://media/video-1' }, null]);
+
+        expect(await playing).toBe('http://media/video-1');
+        expect(app.videoPreparing('video-1')).toBe(false);
+
+        app.prefetchYouTubeStream('video-1');
+        expect(client.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('prefetches the invited video before joining', async () => {
+        const { app, client } = makeApp();
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'youtube_stream') {
+                return [{ video_id: 'video-1', url: 'http://media/video-1' }, null];
+            }
+            return [null, null];
+        });
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'watch_party_requested',
+            party: { ...groupParty, role: 'guest', video_id: 'video-1' },
+        });
+
+        await vi.waitFor(() =>
+            expect(client.request).toHaveBeenCalledWith('youtube_stream', {
+                video_id: 'video-1',
+            }),
+        );
     });
 
     it('tracks transfer progress events', () => {

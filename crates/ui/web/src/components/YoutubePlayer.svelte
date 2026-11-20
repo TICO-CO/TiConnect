@@ -15,6 +15,7 @@
     let video: HTMLVideoElement | null = $state(null);
     let started = $state(false);
     let loading = $state(false);
+    let buffering = $state(false);
     let loadFailed = $state(false);
     let streamUrl = $state('');
     let ready = $state(false);
@@ -23,13 +24,14 @@
     let duration = $state(0);
     let playing = $state(false);
     let muted = $state(false);
+    let volume = $state(1);
     let lastRevision = -1;
     let lastActor = '';
     let requestToken = 0;
 
     const poster = $derived(`https://i.ytimg.com/vi/${party.video_id}/hqdefault.jpg`);
     const showPoster = $derived(
-        !loadFailed && (!started || loading || !ready || (!playing && position === 0)),
+        !loadFailed && (!started || !ready || (!playing && position === 0)),
     );
 
     async function begin(auto = false): Promise<void> {
@@ -40,6 +42,7 @@
             started = true;
             loading = true;
             loadFailed = false;
+            streamUrl = '';
             pending = auto ? party : { ...party, playing: true };
             const token = ++requestToken;
             const url = await app.youtubeStream(party.video_id);
@@ -97,10 +100,21 @@
         }
         ready = true;
         loading = false;
+        buffering = false;
+        loadFailed = false;
         duration = Number.isFinite(video.duration) ? video.duration : 0;
+        applyAudio();
         const value = pending ?? party;
         pending = null;
         applyParty(value);
+    }
+
+    function applyAudio(): void {
+        if (video === null) {
+            return;
+        }
+        video.muted = muted;
+        video.volume = volume;
     }
 
     function publish(nextPosition: number, nextPlaying: boolean): void {
@@ -128,19 +142,23 @@
     }
 
     function seek(event: Event): void {
+        if (video === null || !ready) {
+            return;
+        }
         const value = Number((event.currentTarget as HTMLInputElement).value);
         position = value;
-        if (video !== null) {
-            video.currentTime = value;
-            publish(value, playing);
-        }
+        video.currentTime = value;
+        publish(value, playing);
     }
 
     function toggleMute(): void {
         muted = !muted;
-        if (video !== null) {
-            video.muted = muted;
-        }
+        applyAudio();
+    }
+
+    function changeVolume(event: Event): void {
+        volume = Number((event.currentTarget as HTMLInputElement).value);
+        applyAudio();
     }
 
     function fullscreen(): void {
@@ -152,6 +170,7 @@
         started = false;
         ready = false;
         loading = false;
+        buffering = false;
         loadFailed = false;
         streamUrl = '';
         duration = 0;
@@ -182,11 +201,24 @@
         }
         applyParty(value);
     });
+
+    $effect(() => {
+        if (party.role !== 'host' || !party.playing || !ready) {
+            return;
+        }
+        const timer = window.setInterval(() => {
+            if (video === null || video.paused) {
+                return;
+            }
+            onPublish(Math.max(0, Math.round(video.currentTime * 1000)), true);
+        }, 2_000);
+        return () => window.clearInterval(timer);
+    });
 </script>
 
 <div bind:this={frame} class="flex min-h-0 flex-1 flex-col">
     <div class="relative flex min-h-[300px] flex-1 overflow-hidden rounded-sm bg-base">
-        {#if started}
+        {#if started && streamUrl !== ''}
             <video
                 class="size-full bg-base object-contain"
                 bind:this={video}
@@ -198,13 +230,33 @@
                     if (video !== null) {
                         position = video.currentTime;
                         duration = Number.isFinite(video.duration) ? video.duration : duration;
+                        buffering = false;
                     }
                 }}
                 onplay={() => (playing = true)}
                 onpause={() => (playing = false)}
-                onwaiting={() => (loading = true)}
-                onplaying={() => (loading = false)}
+                onwaiting={() => {
+                    if (ready) {
+                        buffering = true;
+                    } else {
+                        loading = true;
+                    }
+                }}
+                onstalled={() => {
+                    if (ready) {
+                        buffering = true;
+                    }
+                }}
+                oncanplay={() => (buffering = false)}
+                onseeked={() => (buffering = false)}
+                onplaying={() => {
+                    loading = false;
+                    buffering = false;
+                }}
                 onerror={() => {
+                    if (streamUrl === '') {
+                        return;
+                    }
                     loading = false;
                     loadFailed = true;
                 }}
@@ -236,6 +288,12 @@
                 {/if}
             </button>
         {/if}
+        {#if buffering}
+            <span
+                class="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-pill bg-base/80 px-3 py-1 text-xs text-ink"
+                >Buffering…</span
+            >
+        {/if}
         {#if loadFailed}
             <div
                 class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-surface-2 p-6 text-center"
@@ -262,16 +320,27 @@
             >{formatPlayerTime(position)}</span
         >
         <input
-            class="flex-1 accent-accent"
+            class="flex-1 accent-accent disabled:opacity-50"
             type="range"
             min="0"
             max={Math.max(1, duration)}
             step="0.1"
             value={position}
             oninput={seek}
+            disabled={!ready}
             aria-label="Seek video"
         />
         <span class="w-14 text-xs text-ink-3 tabular-nums">{formatPlayerTime(duration)}</span>
+        <input
+            class="h-8 w-20 shrink-0 accent-accent"
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            oninput={changeVolume}
+            aria-label="Volume"
+        />
         <button
             class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
             onclick={toggleMute}
