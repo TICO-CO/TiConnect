@@ -169,6 +169,24 @@ discovery, trust, messaging, policy, ping, and quit. The hidden
 on the UI process. Running `ticonnect` with no subcommand opens the UI and
 starts the daemon when it is absent.
 
+### Dev install
+
+`make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`.
+The payload, config, data, state, and private D-Bus live under `*-dev` paths, so
+the dev install can run beside a normal installation without replacing
+`ticonnect`, desktop entries, systemd units, or autostart files. The dev
+transport port defaults to `45881`.
+
+```sh
+make install-dev
+ticonnect-dev
+make uninstall-dev
+DEV_PURGE=1 make uninstall-dev
+```
+
+Paths are overridable with `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`,
+`DEV_DATA_DIR`, `DEV_STATE_DIR`, `DEV_RUNTIME_DIR`, and `DEV_TRANSPORT_PORT`.
+
 ## Release
 
 Every push to `main` compiles and tests the workspace. Merging a `v*` branch

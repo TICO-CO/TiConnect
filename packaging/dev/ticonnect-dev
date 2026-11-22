@@ -1,0 +1,60 @@
+#!/bin/sh
+set -eu
+
+dev_bin="@DEV_BIN@"
+config_dir="@DEV_CONFIG_DIR@"
+data_dir="@DEV_DATA_DIR@"
+state_dir="@DEV_STATE_DIR@"
+runtime_dir="@DEV_RUNTIME_DIR@"
+transport_port="@DEV_TRANSPORT_PORT@"
+
+case "${1:-}" in
+    --install-user | --uninstall-user)
+        echo "ticonnect-dev: refusing $1; use make install-dev or make uninstall-dev" >&2
+        exit 2
+        ;;
+esac
+
+export TICONNECT_CONFIG_DIR="${TICONNECT_CONFIG_DIR:-$config_dir}"
+export TICONNECT_DATA_DIR="${TICONNECT_DATA_DIR:-$data_dir}"
+export TICONNECT_LOG_FILE="${TICONNECT_LOG_FILE:-$state_dir/daemon.log}"
+export TICONNECT_TRANSPORT__PORT="${TICONNECT_TRANSPORT__PORT:-$transport_port}"
+
+if [ -z "${TICONNECT_IPC_BUS_ADDRESS:-}" ]; then
+    bus="$runtime_dir/bus"
+    pid_file="$runtime_dir/bus.pid"
+    mkdir -p "$runtime_dir"
+    chmod 700 "$runtime_dir"
+    if [ ! -S "$bus" ]; then
+        if ! command -v dbus-daemon >/dev/null 2>&1; then
+            echo "ticonnect-dev: dbus-daemon not found" >&2
+            exit 1
+        fi
+        pid_tmp="$runtime_dir/bus.pid.$$"
+        rm -f "$pid_tmp"
+        if (umask 077; dbus-daemon --session --fork --nopidfile --nosyslog \
+            --address="unix:path=$bus" --print-pid=3 3>"$pid_tmp") \
+            >/dev/null 2>&1; then
+            if [ -s "$pid_tmp" ]; then
+                mv "$pid_tmp" "$pid_file"
+            else
+                rm -f "$pid_tmp"
+            fi
+        else
+            rm -f "$pid_tmp"
+        fi
+        attempt=0
+        while [ ! -S "$bus" ]; do
+            attempt=$((attempt + 1))
+            if [ "$attempt" -ge 50 ]; then
+                rm -f "$pid_file"
+                echo "ticonnect-dev: private D-Bus did not start at $bus" >&2
+                exit 1
+            fi
+            sleep 0.05
+        done
+    fi
+    export TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus"
+fi
+
+exec "$dev_bin" "$@"

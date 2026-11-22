@@ -125,6 +125,15 @@ nix build .#ticonnect
 TICONNECT_BIN="$PWD/result/bin/ticonnect" make lab-smoke
 ```
 
+## Cross-host dev install
+
+For two real machines, run `make install-dev` on each peer and launch
+`ticonnect-dev` there. Each install has its own config, data, state, and private
+IPC bus, so it can run beside a normal installation. The dev transport port
+defaults to UDP `45881`; allow UDP `5353` and `45870` for discovery plus `45881`
+for transport between peers. Stop the normal app on both peers for a clean
+two-node test.
+
 ## What is checked
 
 - private per-node D-Bus; no global daemon name collision
