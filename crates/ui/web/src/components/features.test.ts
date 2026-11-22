@@ -53,6 +53,29 @@ function makeApp(): AppState {
             outbox_depth: 0,
             user_count: 1,
         },
+        network: {
+            state: 'no_peers',
+            confidence: 'unknown',
+            hint: 'No peers replied.',
+            interfaces: 'eth0: 192.168.1.20',
+            interface_count: 1,
+            transport_port: 45871,
+            transport_bound: true,
+            mdns_active: true,
+            broadcast_active: true,
+            candidate_count: 0,
+            active_sessions: 0,
+            beacons_sent: 0,
+            beacons_received: 0,
+            beacon_send_errors: 0,
+            dropped_packets: 0,
+            last_beacon_sent_at: 0,
+            last_beacon_received_at: 0,
+            last_candidate_at: 0,
+            last_session_at: 0,
+            last_failure_at: 0,
+            transport_failures: 0,
+        },
         settings: {
             'identity.display_name': USER.display_name,
             'appearance.color_scheme': 'system',
@@ -67,6 +90,7 @@ function makeApp(): AppState {
         online: true,
     };
     app.bootstrap = bootstrap;
+    app.network = bootstrap.network;
     app.settings = { ...bootstrap.settings };
     app.settingsDraft = { ...bootstrap.settings };
     app.users = [USER];
@@ -139,6 +163,17 @@ describe('feature surfaces', () => {
         const interval = screen.getByDisplayValue('5');
         await fireEvent.input(interval, { target: { value: '30' } });
         expect(app.settingsDraft['discovery.beacon_interval_secs']).toBe('30');
+    });
+
+    it('shows LAN access state and firewall ports in Settings', () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'about' };
+        render(SettingsView, { app });
+
+        expect(screen.getByText('LAN access')).toBeTruthy();
+        expect(screen.getByText('No peers found')).toBeTruthy();
+        expect(screen.getByText('5353 · 45870 · 45871')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Check LAN access' })).toBeTruthy();
     });
 
     it('renders identity age and real storage usage', () => {

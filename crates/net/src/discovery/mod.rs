@@ -5,13 +5,13 @@ pub mod mdns;
 use std::collections::BTreeSet;
 use std::net::{IpAddr, SocketAddr};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use thiserror::Error;
 use ticonnect_core::id::NodeId;
-use tokio::sync::{broadcast as event_bus, watch};
+use tokio::sync::{Notify, broadcast as event_bus, watch};
 use tokio::task::JoinHandle;
 
 use self::candidate::{Candidate, CandidateCache, CandidateChange, UserPlatform};
@@ -111,6 +111,11 @@ pub struct DiscoveryStatus {
     pub broadcast_active: bool,
     pub candidate_count: usize,
     pub dropped_packets: u64,
+    pub beacons_sent: u64,
+    pub beacons_received: u64,
+    pub beacon_send_errors: u64,
+    pub last_beacon_sent_at: u64,
+    pub last_beacon_received_at: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -136,6 +141,17 @@ pub struct LanDiscovery {
     active: Arc<AtomicBool>,
     mdns_active: Arc<AtomicBool>,
     broadcast_active: Arc<AtomicBool>,
+    counters: Arc<DiscoveryCounters>,
+    probe: Arc<Notify>,
+}
+
+#[derive(Default)]
+struct DiscoveryCounters {
+    beacons_sent: AtomicU64,
+    beacons_received: AtomicU64,
+    beacon_send_errors: AtomicU64,
+    last_beacon_sent_at: AtomicU64,
+    last_beacon_received_at: AtomicU64,
 }
 
 struct RuntimeState {
@@ -154,7 +170,13 @@ impl LanDiscovery {
             active: Arc::new(AtomicBool::new(false)),
             mdns_active: Arc::new(AtomicBool::new(false)),
             broadcast_active: Arc::new(AtomicBool::new(false)),
+            counters: Arc::new(DiscoveryCounters::default()),
+            probe: Arc::new(Notify::new()),
         }
+    }
+
+    pub fn probe(&self) {
+        self.probe.notify_one();
     }
 
     pub async fn stop_and_wait(&self) {
@@ -228,6 +250,7 @@ impl Discovery for LanDiscovery {
             active: self.active.clone(),
             mdns_active: self.mdns_active.clone(),
             broadcast_active: self.broadcast_active.clone(),
+            counters: self.counters.clone(),
         };
         let (shutdown, shutdown_rx) = watch::channel(false);
         let mut tasks = Vec::new();
@@ -242,7 +265,12 @@ impl Discovery for LanDiscovery {
         }
 
         if config.broadcast {
-            match broadcast::spawn(config.clone(), sink.clone(), shutdown_rx.clone()) {
+            match broadcast::spawn(
+                config.clone(),
+                sink.clone(),
+                shutdown_rx.clone(),
+                self.probe.clone(),
+            ) {
                 Ok(task) => tasks.push(task),
                 Err(error) => {
                     tracing::warn!(%error, "broadcast discovery unavailable; continuing without it");
@@ -307,6 +335,11 @@ impl Discovery for LanDiscovery {
             broadcast_active: self.broadcast_active.load(Ordering::SeqCst),
             candidate_count: cache.len(),
             dropped_packets: cache.dropped(),
+            beacons_sent: self.counters.beacons_sent.load(Ordering::SeqCst),
+            beacons_received: self.counters.beacons_received.load(Ordering::SeqCst),
+            beacon_send_errors: self.counters.beacon_send_errors.load(Ordering::SeqCst),
+            last_beacon_sent_at: self.counters.last_beacon_sent_at.load(Ordering::SeqCst),
+            last_beacon_received_at: self.counters.last_beacon_received_at.load(Ordering::SeqCst),
         }
     }
 }
@@ -333,6 +366,7 @@ pub(crate) struct Sink {
     active: Arc<AtomicBool>,
     mdns_active: Arc<AtomicBool>,
     broadcast_active: Arc<AtomicBool>,
+    counters: Arc<DiscoveryCounters>,
 }
 
 impl Sink {
@@ -391,6 +425,28 @@ impl Sink {
 
     pub(crate) fn set_broadcast_active(&self, active: bool) {
         self.broadcast_active.store(active, Ordering::SeqCst);
+    }
+
+    pub(crate) fn note_beacon_sent(&self) {
+        self.counters.beacons_sent.fetch_add(1, Ordering::SeqCst);
+        self.counters
+            .last_beacon_sent_at
+            .store(unix_millis(), Ordering::SeqCst);
+    }
+
+    pub(crate) fn note_beacon_send_error(&self) {
+        self.counters
+            .beacon_send_errors
+            .fetch_add(1, Ordering::SeqCst);
+    }
+
+    pub(crate) fn note_beacon_received(&self) {
+        self.counters
+            .beacons_received
+            .fetch_add(1, Ordering::SeqCst);
+        self.counters
+            .last_beacon_received_at
+            .store(unix_millis(), Ordering::SeqCst);
     }
 }
 
@@ -495,6 +551,14 @@ fn validate_fingerprint(value: &str) -> Result<String, FilterError> {
         return Err(FilterError::Invalid("invalid fingerprint".to_owned()));
     }
     Ok(value.to_ascii_lowercase())
+}
+
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 fn spawn_expiry(

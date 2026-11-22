@@ -107,11 +107,13 @@ async fn dispatch_inner(
         "bootstrap" => {
             let identity = link.identity().await?;
             let status = link.status().await?;
+            let network = link.network_status().await?;
             let settings = link.list_settings().await?;
             let autostart = crate::autostart::enabled();
             Ok(json!({
                 "identity": identity,
                 "status": status,
+                "network": network,
                 "settings": settings.values(),
                 "appearance": settings.get("appearance.color_scheme").unwrap_or("system"),
                 "autostart": autostart,
@@ -121,6 +123,8 @@ async fn dispatch_inner(
         }
         "identity" => Ok(json!(link.identity().await?)),
         "status" => Ok(json!(link.status().await?)),
+        "network_status" => Ok(json!(link.network_status().await?)),
+        "run_lan_check" => Ok(json!(link.run_lan_check().await?)),
         "list_users" => Ok(json!(link.list_users().await?)),
         "get_user" => {
             let input: UserId = params(value)?;

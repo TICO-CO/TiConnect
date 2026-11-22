@@ -13,9 +13,34 @@ export interface Status {
     user_count: number;
 }
 
+export interface NetworkStatus {
+    state: string;
+    confidence: string;
+    hint: string;
+    interfaces: string;
+    interface_count: number;
+    transport_port: number;
+    transport_bound: boolean;
+    mdns_active: boolean;
+    broadcast_active: boolean;
+    candidate_count: number;
+    active_sessions: number;
+    beacons_sent: number;
+    beacons_received: number;
+    beacon_send_errors: number;
+    dropped_packets: number;
+    last_beacon_sent_at: number;
+    last_beacon_received_at: number;
+    last_candidate_at: number;
+    last_session_at: number;
+    last_failure_at: number;
+    transport_failures: number;
+}
+
 export interface Bootstrap {
     identity: Identity;
     status: Status;
+    network: NetworkStatus;
     settings: Record<string, string>;
     appearance: string;
     autostart: boolean;

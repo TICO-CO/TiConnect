@@ -87,6 +87,19 @@
                 {/if}
             </div>
         {/if}
+        {#if app.connection === 'online' && app.networkWarning !== ''}
+            <div
+                class="absolute top-16 left-1/2 z-40 flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-warning bg-surface px-4 py-2 text-xs text-warning"
+                role="status"
+            >
+                <span>{app.networkWarning}</span>
+                <button
+                    class="rounded-pill border border-warning px-3 py-1 text-xs font-bold text-warning hover:bg-warning/12"
+                    onclick={() => app.navigate({ kind: 'settings', section: 'about' })}
+                    >Details</button
+                >
+            </div>
+        {/if}
         {#if app.notice}
             <div
                 class="absolute top-4 left-1/2 z-[35] flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-line-strong bg-surface-2 py-2 pr-2.5 pl-4 text-[13px] text-ink shadow-soft"

@@ -7,6 +7,7 @@ pub mod config_watch;
 pub mod discovery_service;
 pub mod identity;
 pub mod messaging;
+pub mod network;
 pub mod profile;
 pub mod reconnect_service;
 pub mod remote;

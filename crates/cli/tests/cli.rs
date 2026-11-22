@@ -49,6 +49,8 @@ fn messaging_commands_are_exposed() {
         "transfer",
         "call",
         "remote",
+        "discover",
+        "network",
     ] {
         assert!(stdout.contains(command), "missing {command} in help");
     }

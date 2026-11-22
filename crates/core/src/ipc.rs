@@ -85,6 +85,28 @@ pub const DISCOVERY_BROADCAST_ACTIVE: &str = "broadcast_active";
 pub const DISCOVERY_CANDIDATE_COUNT: &str = "candidate_count";
 pub const DISCOVERY_DROPPED_PACKETS: &str = "dropped_packets";
 
+pub const NETWORK_STATE: &str = "state";
+pub const NETWORK_CONFIDENCE: &str = "confidence";
+pub const NETWORK_HINT: &str = "hint";
+pub const NETWORK_INTERFACES: &str = "interfaces";
+pub const NETWORK_INTERFACE_COUNT: &str = "interface_count";
+pub const NETWORK_TRANSPORT_PORT: &str = "transport_port";
+pub const NETWORK_TRANSPORT_BOUND: &str = "transport_bound";
+pub const NETWORK_MDNS_ACTIVE: &str = "mdns_active";
+pub const NETWORK_BROADCAST_ACTIVE: &str = "broadcast_active";
+pub const NETWORK_CANDIDATE_COUNT: &str = "candidate_count";
+pub const NETWORK_ACTIVE_SESSIONS: &str = "active_sessions";
+pub const NETWORK_BEACONS_SENT: &str = "beacons_sent";
+pub const NETWORK_BEACONS_RECEIVED: &str = "beacons_received";
+pub const NETWORK_BEACON_SEND_ERRORS: &str = "beacon_send_errors";
+pub const NETWORK_DROPPED_PACKETS: &str = "dropped_packets";
+pub const NETWORK_LAST_BEACON_SENT_AT: &str = "last_beacon_sent_at";
+pub const NETWORK_LAST_BEACON_RECEIVED_AT: &str = "last_beacon_received_at";
+pub const NETWORK_LAST_CANDIDATE_AT: &str = "last_candidate_at";
+pub const NETWORK_LAST_SESSION_AT: &str = "last_session_at";
+pub const NETWORK_LAST_FAILURE_AT: &str = "last_failure_at";
+pub const NETWORK_TRANSPORT_FAILURES: &str = "transport_failures";
+
 pub const MESSAGE_ID: &str = "message_id";
 pub const MESSAGE_CONVERSATION_ID: &str = "conversation_id";
 pub const MESSAGE_USER_ID: &str = "user_id";
@@ -168,6 +190,8 @@ pub mod methods {
     pub const GET_USER: &str = "GetUser";
     pub const LIST_CANDIDATES: &str = "ListCandidates";
     pub const GET_DISCOVERY_STATUS: &str = "GetDiscoveryStatus";
+    pub const GET_NETWORK_STATUS: &str = "GetNetworkStatus";
+    pub const RUN_LAN_CHECK: &str = "RunLanCheck";
     pub const FORGET_USER: &str = "ForgetUser";
     pub const SEND_MESSAGE: &str = "SendMessage";
     pub const LIST_MESSAGES: &str = "ListMessages";

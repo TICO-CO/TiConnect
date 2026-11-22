@@ -29,6 +29,8 @@ fails to acquire the name and exits non-zero.
 | `ListUsers` | `() -> aa{sv}` | Returns known users. |
 | `ListCandidates` | `() -> aa{sv}` | Returns current discovery candidates. |
 | `GetDiscoveryStatus` | `() -> a{sv}` | Returns discovery backend state and counters. |
+| `GetNetworkStatus` | `() -> a{sv}` | Returns LAN access state, interfaces, ports, and counters. |
+| `RunLanCheck` | `() -> a{sv}` | Sends an immediate discovery probe and waits up to 15 seconds for a peer or session. |
 | `GetUser` | `(s) -> a{sv}` | Returns stable identity plus live address, MAC, OS, desktop, and display-server metadata. |
 | `ForgetUser` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
 | `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
@@ -187,6 +189,34 @@ active transport session exists for that node.
 | `candidate_count` | `u32` | Current candidate count. |
 | `dropped_packets` | `u64` | Invalid or discarded packets and candidates. |
 
+## Network status keys
+
+`GetNetworkStatus` and `RunLanCheck` return:
+
+| Key | Type | Meaning |
+|---|---|---|
+| `state` | `s` | `disabled`, `no_interface`, `bind_failed`, `discovery_down`, `no_peers`, `peers_discovered`, `peers_unreachable`, or `reachable`. |
+| `confidence` | `s` | `confirmed`, `probable`, or `unknown`. |
+| `hint` | `s` | User-facing next step. |
+| `interfaces` | `s` | Comma-separated non-loopback IPv4 interfaces. |
+| `interface_count` | `u32` | Number of usable LAN interfaces. |
+| `transport_port` | `u32` | Bound QUIC transport port, or `0` when unbound. |
+| `transport_bound` | `b` | Whether the transport socket is bound. |
+| `mdns_active` | `b` | Whether the mDNS backend is running. |
+| `broadcast_active` | `b` | Whether the broadcast backend is running. |
+| `candidate_count` | `u32` | Current discovered peers. |
+| `active_sessions` | `u32` | Active trusted transport sessions. |
+| `beacons_sent` | `u64` | Broadcast beacons sent since daemon start. |
+| `beacons_received` | `u64` | Broadcast beacons received since daemon start. |
+| `beacon_send_errors` | `u64` | Failed beacon sends. |
+| `dropped_packets` | `u64` | Invalid or discarded discovery packets. |
+| `last_beacon_sent_at` | `u64` | Unix milliseconds, or `0`. |
+| `last_beacon_received_at` | `u64` | Unix milliseconds, or `0`. |
+| `last_candidate_at` | `u64` | Unix milliseconds of the newest candidate, or `0`. |
+| `last_session_at` | `u64` | Unix milliseconds of the last session, or `0`. |
+| `last_failure_at` | `u64` | Unix milliseconds of the last transport failure, or `0`. |
+| `transport_failures` | `u64` | Transport failures since daemon start. |
+
 ## Errors
 
 Stable D-Bus error names live under `org.ticonnect.Daemon.Error.*`. Reserved
@@ -205,6 +235,9 @@ ticonnect id show
 ticonnect users list
 ticonnect discover list
 ticonnect discover watch
+ticonnect network status
+ticonnect network status --json
+ticonnect network check
 ticonnect users forget <user-id>
 ticonnect quit
 ```

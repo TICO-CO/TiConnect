@@ -1,6 +1,9 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 
-use crate::output::{candidate_line, status_human, status_json, variant_text};
+use crate::output::{
+    candidate_line, network_human, network_json, status_human, status_json, variant_text,
+};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
@@ -50,6 +53,11 @@ enum Command {
     Discover {
         #[command(subcommand)]
         command: DiscoverCommand,
+    },
+    /// Inspect LAN access and run a reachability check.
+    Network {
+        #[command(subcommand)]
+        command: NetworkCommand,
     },
     /// Send a text message to a trusted user.
     Send { user_id: String, body: String },
@@ -131,6 +139,22 @@ enum DiscoverCommand {
     List,
     /// Print candidate found and lost events.
     Watch,
+}
+
+#[derive(Debug, Subcommand)]
+enum NetworkCommand {
+    /// Print LAN access state.
+    Status {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Probe the LAN and print the resulting state.
+    Check {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -249,6 +273,7 @@ async fn run_command(command: Command) -> Result<()> {
         Command::Settings { command } => run_settings(command)?,
         Command::Users { command } => run_users(command).await?,
         Command::Discover { command } => run_discover(command).await?,
+        Command::Network { command } => run_network(command).await?,
         Command::Send { user_id, body } => {
             let proxy = connect().await?;
             let message_id = proxy
@@ -541,6 +566,36 @@ async fn run_users(command: UsersCommand) -> Result<()> {
                 .context("unblock user")?;
             println!("user unblocked");
         }
+    }
+    Ok(())
+}
+
+async fn run_network(command: NetworkCommand) -> Result<()> {
+    let proxy = connect().await?;
+    match command {
+        NetworkCommand::Status { json } => {
+            let status = proxy
+                .get_network_status()
+                .await
+                .context("get network status")?;
+            print_network(&status, json)?;
+        }
+        NetworkCommand::Check { json } => {
+            let status = proxy.run_lan_check().await.context("run LAN check")?;
+            print_network(&status, json)?;
+        }
+    }
+    Ok(())
+}
+
+fn print_network(status: &HashMap<String, zbus::OwnedVariant>, json: bool) -> Result<()> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&network_json(status)).context("serialize network")?
+        );
+    } else {
+        print!("{}", network_human(status));
     }
     Ok(())
 }

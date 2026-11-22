@@ -84,6 +84,39 @@
         preferencesDraft = { ...preferencesDraft, [key]: next };
     }
 
+    function lanStateLabel(state: string): string {
+        switch (state) {
+            case 'disabled':
+                return 'Disabled';
+            case 'no_interface':
+                return 'No LAN interface';
+            case 'bind_failed':
+                return 'Port unavailable';
+            case 'discovery_down':
+                return 'Discovery unavailable';
+            case 'no_peers':
+                return 'No peers found';
+            case 'peers_discovered':
+                return 'Peers found';
+            case 'peers_unreachable':
+                return 'Peers unreachable';
+            case 'reachable':
+                return 'Reachable';
+            default:
+                return 'Unknown';
+        }
+    }
+
+    function lanStateClass(state: string): string {
+        if (state === 'reachable') {
+            return 'text-success';
+        }
+        if (state === 'no_peers' || state === 'peers_discovered' || state === 'unknown') {
+            return 'text-ink-2';
+        }
+        return 'text-warning';
+    }
+
     function save(): void {
         app.updatePreferences(preferencesDraft);
         void app.saveSettings();
@@ -1022,6 +1055,61 @@
                                 )}
                         />
                     </div>
+                </section>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        LAN access
+                    </h2>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Status</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >{app.network?.confidence ?? 'unknown'} confidence</span
+                            >
+                        </div>
+                        <strong class={lanStateClass(app.network?.state ?? '')}
+                            >{lanStateLabel(app.network?.state ?? '')}</strong
+                        >
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Interfaces</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Local IPv4 addresses</span
+                            >
+                        </div>
+                        <span class="max-w-[55%] truncate text-right text-xs text-ink-2"
+                            >{app.network?.interfaces || 'None'}</span
+                        >
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Ports</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >UDP for discovery and transport</span
+                            >
+                        </div>
+                        <span class="text-right text-xs text-ink-2"
+                            >5353 · 45870 · {app.network?.transport_port ?? 45871}</span
+                        >
+                    </div>
+                    <p class="m-0 mt-3 text-step-xs leading-[1.45] text-ink-2">
+                        {app.network?.hint ?? 'No LAN status available yet.'}
+                    </p>
+                    <button
+                        class="mt-3 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface disabled:opacity-50"
+                        disabled={app.checkingLan}
+                        onclick={() => void app.checkLan()}
+                        >{app.checkingLan ? 'Checking…' : 'Check LAN access'}</button
+                    >
                 </section>
             {/if}
         </div>

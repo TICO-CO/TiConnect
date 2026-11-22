@@ -15,10 +15,16 @@ use super::{
     IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME,
     MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY,
     MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
-    MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, MESSAGE_USER_ID, REMOTE_EXPIRES_AT,
-    REMOTE_FINGERPRINT, REMOTE_INDICATOR, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
-    REMOTE_USER_ID, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE,
-    STATUS_USER_COUNT, STORAGE_ATTACHMENT_BYTES, STORAGE_ATTACHMENT_COUNT, STORAGE_DATABASE_BYTES,
+    MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, MESSAGE_USER_ID, NETWORK_ACTIVE_SESSIONS,
+    NETWORK_BEACON_SEND_ERRORS, NETWORK_BEACONS_RECEIVED, NETWORK_BEACONS_SENT,
+    NETWORK_BROADCAST_ACTIVE, NETWORK_CANDIDATE_COUNT, NETWORK_CONFIDENCE, NETWORK_DROPPED_PACKETS,
+    NETWORK_HINT, NETWORK_INTERFACE_COUNT, NETWORK_INTERFACES, NETWORK_LAST_BEACON_RECEIVED_AT,
+    NETWORK_LAST_BEACON_SENT_AT, NETWORK_LAST_CANDIDATE_AT, NETWORK_LAST_FAILURE_AT,
+    NETWORK_LAST_SESSION_AT, NETWORK_MDNS_ACTIVE, NETWORK_STATE, NETWORK_TRANSPORT_BOUND,
+    NETWORK_TRANSPORT_FAILURES, NETWORK_TRANSPORT_PORT, REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT,
+    REMOTE_INDICATOR, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE, REMOTE_USER_ID,
+    STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE, STATUS_USER_COUNT,
+    STORAGE_ATTACHMENT_BYTES, STORAGE_ATTACHMENT_COUNT, STORAGE_DATABASE_BYTES,
     STORAGE_MESSAGE_COUNT, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PHASE,
     TRANSFER_REASON, TRANSFER_SIZE, TRANSFER_USER_ID, USER_ADDRESSES, USER_APP_VERSION,
     USER_AVATAR_HASH, USER_CONNECTED, USER_DESKTOP, USER_DISPLAY_NAME, USER_DISPLAY_SERVER,
@@ -279,6 +285,31 @@ pub struct Status {
     pub user_count: u32,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkStatus {
+    pub state: String,
+    pub confidence: String,
+    pub hint: String,
+    pub interfaces: String,
+    pub interface_count: u32,
+    pub transport_port: u16,
+    pub transport_bound: bool,
+    pub mdns_active: bool,
+    pub broadcast_active: bool,
+    pub candidate_count: u32,
+    pub active_sessions: u32,
+    pub beacons_sent: u64,
+    pub beacons_received: u64,
+    pub beacon_send_errors: u64,
+    pub dropped_packets: u64,
+    pub last_beacon_sent_at: u64,
+    pub last_beacon_received_at: u64,
+    pub last_candidate_at: u64,
+    pub last_session_at: u64,
+    pub last_failure_at: u64,
+    pub transport_failures: u64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StorageUsage {
     pub message_count: u64,
@@ -380,6 +411,32 @@ pub fn parse_status(values: &HashMap<String, OwnedVariant>) -> Result<Status> {
         active_sessions: optional_u32(values, STATUS_ACTIVE_SESSIONS)?,
         outbox_depth: optional_u32(values, STATUS_OUTBOX_DEPTH)?,
         user_count: optional_u32(values, STATUS_USER_COUNT)?,
+    })
+}
+
+pub fn parse_network_status(values: &HashMap<String, OwnedVariant>) -> Result<NetworkStatus> {
+    Ok(NetworkStatus {
+        state: optional_string(values, NETWORK_STATE)?,
+        confidence: optional_string(values, NETWORK_CONFIDENCE)?,
+        hint: optional_string(values, NETWORK_HINT)?,
+        interfaces: optional_string(values, NETWORK_INTERFACES)?,
+        interface_count: optional_u32(values, NETWORK_INTERFACE_COUNT)?,
+        transport_port: optional_u16(values, NETWORK_TRANSPORT_PORT)?,
+        transport_bound: optional_bool(values, NETWORK_TRANSPORT_BOUND)?,
+        mdns_active: optional_bool(values, NETWORK_MDNS_ACTIVE)?,
+        broadcast_active: optional_bool(values, NETWORK_BROADCAST_ACTIVE)?,
+        candidate_count: optional_u32(values, NETWORK_CANDIDATE_COUNT)?,
+        active_sessions: optional_u32(values, NETWORK_ACTIVE_SESSIONS)?,
+        beacons_sent: optional_u64(values, NETWORK_BEACONS_SENT)?,
+        beacons_received: optional_u64(values, NETWORK_BEACONS_RECEIVED)?,
+        beacon_send_errors: optional_u64(values, NETWORK_BEACON_SEND_ERRORS)?,
+        dropped_packets: optional_u64(values, NETWORK_DROPPED_PACKETS)?,
+        last_beacon_sent_at: optional_u64(values, NETWORK_LAST_BEACON_SENT_AT)?,
+        last_beacon_received_at: optional_u64(values, NETWORK_LAST_BEACON_RECEIVED_AT)?,
+        last_candidate_at: optional_u64(values, NETWORK_LAST_CANDIDATE_AT)?,
+        last_session_at: optional_u64(values, NETWORK_LAST_SESSION_AT)?,
+        last_failure_at: optional_u64(values, NETWORK_LAST_FAILURE_AT)?,
+        transport_failures: optional_u64(values, NETWORK_TRANSPORT_FAILURES)?,
     })
 }
 
@@ -703,6 +760,40 @@ mod tests {
         let call = parse_call(&values).expect("call");
         assert_eq!(call.started_at, 123);
         assert_eq!(call.connected_at, 456);
+    }
+
+    #[test]
+    fn network_status_parses_typed_values() {
+        let values = HashMap::from([
+            (
+                NETWORK_STATE.to_owned(),
+                OwnedVariant::from(zbus::Str::from("reachable")),
+            ),
+            (
+                NETWORK_CONFIDENCE.to_owned(),
+                OwnedVariant::from(zbus::Str::from("confirmed")),
+            ),
+            (
+                NETWORK_TRANSPORT_PORT.to_owned(),
+                OwnedVariant::from(45871_u32),
+            ),
+            (NETWORK_TRANSPORT_BOUND.to_owned(), OwnedVariant::from(true)),
+            (
+                NETWORK_CANDIDATE_COUNT.to_owned(),
+                OwnedVariant::from(2_u32),
+            ),
+            (
+                NETWORK_ACTIVE_SESSIONS.to_owned(),
+                OwnedVariant::from(1_u32),
+            ),
+        ]);
+        let status = parse_network_status(&values).expect("network status");
+        assert_eq!(status.state, "reachable");
+        assert_eq!(status.confidence, "confirmed");
+        assert_eq!(status.transport_port, 45871);
+        assert!(status.transport_bound);
+        assert_eq!(status.candidate_count, 2);
+        assert_eq!(status.active_sessions, 1);
     }
 
     #[test]

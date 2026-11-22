@@ -137,6 +137,9 @@ ticonnect send-file <user-id> <path>
 ticonnect download <hash> <destination>
 ticonnect transfer status <hash>
 ticonnect messages <user-id>
+ticonnect discover list
+ticonnect network status
+ticonnect network check
 ticonnect settings list
 ```
 
@@ -495,11 +498,19 @@ confirms before calling it.
   validation, self-filtering, and protocol version checks are always enforced.
 - A malformed packet is dropped and counted. mDNS failure does not prevent the
   broadcast backend from running, and disabling mDNS leaves broadcast fallback.
-- Firewall expectations: allow UDP port `5353` for mDNS and UDP port `45870` for
-  broadcast discovery on the local network. Discovery never opens a transport
-  connection.
+- Firewall expectations: allow UDP port `5353` for mDNS, UDP port `45870` for
+  broadcast discovery, and the configured transport port (default `45871` for
+  QUIC) on the local network.
 - `ticonnect discover list` prints current candidates. `ticonnect discover watch`
   prints `found` and `lost` events until interrupted.
+- `ticonnect network status` reports the current LAN state and counters.
+  `ticonnect network check` sends an immediate discovery probe and waits for a
+  peer or transport session. No peer reply is reported as unknown, not as proof
+  of a blocked firewall. An active transport session is the only confirmed
+  reachability signal.
+- The UI shows LAN state in Settings → About → LAN access. If peers are found
+  but no transport session opens, it suggests allowing the UDP ports above and
+  checking client isolation or VPN settings.
 
 ## Documentation
 

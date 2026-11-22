@@ -20,6 +20,7 @@ import type {
     Connection,
     ConversationSummary,
     Message,
+    NetworkStatus,
     RemoteSession,
     StorageUsage,
     User,
@@ -86,6 +87,8 @@ function isDemoEnabled(): boolean {
 export class AppState {
     connection = $state<Connection>('connecting');
     bootstrap = $state<Bootstrap | null>(null);
+    network = $state<NetworkStatus | null>(null);
+    checkingLan = $state(false);
     users = $state<User[]>([]);
     summaries = $state<ConversationSummary[]>([]);
     messages = $state<Message[]>([]);
@@ -199,6 +202,7 @@ export class AppState {
         this.connection = 'online';
         this.users = seed.users;
         this.bootstrap = seed.bootstrap;
+        this.network = seed.bootstrap.network;
         this.summaries = seed.summaries;
         this.messages = seed.messages;
         this.details = seed.details;
@@ -267,6 +271,7 @@ export class AppState {
             return;
         }
         this.bootstrap = bootstrap;
+        this.network = bootstrap.network;
         this.errorMessage = '';
         this.connection = 'online';
         timing('bootstrap loaded');
@@ -322,9 +327,53 @@ export class AppState {
             return;
         }
         this.summaries = summariesResult.value ?? [];
+        await this.refreshNetwork();
         const partyResult = await this.client.request<WatchParty | null>('watch_party');
         if (partyResult.ok) {
             this.adoptParty(partyResult.value);
+        }
+    }
+
+    get networkWarning(): string {
+        switch (this.network?.state) {
+            case 'no_interface':
+                return 'No LAN connection detected. Connect to Wi-Fi or Ethernet.';
+            case 'bind_failed':
+                return 'TiConnect cannot open its network port. Check for a port conflict.';
+            case 'discovery_down':
+                return 'LAN discovery could not start. Check sandbox permissions and port conflicts.';
+            case 'peers_unreachable':
+                return 'Peers were found but cannot connect. Check the firewall and network isolation.';
+            case undefined:
+            default:
+                return '';
+        }
+    }
+
+    async checkLan(): Promise<void> {
+        if (this.client === null || this.checkingLan) {
+            return;
+        }
+        this.checkingLan = true;
+        const result = await this.client.request<NetworkStatus>('run_lan_check');
+        this.checkingLan = false;
+        if (!result.ok) {
+            this.notice = result.error.message;
+            return;
+        }
+        if (result.value !== null) {
+            this.network = result.value;
+            this.notice = 'LAN check complete.';
+        }
+    }
+
+    private async refreshNetwork(): Promise<void> {
+        if (this.client === null) {
+            return;
+        }
+        const result = await this.client.request<NetworkStatus>('network_status');
+        if (result.ok && result.value !== null) {
+            this.network = result.value;
         }
     }
 
@@ -1870,6 +1919,10 @@ export class AppState {
                 break;
             case 'self_profile_changed':
                 void this.reloadSelfProfile();
+                break;
+            case 'candidates':
+            case 'candidate_lost':
+                void this.refreshNetwork();
                 break;
             case 'conversation_changed':
             case 'user_connected':

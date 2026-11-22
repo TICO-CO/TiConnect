@@ -30,6 +30,8 @@ trait Daemon {
     fn list_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_network_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn run_lan_check(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
     fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
     fn list_messages(
@@ -274,6 +276,14 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         0
     );
 
+    let network = proxy.get_network_status().await.expect("network status");
+    assert!(
+        !<&str>::try_from(&network[ipc::NETWORK_STATE])
+            .expect("network state")
+            .is_empty()
+    );
+    assert!(bool::try_from(&network[ipc::NETWORK_TRANSPORT_BOUND]).expect("transport bound"));
+
     let local_node = <&str>::try_from(&identity[ipc::IDENTITY_NODE_ID])
         .expect("node id")
         .parse::<NodeId>()
@@ -435,6 +445,11 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     assert!(!bool::try_from(&discovery[ipc::DISCOVERY_MDNS_ACTIVE]).expect("mdns active"));
     assert!(
         !bool::try_from(&discovery[ipc::DISCOVERY_BROADCAST_ACTIVE]).expect("broadcast active")
+    );
+    let checked = proxy.run_lan_check().await.expect("LAN check");
+    assert_eq!(
+        <&str>::try_from(&checked[ipc::NETWORK_STATE]).expect("network state"),
+        "disabled"
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))

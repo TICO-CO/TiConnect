@@ -22,6 +22,8 @@ pub trait Daemon {
     fn get_user(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn get_network_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn run_lan_check(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
     fn list_blocked_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn unblock_user(&self, fingerprint: &str) -> zbus::Result<bool>;

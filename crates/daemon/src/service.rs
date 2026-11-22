@@ -607,6 +607,14 @@ impl DaemonService {
         ]))
     }
 
+    async fn get_network_status(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        Ok(crate::network::status_map(self.state.as_ref()))
+    }
+
+    async fn run_lan_check(&self) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+        Ok(crate::network::check_map(self.state.as_ref()).await)
+    }
+
     async fn forget_user(&self, user_id: &str) -> Result<bool, ServiceError> {
         self.state
             .auto_trust()

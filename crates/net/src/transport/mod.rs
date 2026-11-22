@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use quinn::rustls::pki_types::CertificateDer;
 use thiserror::Error;
@@ -91,6 +91,8 @@ pub struct TransportMetrics {
     pub handshakes: u64,
     pub failures: u64,
     pub active_sessions: u64,
+    pub last_failure_at: u64,
+    pub last_session_at: u64,
 }
 
 #[derive(Debug, Default)]
@@ -98,6 +100,8 @@ pub(crate) struct AtomicMetrics {
     handshakes: AtomicU64,
     failures: AtomicU64,
     active_sessions: AtomicU64,
+    last_failure_at: AtomicU64,
+    last_session_at: AtomicU64,
 }
 
 impl AtomicMetrics {
@@ -106,6 +110,8 @@ impl AtomicMetrics {
             handshakes: self.handshakes.load(Ordering::Relaxed),
             failures: self.failures.load(Ordering::Relaxed),
             active_sessions: self.active_sessions.load(Ordering::Relaxed),
+            last_failure_at: self.last_failure_at.load(Ordering::Relaxed),
+            last_session_at: self.last_session_at.load(Ordering::Relaxed),
         }
     }
 
@@ -115,10 +121,12 @@ impl AtomicMetrics {
 
     pub(crate) fn note_failure(&self) {
         self.failures.fetch_add(1, Ordering::Relaxed);
+        self.last_failure_at.store(unix_millis(), Ordering::Relaxed);
     }
 
     pub(crate) fn note_connected(&self) {
         self.active_sessions.fetch_add(1, Ordering::Relaxed);
+        self.last_session_at.store(unix_millis(), Ordering::Relaxed);
     }
 
     pub(crate) fn note_disconnected(&self) {
@@ -374,6 +382,14 @@ pub(crate) fn user_certificate(
     let fingerprint = tls::validate_certificate(certificate).map_err(TransportError::Tls)?;
     let public_key = tls::certificate_public_key(certificate).map_err(TransportError::Tls)?;
     Ok((fingerprint, public_key))
+}
+
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 #[derive(Debug, Clone)]

@@ -14,10 +14,17 @@ in
       type = lib.types.package;
       description = "TiConnect package to use.";
     };
+
+    openFirewall = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Open the default TiConnect UDP sockets in the NixOS firewall.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
     environment.systemPackages = [ cfg.package ];
+    networking.firewall.allowedUDPPorts = lib.optionals cfg.openFirewall [ 5353 45870 45871 ];
 
     systemd.user.services.ticonnectd = {
       description = "TiConnect background daemon";

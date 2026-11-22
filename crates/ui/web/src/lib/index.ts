@@ -35,6 +35,7 @@ export type {
     ConversationSummary,
     Identity,
     Message,
+    NetworkStatus,
     RemoteSession,
     RemoteTicket,
     RpcError,

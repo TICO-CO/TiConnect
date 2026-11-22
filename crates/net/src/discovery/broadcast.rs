@@ -1,12 +1,13 @@
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use if_addrs::{IfAddr, Ifv4Addr};
 use socket2::{Domain, Protocol, Socket, Type};
 use ticonnect_core::id::NodeId;
 use tokio::net::UdpSocket;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinHandle;
 
 use super::candidate::{Candidate, CandidateSource, UserPlatform};
@@ -200,6 +201,7 @@ pub(crate) fn spawn(
     config: DiscoveryConfig,
     sink: Sink,
     shutdown: watch::Receiver<bool>,
+    probe: Arc<Notify>,
 ) -> Result<JoinHandle<()>, DiscoveryError> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
@@ -213,7 +215,7 @@ pub(crate) fn spawn(
 
     let targets = beacon_targets(&config);
     Ok(tokio::spawn(async move {
-        run(config, socket, targets, sink, shutdown).await;
+        run(config, socket, targets, sink, shutdown, probe).await;
     }))
 }
 
@@ -223,6 +225,7 @@ async fn run(
     targets: Vec<Target>,
     sink: Sink,
     mut shutdown: watch::Receiver<bool>,
+    probe: Arc<Notify>,
 ) {
     sink.set_broadcast_active(true);
     let mut ticker = tokio::time::interval(config.beacon_interval);
@@ -237,6 +240,9 @@ async fn run(
                 }
             }
             _ = ticker.tick() => {
+                send_beacons(&config, &socket, &targets, &sink).await;
+            }
+            _ = probe.notified() => {
                 send_beacons(&config, &socket, &targets, &sink).await;
             }
             received = socket.recv_from(&mut buffer) => {
@@ -280,12 +286,16 @@ async fn send_beacons(
             Ok(bytes) => bytes,
             Err(error) => {
                 tracing::debug!(%error, "failed to encode discovery beacon");
+                sink.note_beacon_send_error();
                 continue;
             }
         };
         if let Err(error) = socket.send_to(&bytes, target.destination).await {
             tracing::debug!(%error, destination = %target.destination, "failed to send discovery beacon");
+            sink.note_beacon_send_error();
             sink.note_dropped();
+        } else {
+            sink.note_beacon_sent();
         }
     }
 }
@@ -299,6 +309,7 @@ fn receive_beacon(bytes: &[u8], source: SocketAddr, sink: &Sink) {
             return;
         }
     };
+    sink.note_beacon_received();
 
     let mut addresses = BTreeSet::new();
     addresses.insert(beacon.address);

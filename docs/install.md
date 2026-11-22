@@ -72,7 +72,9 @@ sudo nixos-rebuild switch --flake /etc/nixos
 ```
 
 The module installs the package, adds the app-menu entry, and enables the
-daemon and overlay systemd user services. Package-only install without services:
+daemon and overlay systemd user services. Set `services.ticonnect.openFirewall =
+true` to allow the default UDP ports `5353`, `45870`, and `45871`. Package-only
+install without services:
 
 ```sh
 nix profile install github:TICO-CO/TiConnect#ticonnect
@@ -136,6 +138,32 @@ Daemon logs also go to `$XDG_STATE_HOME/ticonnect/daemon.log`, usually
 
 If the app menu entry does not launch, verify `~/.local/bin` is in your session
 `PATH` and run `ticonnect` from a terminal to see the error.
+
+If peers are not discovered or cannot connect, check LAN access:
+
+```sh
+ticonnect network status
+ticonnect network check
+```
+
+The daemon uses mDNS (`5353/udp`), UDP broadcast discovery (`45870/udp`), and
+QUIC transport (`45871/udp` by default). On systems with a firewall, allow those
+UDP ports on the LAN. Examples:
+
+```sh
+sudo ufw allow 5353/udp
+sudo ufw allow 45870/udp
+sudo ufw allow 45871/udp
+```
+
+```sh
+sudo firewall-cmd --add-port=5353/udp --add-port=45870/udp --add-port=45871/udp --permanent
+sudo firewall-cmd --reload
+```
+
+`no_peers` means no peer replied; it does not prove the firewall is blocking
+traffic. `peers_unreachable` means discovery worked but the transport port did
+not. Check client isolation, VPNs, and the configured `transport.port`.
 
 ## Flatpak (experimental)
 

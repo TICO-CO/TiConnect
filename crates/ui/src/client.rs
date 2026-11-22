@@ -28,6 +28,8 @@ enum Command {
     },
     ClearAvatar(Reply<()>),
     GetStatus(Reply<Status>),
+    GetNetworkStatus(Reply<ticonnect_core::ipc::events::NetworkStatus>),
+    RunLanCheck(Reply<ticonnect_core::ipc::events::NetworkStatus>),
     ListUsers(Reply<Vec<User>>),
     GetUser {
         user_id: String,
@@ -225,6 +227,14 @@ impl LinkHandle {
 
     pub async fn status(&self) -> Result<Status> {
         self.request(Command::GetStatus).await
+    }
+
+    pub async fn network_status(&self) -> Result<ticonnect_core::ipc::events::NetworkStatus> {
+        self.request(Command::GetNetworkStatus).await
+    }
+
+    pub async fn run_lan_check(&self) -> Result<ticonnect_core::ipc::events::NetworkStatus> {
+        self.request(Command::RunLanCheck).await
     }
 
     pub async fn list_users(&self) -> Result<Vec<User>> {
@@ -554,7 +564,15 @@ async fn run_link(
                             let Some(command) = command else {
                                 return;
                             };
-                            handle_command(&proxy, command).await;
+                            match command {
+                                Command::RunLanCheck(reply) => {
+                                    let proxy = proxy.clone();
+                                    tokio::spawn(async move {
+                                        handle_command(&proxy, Command::RunLanCheck(reply)).await;
+                                    });
+                                }
+                                command => handle_command(&proxy, command).await,
+                            }
                         }
                         reason = lost_receiver.recv() => {
                             let reason = reason.unwrap_or_else(|| "daemon connection closed".to_owned());
@@ -1008,6 +1026,20 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         Command::GetStatus(reply) => {
             let result = match proxy.get_status().await {
                 Ok(values) => events::parse_status(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::GetNetworkStatus(reply) => {
+            let result = match proxy.get_network_status().await {
+                Ok(values) => events::parse_network_status(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::RunLanCheck(reply) => {
+            let result = match proxy.run_lan_check().await {
+                Ok(values) => events::parse_network_status(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
