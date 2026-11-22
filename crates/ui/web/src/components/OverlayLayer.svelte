@@ -220,7 +220,10 @@
             <div class="mt-3 flex justify-end gap-2">
                 <button
                     class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                    >Mute <Icon name="mute" size={12} /></button
+                    aria-pressed={activeCall.input_muted}
+                    onclick={() => void app.toggleInputMute()}
+                    >{activeCall.input_muted ? 'Unmute' : 'Mute'}
+                    <Icon name="mute" size={12} /></button
                 >
                 <button
                     class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-error/12"

@@ -52,7 +52,19 @@ pub trait Daemon {
     fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
     fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
     fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
+    fn set_call_muted(
+        &self,
+        call_id: &str,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn list_call_logs(
+        &self,
+        user_id: &str,
+        limit: u32,
+    ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_audio_devices(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_call_metrics(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn start_watch_party(
         &self,
@@ -126,6 +138,14 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn call_state_changed(&self, call_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn call_mute_changed(
+        &self,
+        call_id: &str,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn call_ended(&self, call_id: &str, reason: &str) -> zbus::Result<()>;

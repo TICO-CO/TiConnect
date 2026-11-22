@@ -22,6 +22,14 @@ impl CaptureHandle {
         self.sample_rate
     }
 
+    pub fn set_muted(&self, muted: bool) {
+        if muted {
+            self.stream.pause().ok();
+        } else if self.is_running() {
+            self.stream.play().ok();
+        }
+    }
+
     pub fn stop(&self) {
         self.stop.store(true, Ordering::Relaxed);
         self.stream.pause().ok();
@@ -45,14 +53,17 @@ pub fn start_capture(
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let device = match device_name {
-        Some(name) => host.input_devices().map_err(cpal_error)?.find(|device| {
-            device
-                .description()
-                .is_ok_and(|description| description.name() == name)
-        }),
-        None => Some(host.default_input_device().ok_or(DeviceError::Missing)?),
-    }
-    .ok_or(DeviceError::Missing)?;
+        Some(name) => host
+            .input_devices()
+            .map_err(cpal_error)?
+            .find(|device| {
+                device
+                    .description()
+                    .is_ok_and(|description| description.name() == name)
+            })
+            .ok_or(DeviceError::Missing)?,
+        None => host.default_input_device().ok_or(DeviceError::Missing)?,
+    };
     let config = device.default_input_config().map_err(cpal_error)?;
     let sample_rate = config.sample_rate();
     let stop = Arc::new(AtomicBool::new(false));

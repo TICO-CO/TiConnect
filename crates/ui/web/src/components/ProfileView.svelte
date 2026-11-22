@@ -275,18 +275,18 @@
                             </dd>
                         </div>
                         {#each app.callLogs
-                            .filter((log) => log.userId === user.id)
-                            .slice(-3) as log (log.id)}
+                            .filter((log) => log.user_id === user.id)
+                            .slice(0, 3) as log (log.id)}
                             <div
                                 class="flex items-baseline justify-between gap-4 border-b border-line/55 py-[9px] last:border-b-0"
                             >
                                 <dt class="text-step-xs text-ink-3">
-                                    {log.reason === 'missed' ? 'Missed call' : 'Call'}
+                                    {log.reason === 'timeout' ? 'Missed call' : 'Call'}
                                 </dt>
                                 <dd
                                     class="m-0 text-right text-step-xs [overflow-wrap:anywhere] text-ink"
                                 >
-                                    {clock(log.at)}
+                                    {clock(log.ended_at)}
                                 </dd>
                             </div>
                         {/each}

@@ -46,6 +46,13 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     .await
     .expect("caller in-call");
 
+    let muted = first
+        .calls
+        .set_muted(call.id, true, false)
+        .expect("mute input");
+    assert!(muted.input_muted);
+    assert!(!muted.output_muted);
+
     first.calls.hangup_call(call.id).await.expect("hangup");
     assert!(first.calls.state().is_none());
     recv_event(&mut first_events, |event| match event {
@@ -69,6 +76,74 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     })
     .await
     .expect("callee cleanup");
+
+    let logs = first
+        .database
+        .list_call_logs(None, 10)
+        .await
+        .expect("call logs");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].id, call.id.to_string());
+    assert_eq!(logs[0].user_id, second.node_id().to_string());
+    assert_eq!(logs[0].direction, "outgoing");
+    assert_eq!(logs[0].reason, "hangup");
+    let cleared = first
+        .database
+        .clear_call_logs(Some(&second.node_id().to_string()))
+        .await
+        .expect("clear call logs");
+    assert_eq!(cleared, 1);
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
+async fn hangup_cancels_ringing_call_and_persists_both_sides() {
+    let first = TestNode::start("call-cancel-first").await;
+    let second = TestNode::start("call-cancel-second").await;
+    connect_pair(&first, &second).await;
+
+    let call = first
+        .calls
+        .start_call(&second.node_id().to_string())
+        .await
+        .expect("start call");
+    wait_true(Duration::from_secs(5), || async {
+        second.calls.state().is_some()
+    })
+    .await
+    .expect("callee ringing");
+
+    first
+        .calls
+        .hangup_call(call.id)
+        .await
+        .expect("cancel ringing");
+    assert!(first.calls.state().is_none());
+    wait_true(Duration::from_secs(5), || async {
+        second.calls.state().is_none()
+    })
+    .await
+    .expect("callee cleanup");
+
+    for node in [&first, &second] {
+        wait_true(Duration::from_secs(5), || async {
+            node.database
+                .list_call_logs(None, 10)
+                .await
+                .is_ok_and(|logs| logs.len() == 1)
+        })
+        .await
+        .expect("call log persisted");
+        let logs = node
+            .database
+            .list_call_logs(None, 10)
+            .await
+            .expect("call logs");
+        assert_eq!(logs[0].id, call.id.to_string());
+        assert_eq!(logs[0].reason, "hangup");
+    }
 
     first.shutdown().await;
     second.shutdown().await;

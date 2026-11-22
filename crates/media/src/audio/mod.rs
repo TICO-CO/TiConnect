@@ -105,6 +105,13 @@ impl SharedBuffer {
         buffer.drain(..take).collect()
     }
 
+    pub fn clear(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+
     pub fn depth(&self) -> usize {
         self.0.lock().unwrap_or_else(PoisonError::into_inner).len()
     }

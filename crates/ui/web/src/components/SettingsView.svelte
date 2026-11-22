@@ -1,8 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    import type { Preferences } from '../lib';
-    import type { AppState } from '../lib';
+    import type { AppState, AudioDevice, Preferences } from '../lib';
     import { dateLabel, fileSize, fingerprintLabel } from '../lib';
     import { DEFAULT_PREFERENCES } from '../lib';
     import { SETTINGS_SECTIONS, type SettingsSection } from '../lib';
@@ -25,6 +24,8 @@
     const sectionLabel = $derived(
         SETTINGS_SECTIONS.find((item) => item.id === section)?.label ?? 'Settings',
     );
+    const inputDevices = $derived(deviceOptions('input'));
+    const outputDevices = $derived(deviceOptions('output'));
     const subtitle = $derived(
         {
             user: 'Your identity on this network',
@@ -51,6 +52,15 @@
 
     function setValue(key: string, next: string): void {
         app.setDraftSetting(key, next);
+    }
+
+    function deviceOptions(kind: string): AudioDevice[] {
+        const devices = app.audioDevices.filter((device) => device.kind === kind);
+        const current = value(`calls.${kind}_device`);
+        if (current === '' || devices.some((device) => device.id === current)) {
+            return devices;
+        }
+        return [{ id: current, name: `Unavailable · ${current}`, kind }, ...devices];
     }
 
     function setEnabled(key: string, next: boolean): void {
@@ -454,15 +464,20 @@
                                 >Leave empty for the system default</span
                             >
                         </div>
-                        <input
-                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
+                        <select
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
                             value={value('calls.input_device')}
-                            oninput={(event) =>
+                            onchange={(event) =>
                                 setValue(
                                     'calls.input_device',
-                                    (event.currentTarget as HTMLInputElement).value,
+                                    (event.currentTarget as HTMLSelectElement).value,
                                 )}
-                        />
+                        >
+                            <option value="">System default</option>
+                            {#each inputDevices as device (device.id)}
+                                <option value={device.id}>{device.name}</option>
+                            {/each}
+                        </select>
                     </div>
                     <div
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
@@ -473,12 +488,55 @@
                                 >Leave empty for the system default</span
                             >
                         </div>
-                        <input
-                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
+                        <select
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
                             value={value('calls.output_device')}
-                            oninput={(event) =>
+                            onchange={(event) =>
                                 setValue(
                                     'calls.output_device',
+                                    (event.currentTarget as HTMLSelectElement).value,
+                                )}
+                        >
+                            <option value="">System default</option>
+                            {#each outputDevices as device (device.id)}
+                                <option value={device.id}>{device.name}</option>
+                            {/each}
+                        </select>
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Mute shortcut</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Example: Ctrl+M. Empty disables it</span
+                            >
+                        </div>
+                        <input
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
+                            value={value('calls.mute_shortcut', 'Ctrl+M')}
+                            oninput={(event) =>
+                                setValue(
+                                    'calls.mute_shortcut',
+                                    (event.currentTarget as HTMLInputElement).value,
+                                )}
+                        />
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Output mute shortcut</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Example: Ctrl+Shift+M. Empty disables it</span
+                            >
+                        </div>
+                        <input
+                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
+                            value={value('calls.output_mute_shortcut', 'Ctrl+Shift+M')}
+                            oninput={(event) =>
+                                setValue(
+                                    'calls.output_mute_shortcut',
                                     (event.currentTarget as HTMLInputElement).value,
                                 )}
                         />

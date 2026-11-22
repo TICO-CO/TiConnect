@@ -5,33 +5,33 @@ from the TiCrafter TypeScript style and adapted to a browser UI package.
 
 ## 1. Result pattern
 
-Use the Result tuple from `src/lib/result.ts`:
+Use the Result discriminated union from `src/lib/result.ts`:
 
 ```ts
-export type Result<T, E = unknown> = [value: T | null, err: E | null];
+export type Result<T, E = unknown> = { ok: true; value: T } | { ok: false; error: E };
 ```
 
 Return `Result` for expected failures: validation, parsing, guards, bridge
-requests, and protocol replies.
+requests, and protocol replies. Build results with `ok()` and `err()`.
 
 ```ts
-const [bootstrap, bootstrapFailure] = await client.request<Bootstrap>('bootstrap');
-if (bootstrapFailure) {
-    return bootstrapFailure.message;
+const bootstrapResult = await client.request<Bootstrap>('bootstrap');
+if (!bootstrapResult.ok) {
+    return bootstrapResult.error.message;
 }
-if (bootstrap === null) {
+if (bootstrapResult.value === null) {
     return 'bootstrap response was empty';
 }
 
-return bootstrap.version;
+return bootstrapResult.value.version;
 ```
 
-- Destructure as `const [value, err] = ...`.
-- Check `err` first and early-return.
-- Never read `value` when `err` is non-null.
+- Check `result.ok` first and early-return on failure.
+- Read `result.error` only when `result.ok` is false.
+- Read `result.value` only when `result.ok` is true.
+- Keep the `ok` check and the `null` check adjacent, with no blank lines
+  between them.
 - Type `E` narrowly, usually a discriminated failure union.
-- Keep the destructure, the `err` check, and the `null` check adjacent, with no
-  blank lines between them.
 
 ## 2. Exceptions only at the boundary
 
@@ -77,7 +77,7 @@ requires it, and justify it when used.
 - Loop variables use `index`, `eventIndex`, `requestIndex`, and similar names.
 - Test fixtures use descriptive keys.
 - Exceptions: coordinate axes `x`, `y`, `z`; standard acronyms `id`, `url`,
-  `apiKey`; and `value`/`err` in the Result tuple.
+  `apiKey`; and `value`/`error` in the Result union.
 - Wire-format fields from the daemon protocol keep their exact names, including
   `snake_case` fields such as `node_id`, `display_name`, `transport_state`, and
   `user_count`. Do not translate them at the transport boundary.
@@ -152,13 +152,13 @@ call sites.
 Forbidden:
 
 ```ts
-return [null, { type: 'NOT_CONNECTED', message: 'bridge is not connected' }];
+return err({ type: 'NOT_CONNECTED', message: 'bridge is not connected' });
 ```
 
 Required:
 
 ```ts
-return [null, BridgeFailures.notConnected()];
+return err(BridgeFailures.notConnected());
 ```
 
 - The factory owns the discriminant and repeated messages.
@@ -185,6 +185,17 @@ bun run build
 - New logic needs a test: guards, failure factories, parsing, and Result flow.
 - Use Vitest (`describe`, `it`, `expect`).
 - The repository-level `make web-check` runs the web checks from the root.
+
+## 12. Fail fast
+
+Prefer failing fast with a typed failure over falling back after an error was
+detected. A fallback that hides the failure creates silent errors and uncertain
+behavior, especially around bridge replies, device selection, and call state.
+
+- Return the `Result` failure instead of substituting a guessed value.
+- If a fallback is truly required, make it explicit, observable, and covered by
+  a test; document why the fallback is safe.
+- Do not continue with partial or stale state after a failed request.
 
 ## Exceptions
 

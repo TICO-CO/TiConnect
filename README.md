@@ -220,6 +220,8 @@ Keyboard shortcuts:
 | `Ctrl+N` | Open users |
 | `Ctrl+1` | Users |
 | `Ctrl+2` | Conversation |
+| `Ctrl+M` | Mute or unmute the call microphone (configurable) |
+| `Ctrl+Shift+M` | Mute or unmute call output (configurable) |
 | `Ctrl+Q` | Quit the UI |
 | `Escape` | Close a dialog |
 
@@ -305,6 +307,8 @@ Settings keys:
 | `calls.timeout_secs` | integer | `30` | Ringing timeout; valid range `5..=300` |
 | `calls.input_device` | string | empty | Optional input device name |
 | `calls.output_device` | string | empty | Optional output device name |
+| `calls.mute_shortcut` | string | `Ctrl+M` | Microphone mute shortcut; empty disables |
+| `calls.output_mute_shortcut` | string | `Ctrl+Shift+M` | Output mute shortcut; empty disables |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
 | `remote.request_timeout_secs` | integer | `300` | Consent request expiry; valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
@@ -434,8 +438,16 @@ confirms before calling it.
   only after call acceptance.
 - Ringtone path comes from `ringtone.path`; a bundled generated tone is the
   fallback. DND suppresses ringing but still reports the call.
+- Microphone and output mute are daemon-owned; the UI and overlay reflect the
+  same state. Mute shortcuts are configurable with `calls.mute_shortcut` and
+  `calls.output_mute_shortcut`.
+- Input and output devices are selected from devices discovered by the daemon.
+  An unavailable configured device fails the call with an error instead of
+  silently switching devices.
+- Call history is stored in SQLite and survives restarts.
 - D-Bus: `StartCall`, `AcceptCall`, `DeclineCall`, `HangupCall`,
-  `GetCallState`; signals `IncomingCall`, `CallStateChanged`, `CallEnded`.
+  `SetCallMuted`, `GetCallState`, `ListCallLogs`, `ListAudioDevices`; signals
+  `IncomingCall`, `CallStateChanged`, `CallMuteChanged`, `CallEnded`.
 
 ## Remote desktop
 

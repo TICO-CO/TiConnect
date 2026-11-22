@@ -121,6 +121,25 @@ export interface Call {
     state: string;
     started_at: number;
     connected_at: number;
+    input_muted: boolean;
+    output_muted: boolean;
+}
+
+export interface CallLog {
+    id: string;
+    user_id: string;
+    direction: string;
+    started_at: number;
+    connected_at: number;
+    ended_at: number;
+    duration_secs: number;
+    reason: string;
+}
+
+export interface AudioDevice {
+    id: string;
+    name: string;
+    kind: string;
 }
 
 export interface RemoteSession {

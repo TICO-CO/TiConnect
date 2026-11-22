@@ -13,6 +13,12 @@
   new webview.
 - Surface attachment transfer progress and failures.
 - Allow blob audio playback in the webview CSP.
+- Add daemon-owned microphone and output mute for calls, with configurable
+  shortcuts and synchronized UI/overlay state.
+- Add daemon audio-device discovery and input/output selectors in Calls settings.
+- Persist call history in SQLite and load it into the web UI.
+- Allow hanging up an outgoing ringing call and notify peers when media setup
+  fails; configured audio devices now fail explicitly instead of falling back.
 - Bundle GStreamer plugins for voice capture and media playback on Nix.
 - Add voice-message recording and inline audio playback in the web UI.
 - Add local history clearing for all conversations and per-user conversations.

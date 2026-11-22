@@ -9,6 +9,8 @@ pub struct ActiveCall {
     pub state: CallState,
     pub created_at: i64,
     pub connected_at: Option<i64>,
+    pub input_muted: bool,
+    pub output_muted: bool,
 }
 
 impl ActiveCall {
@@ -20,6 +22,8 @@ impl ActiveCall {
             state: self.state,
             created_at: self.created_at,
             connected_at: self.connected_at,
+            input_muted: self.input_muted,
+            output_muted: self.output_muted,
         }
     }
 }
@@ -32,6 +36,8 @@ pub struct CallInfo {
     pub state: CallState,
     pub created_at: i64,
     pub connected_at: Option<i64>,
+    pub input_muted: bool,
+    pub output_muted: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,6 +121,8 @@ impl CallRegistry {
             state: CallState::Ringing,
             created_at: now,
             connected_at: None,
+            input_muted: false,
+            output_muted: false,
         };
         self.active = Some(call.clone());
         Ok(CallTransition::Ringing(call))
@@ -130,15 +138,23 @@ impl CallRegistry {
         Ok(CallTransition::InCall(call.clone()))
     }
 
+    pub fn set_muted(
+        &mut self,
+        id: CallId,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> Result<ActiveCall, CallStateError> {
+        let call = self.active_mut(id)?;
+        call.input_muted = input_muted;
+        call.output_muted = output_muted;
+        Ok(call.clone())
+    }
+
     pub fn decline(&mut self, id: CallId) -> Result<CallTransition, CallStateError> {
         self.end(id, EndReason::Declined, true)
     }
 
     pub fn hangup(&mut self, id: CallId) -> Result<CallTransition, CallStateError> {
-        let call = self.active_mut(id)?;
-        if call.state != CallState::InCall {
-            return Err(CallStateError::InvalidTransition);
-        }
         self.end(id, EndReason::Hangup, false)
     }
 
@@ -264,13 +280,25 @@ mod tests {
     }
 
     #[test]
+    fn hangup_cancels_ringing_calls() {
+        let mut registry = CallRegistry::default();
+        let CallTransition::Ringing(call) = registry.start("user", 1).expect("start") else {
+            panic!("expected ringing");
+        };
+        assert!(matches!(
+            registry.hangup(call.id),
+            Ok(CallTransition::Ended(_, EndReason::Hangup))
+        ));
+        assert!(registry.active().is_none());
+    }
+
+    #[test]
     fn invalid_transitions_are_rejected() {
         let mut registry = CallRegistry::default();
         assert!(registry.decline(CallId::generate()).is_err());
         let CallTransition::Ringing(call) = registry.incoming("user", 1).expect("incoming") else {
             panic!("expected ringing");
         };
-        assert!(registry.hangup(call.id).is_err());
         let CallTransition::InCall(call) = registry.accept(call.id, 2).expect("accept") else {
             panic!("expected in call");
         };

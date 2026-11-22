@@ -63,6 +63,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
         'calls.timeout_secs': '30',
         'calls.input_device': '',
         'calls.output_device': '',
+        'calls.mute_shortcut': 'Ctrl+M',
+        'calls.output_mute_shortcut': 'Ctrl+Shift+M',
         'ringtone.path': '',
         'remote.session_timeout_secs': '0',
         'remote.request_timeout_secs': '300',
@@ -227,6 +229,8 @@ export const DEMO_CALL: Call = {
     state: 'in_call',
     started_at: now - 252_000,
     connected_at: now - 248_000,
+    input_muted: false,
+    output_muted: false,
 };
 
 export const DEMO_REMOTE: RemoteSession = {

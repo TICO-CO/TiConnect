@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { BridgeClient, resolveBridge } from './bridge';
+import { ok } from './result';
 
 describe('resolveBridge', () => {
     it('uses the page origin and token in production', () => {
@@ -36,12 +37,15 @@ describe('BridgeClient', () => {
             token: null,
             development: false,
         });
-        const [result, failure] = await client.request('bootstrap');
-        expect(failure).toEqual({
+        const result = await client.request('bootstrap');
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            return;
+        }
+        expect(result.error).toEqual({
             type: 'NOT_CONNECTED',
             message: 'bridge is not connected',
         });
-        expect(result).toBeNull();
     });
 });
 
@@ -54,10 +58,9 @@ describe('BridgeClient downloads', () => {
             development: false,
         });
         let ticket = 0;
-        const request = vi.fn(async () => [
-            { url: `http://127.0.0.1:41000/attachment/hash?ticket=${++ticket}` },
-            null,
-        ]);
+        const request = vi.fn(async () =>
+            ok({ url: `http://127.0.0.1:41000/attachment/hash?ticket=${++ticket}` }),
+        );
         (client as unknown as { request: typeof request }).request = request;
         const fetchMock = vi
             .fn()
@@ -65,10 +68,13 @@ describe('BridgeClient downloads', () => {
             .mockResolvedValueOnce(new Response(new Blob(['image']), { status: 200 }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const [url, failure] = await client.downloadAttachment('hash');
+        const result = await client.downloadAttachment('hash');
 
-        expect(failure).toBeNull();
-        expect(url).toBe('blob:test');
+        expect(result.ok).toBe(true);
+        if (!result.ok) {
+            return;
+        }
+        expect(result.value).toBe('blob:test');
         expect(request).toHaveBeenCalledTimes(2);
         expect(fetchMock.mock.calls[0]?.[0]).not.toBe(fetchMock.mock.calls[1]?.[0]);
     });
@@ -80,18 +86,20 @@ describe('BridgeClient downloads', () => {
             token: null,
             development: false,
         });
-        const request = vi.fn(async () => [
-            { url: 'http://127.0.0.1:41000/attachment/hash?ticket=1' },
-            null,
-        ]);
+        const request = vi.fn(async () =>
+            ok({ url: 'http://127.0.0.1:41000/attachment/hash?ticket=1' }),
+        );
         (client as unknown as { request: typeof request }).request = request;
         const fetchMock = vi.fn().mockResolvedValue(new Response('', { status: 403 }));
         vi.stubGlobal('fetch', fetchMock);
 
-        const [url, failure] = await client.downloadAttachment('hash');
+        const result = await client.downloadAttachment('hash');
 
-        expect(url).toBeNull();
-        expect(failure?.message).toBe('download request failed (403)');
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            return;
+        }
+        expect(result.error.message).toBe('download request failed (403)');
         expect(request).toHaveBeenCalledTimes(1);
         expect(fetchMock).toHaveBeenCalledTimes(1);
     });

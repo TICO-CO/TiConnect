@@ -48,11 +48,11 @@ function postToPlayer(frame: HTMLIFrameElement | null, message: string): void {
 function messageData(value: unknown): Record<string, unknown> | null {
     let parsed: unknown = value;
     if (typeof value === 'string') {
-        const [decoded, error] = attempt<unknown>(() => JSON.parse(value));
-        if (error) {
+        const decodedResult = attempt<unknown>(() => JSON.parse(value));
+        if (!decodedResult.ok) {
             return null;
         }
-        parsed = decoded;
+        parsed = decodedResult.value;
     }
     return typeof parsed === 'object' && parsed !== null
         ? (parsed as Record<string, unknown>)

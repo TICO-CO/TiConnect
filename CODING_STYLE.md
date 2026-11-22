@@ -21,6 +21,17 @@ out-of-range value is an error. Distinguish missing data from invalid data.
 Saturating conversions are allowed only for deliberate resource bounds, never
 for protocol, persistence, or IPC data.
 
+## Fail fast
+
+Prefer failing fast with a typed error over falling back after an error was
+detected. A fallback that hides the failure creates silent errors and uncertain
+behavior, especially across persistence, IPC, and media boundaries.
+
+- Return the error to the caller instead of guessing a replacement value.
+- If a fallback is truly required, make it explicit, observable, and covered by
+  a test; document why the fallback is safe.
+- Do not continue with partial or stale state after a failed operation.
+
 ## Checks
 
 ```sh

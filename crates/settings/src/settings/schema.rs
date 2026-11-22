@@ -118,6 +118,8 @@ pub struct CallsSettings {
     pub input_device: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_device: Option<String>,
+    pub mute_shortcut: String,
+    pub output_mute_shortcut: String,
 }
 
 impl Default for CallsSettings {
@@ -126,6 +128,8 @@ impl Default for CallsSettings {
             timeout_secs: DEFAULT_CALL_TIMEOUT_SECS,
             input_device: None,
             output_device: None,
+            mute_shortcut: DEFAULT_CALL_MUTE_SHORTCUT.to_owned(),
+            output_mute_shortcut: DEFAULT_CALL_OUTPUT_MUTE_SHORTCUT.to_owned(),
         }
     }
 }
@@ -253,6 +257,8 @@ pub const SETTING_KEYS: &[&str] = &[
     "calls.timeout_secs",
     "calls.input_device",
     "calls.output_device",
+    "calls.mute_shortcut",
+    "calls.output_mute_shortcut",
     "remote.session_timeout_secs",
     "remote.request_timeout_secs",
     "video.bitrate_kbps",
@@ -276,6 +282,8 @@ pub const ATTACHMENT_MAX_MIB_MAX: u32 = 102_400;
 pub const DEFAULT_CALL_TIMEOUT_SECS: u32 = 30;
 pub const CALL_TIMEOUT_MIN_SECS: u32 = 5;
 pub const CALL_TIMEOUT_MAX_SECS: u32 = 300;
+pub const DEFAULT_CALL_MUTE_SHORTCUT: &str = "Ctrl+M";
+pub const DEFAULT_CALL_OUTPUT_MUTE_SHORTCUT: &str = "Ctrl+Shift+M";
 pub const DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS: u32 = 300;
 pub const REMOTE_REQUEST_TIMEOUT_MIN_SECS: u32 = 30;
 pub const REMOTE_REQUEST_TIMEOUT_MAX_SECS: u32 = 3600;
@@ -614,6 +622,24 @@ impl Settings {
         self.active.calls.output_device = value;
     }
 
+    pub fn call_mute_shortcut(&self) -> &str {
+        &self.active.calls.mute_shortcut
+    }
+
+    pub fn call_output_mute_shortcut(&self) -> &str {
+        &self.active.calls.output_mute_shortcut
+    }
+
+    pub fn set_call_mute_shortcut(&mut self, value: String) {
+        self.changes.calls = true;
+        self.active.calls.mute_shortcut = value;
+    }
+
+    pub fn set_call_output_mute_shortcut(&mut self, value: String) {
+        self.changes.calls = true;
+        self.active.calls.output_mute_shortcut = value;
+    }
+
     pub fn remote_session_timeout_secs(&self) -> u32 {
         self.active.remote.session_timeout_secs
     }
@@ -712,6 +738,10 @@ impl Settings {
             )),
             "calls.output_device" => Ok(SettingValue::String(
                 self.call_output_device().unwrap_or_default().to_owned(),
+            )),
+            "calls.mute_shortcut" => Ok(SettingValue::String(self.call_mute_shortcut().to_owned())),
+            "calls.output_mute_shortcut" => Ok(SettingValue::String(
+                self.call_output_mute_shortcut().to_owned(),
             )),
             "remote.session_timeout_secs" => {
                 Ok(SettingValue::Integer(self.remote_session_timeout_secs()))
@@ -834,6 +864,10 @@ impl Settings {
             }
             "calls.input_device" => self.set_call_input_device(parse_optional_string(value)),
             "calls.output_device" => self.set_call_output_device(parse_optional_string(value)),
+            "calls.mute_shortcut" => self.set_call_mute_shortcut(value.trim().to_owned()),
+            "calls.output_mute_shortcut" => {
+                self.set_call_output_mute_shortcut(value.trim().to_owned());
+            }
             "remote.session_timeout_secs" => {
                 let secs = parse_u32(key, value)?;
                 self.set_remote_session_timeout_secs(secs);

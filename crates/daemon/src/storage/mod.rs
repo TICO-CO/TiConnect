@@ -1,4 +1,5 @@
 pub mod attachments;
+pub mod call_logs;
 pub mod conversations;
 mod error;
 pub mod messages;
@@ -18,6 +19,7 @@ use ticonnect_core::message::MessageRecord;
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
 pub use attachments::AttachmentRecord;
+pub use call_logs::CallRecord;
 pub use conversations::Conversation;
 pub use error::StorageError;
 pub use messages::{ClearHistoryOutcome, InsertOutcome, MessageState, StorageStats, StoredMessage};
@@ -79,6 +81,13 @@ enum Command {
     },
     CountHistory(String, Reply<u32>),
     ClearHistory(Option<String>, Reply<ClearHistoryOutcome>),
+    InsertCallLog(CallRecord, Reply<()>),
+    ListCallLogs {
+        user_id: Option<String>,
+        limit: u32,
+        reply: Reply<Vec<CallRecord>>,
+    },
+    ClearCallLogs(Option<String>, Reply<u32>),
     StorageUsage(Reply<StorageStats>),
     RecordsBetween {
         conversation_id: String,
@@ -392,6 +401,32 @@ impl DatabaseHandle {
     ) -> Result<ClearHistoryOutcome, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::ClearHistory(user_id.map(str::to_owned), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn insert_call_log(&self, record: CallRecord) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::InsertCallLog(record, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_call_logs(
+        &self,
+        user_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<CallRecord>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListCallLogs {
+            user_id: user_id.map(str::to_owned),
+            limit,
+            reply,
+        })?;
+        receive(receiver).await
+    }
+
+    pub async fn clear_call_logs(&self, user_id: Option<&str>) -> Result<u32, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ClearCallLogs(user_id.map(str::to_owned), reply))?;
         receive(receiver).await
     }
 
@@ -729,6 +764,19 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::ClearHistory(user_id, reply) => {
             let _ = reply.send(messages::clear_history(connection, user_id.as_deref()));
+        }
+        Command::InsertCallLog(record, reply) => {
+            let _ = reply.send(call_logs::insert(connection, &record));
+        }
+        Command::ListCallLogs {
+            user_id,
+            limit,
+            reply,
+        } => {
+            let _ = reply.send(call_logs::list(connection, user_id.as_deref(), limit));
+        }
+        Command::ClearCallLogs(user_id, reply) => {
+            let _ = reply.send(call_logs::clear(connection, user_id.as_deref()));
         }
         Command::StorageUsage(reply) => {
             let _ = reply.send(messages::storage_usage(connection));

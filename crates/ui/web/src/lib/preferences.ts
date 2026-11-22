@@ -33,20 +33,21 @@ export const DEFAULT_PREFERENCES: Preferences = {
 };
 
 export function loadPreferences(): Preferences {
-    const [raw, readError] = attempt(() => localStorage.getItem(STORAGE_KEY));
-    if (readError || raw === null) {
+    const rawResult = attempt(() => localStorage.getItem(STORAGE_KEY));
+    if (!rawResult.ok || rawResult.value === null) {
         return { ...DEFAULT_PREFERENCES };
     }
-    const [parsed, parseError] = attempt<unknown>(() => JSON.parse(raw));
-    if (parseError || typeof parsed !== 'object' || parsed === null) {
+    const raw = rawResult.value;
+    const parsedResult = attempt<unknown>(() => JSON.parse(raw));
+    if (!parsedResult.ok || typeof parsedResult.value !== 'object' || parsedResult.value === null) {
         return { ...DEFAULT_PREFERENCES };
     }
-    return { ...DEFAULT_PREFERENCES, ...(parsed as Partial<Preferences>) };
+    return { ...DEFAULT_PREFERENCES, ...(parsedResult.value as Partial<Preferences>) };
 }
 
 export function savePreferences(preferences: Preferences): boolean {
-    const [, writeError] = attempt(() =>
+    const writeResult = attempt(() =>
         localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences)),
     );
-    return writeError === null;
+    return writeResult.ok;
 }

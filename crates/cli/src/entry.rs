@@ -389,6 +389,8 @@ async fn run_command(command: Command) -> Result<()> {
                             ipc::CALL_STATE,
                             ipc::CALL_STARTED_AT,
                             ipc::CALL_CONNECTED_AT,
+                            ipc::CALL_INPUT_MUTED,
+                            ipc::CALL_OUTPUT_MUTED,
                         ] {
                             println!("{key}: {}", message_value(&state, key));
                         }

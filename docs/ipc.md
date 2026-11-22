@@ -44,6 +44,14 @@ fails to acquire the name and exits non-zero.
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
 | `SetUserPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one user. |
 | `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |
+| `StartCall` | `(s) -> s` | Starts an outgoing call and returns its call id. |
+| `AcceptCall` | `(s) -> ()` | Accepts an incoming call and opens audio devices. |
+| `DeclineCall` | `(s) -> ()` | Declines an incoming ringing call. |
+| `HangupCall` | `(s) -> ()` | Ends an active call; also cancels an outgoing ringing call. |
+| `SetCallMuted` | `(sbb) -> ()` | Sets microphone and output mute for the active call. |
+| `GetCallState` | `() -> a{sv}` | Returns the active call, or an empty map when idle. |
+| `ListCallLogs` | `(su) -> aa{sv}` | Returns persisted call logs for one user, or all when the user id is empty. |
+| `ListAudioDevices` | `() -> aa{sv}` | Returns discovered input and output devices. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
 Settings writes do not use D-Bus. Any process may update `config.toml` through
@@ -92,6 +100,10 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `SelfProfileChanged()` | When the local display name or avatar changes. |
 | `SyncCompleted(su)` | When gap sync finishes for a user. |
 | `PolicyChanged(ss)` | When a user policy changes. |
+| `IncomingCall(a{sv})` | When a trusted user offers a call. |
+| `CallStateChanged(ss)` | When the active call state changes. |
+| `CallMuteChanged(sbb)` | When call microphone or output mute changes. |
+| `CallEnded(ss)` | When the active call ends. |
 
 ## Status keys
 

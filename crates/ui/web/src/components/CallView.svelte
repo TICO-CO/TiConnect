@@ -11,13 +11,13 @@
     }
 
     let { app }: Props = $props();
-    let muted = $state(false);
-    let outputMuted = $state(false);
     let elapsed = $state(0);
     const user = $derived(app.userById(app.call?.user_id ?? app.selectedUserId));
     const active = $derived(app.call);
     const ringing = $derived(active?.state === 'ringing');
     const reconnecting = $derived(active?.state === 'reconnecting');
+    const muted = $derived(active?.input_muted ?? false);
+    const outputMuted = $derived(active?.output_muted ?? false);
 
     onMount(() => {
         const update = () => {
@@ -113,7 +113,8 @@
                 <button
                     class="group flex min-w-16 flex-col items-center gap-1.5 border-0 bg-transparent text-xs text-ink-3 data-active:text-accent"
                     data-active={muted ? '' : undefined}
-                    onclick={() => (muted = !muted)}
+                    aria-pressed={muted}
+                    onclick={() => void app.toggleInputMute()}
                 >
                     <span
                         class="flex size-[38px] items-center justify-center rounded-full border border-line-strong group-hover:bg-surface-2 group-data-active:border-accent"
@@ -124,7 +125,8 @@
                 <button
                     class="group flex min-w-16 flex-col items-center gap-1.5 border-0 bg-transparent text-xs text-ink-3 data-active:text-accent"
                     data-active={outputMuted ? '' : undefined}
-                    onclick={() => (outputMuted = !outputMuted)}
+                    aria-pressed={outputMuted}
+                    onclick={() => void app.toggleOutputMute()}
                 >
                     <span
                         class="flex size-[38px] items-center justify-center rounded-full border border-line-strong group-hover:bg-surface-2 group-data-active:border-accent"

@@ -2,13 +2,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppState } from './app-state.svelte';
 import { BridgeClient } from './bridge';
-import type { StorageUsage, WatchParty, YoutubeStream } from './types';
+import type { BridgeFailure } from './bridge-failures';
+import type { Result } from './result';
+import { ok } from './result';
+import type { CallLog, StorageUsage, WatchParty, YoutubeStream } from './types';
 
 const USAGE: StorageUsage = {
     message_count: 4,
     attachment_count: 2,
     attachment_bytes: 2048,
     database_bytes: 4096,
+};
+
+const CALL_LOG: CallLog = {
+    id: 'call-1',
+    user_id: 'user-1',
+    direction: 'outgoing',
+    started_at: 1_000,
+    connected_at: 2_000,
+    ended_at: 62_000,
+    duration_secs: 60,
+    reason: 'hangup',
 };
 
 interface FakeClient {
@@ -21,27 +35,31 @@ function makeApp(): { app: AppState; client: FakeClient } {
     const request = vi.fn(async (method: string) => {
         switch (method) {
             case 'list_users':
-                return [[], null];
+                return ok([]);
             case 'list_conversation_summaries':
-                return [[], null];
+                return ok([]);
             case 'watch_party':
-                return [null, null];
+                return ok(null);
             case 'storage_usage':
-                return [USAGE, null];
+                return ok(USAGE);
+            case 'list_call_logs':
+                return ok([CALL_LOG]);
+            case 'list_audio_devices':
+                return ok([{ id: 'Mic', name: 'Mic', kind: 'input' }]);
             case 'clear_history':
-                return [1, null];
+                return ok(1);
             case 'list_settings':
-                return [{ 'appearance.color_scheme': 'dark' }, null];
+                return ok({ 'appearance.color_scheme': 'dark' });
             case 'autostart_get':
-                return [false, null];
+                return ok(false);
             case 'settings_save':
-                return [null, null];
+                return ok(null);
             default:
-                return [null, null];
+                return ok(null);
         }
     });
-    const uploadAttachment = vi.fn(async () => ['message-1', null]);
-    const downloadAttachment = vi.fn(async () => ['blob:attachment', null]);
+    const uploadAttachment = vi.fn(async () => ok('message-1'));
+    const downloadAttachment = vi.fn(async () => ok('blob:attachment'));
     const client: FakeClient = { request, uploadAttachment, downloadAttachment };
     const app = new AppState();
     (app as unknown as { client: BridgeClient }).client = client as unknown as BridgeClient;
@@ -164,6 +182,37 @@ describe('AppState feature behavior', () => {
         expect(app.storageUsage).toEqual(USAGE);
     });
 
+    it('loads persisted call logs and audio devices', async () => {
+        const { app } = makeApp();
+        await app.loadCallLogs();
+        await app.loadAudioDevices();
+        expect(app.callLogs).toEqual([CALL_LOG]);
+        expect(app.audioDevices).toEqual([{ id: 'Mic', name: 'Mic', kind: 'input' }]);
+    });
+
+    it('toggles call mute through the bridge', async () => {
+        const { app, client } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'outgoing',
+            state: 'in_call',
+            started_at: 1,
+            connected_at: 2,
+            input_muted: false,
+            output_muted: false,
+        };
+
+        await app.toggleInputMute();
+
+        expect(client.request).toHaveBeenCalledWith('set_call_muted', {
+            call_id: 'call-1',
+            input_muted: true,
+            output_muted: false,
+        });
+        expect(app.call?.input_muted).toBe(true);
+    });
+
     it('applies saved discovery and appearance settings', async () => {
         const { app, client } = makeApp();
         app.settings = {
@@ -276,9 +325,9 @@ describe('group watch party behavior', () => {
         };
         client.request.mockImplementation(async (method: string) => {
             if (method === 'start_watch_party') {
-                return [groupParty, null];
+                return ok(groupParty);
             }
-            return [null, null];
+            return ok(null);
         });
 
         await app.startParty('dQw4w9WgXcQ', ['user-1', 'user-2']);
@@ -314,15 +363,15 @@ describe('group watch party behavior', () => {
             invited: [],
         };
         app.party = invited;
-        let resolveAccept: (value: [WatchParty | null, null]) => void = () => {};
-        const accepting = new Promise<[WatchParty | null, null]>((resolve) => {
+        let resolveAccept: (value: Result<WatchParty, BridgeFailure>) => void = () => {};
+        const accepting = new Promise<Result<WatchParty, BridgeFailure>>((resolve) => {
             resolveAccept = resolve;
         });
         client.request.mockImplementation(async (method: string) => {
             if (method === 'accept_watch_party') {
                 return accepting;
             }
-            return [null, null];
+            return ok(null);
         });
         const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
             app,
@@ -339,16 +388,15 @@ describe('group watch party behavior', () => {
                 revision: 2,
             },
         });
-        resolveAccept([
-            {
+        resolveAccept(
+            ok({
                 ...invited,
                 participants: ['node-1', 'guest'],
                 playing: false,
                 position_ms: 0,
                 revision: 1,
-            },
-            null,
-        ]);
+            }),
+        );
         await request;
 
         expect(app.party?.playing).toBe(true);
@@ -358,15 +406,15 @@ describe('group watch party behavior', () => {
 
     it('prefetches a video stream once for concurrent callers', async () => {
         const { app, client } = makeApp();
-        let resolveStream: (value: [YoutubeStream | null, null]) => void = () => {};
-        const stream = new Promise<[YoutubeStream | null, null]>((resolve) => {
+        let resolveStream: (value: Result<YoutubeStream, BridgeFailure>) => void = () => {};
+        const stream = new Promise<Result<YoutubeStream, BridgeFailure>>((resolve) => {
             resolveStream = resolve;
         });
         client.request.mockImplementation(async (method: string) => {
             if (method === 'youtube_stream') {
                 return stream;
             }
-            return [null, null];
+            return ok(null);
         });
 
         app.prefetchYouTubeStream('video-1');
@@ -374,7 +422,7 @@ describe('group watch party behavior', () => {
         const playing = app.youtubeStream('video-1');
         expect(client.request).toHaveBeenCalledTimes(1);
 
-        resolveStream([{ video_id: 'video-1', url: 'http://media/video-1' }, null]);
+        resolveStream(ok({ video_id: 'video-1', url: 'http://media/video-1' }));
 
         expect(await playing).toBe('http://media/video-1');
         expect(app.videoPreparing('video-1')).toBe(false);
@@ -387,9 +435,9 @@ describe('group watch party behavior', () => {
         const { app, client } = makeApp();
         client.request.mockImplementation(async (method: string) => {
             if (method === 'youtube_stream') {
-                return [{ video_id: 'video-1', url: 'http://media/video-1' }, null];
+                return ok({ video_id: 'video-1', url: 'http://media/video-1' });
             }
-            return [null, null];
+            return ok(null);
         });
         const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
             app,
@@ -433,8 +481,8 @@ describe('group watch party behavior', () => {
 describe('attachment download deduplication', () => {
     it('shares one download across concurrent attachment URL requests', async () => {
         const { app, client } = makeApp();
-        let resolveDownload: (value: [string | null, null]) => void = () => {};
-        const pending = new Promise<[string | null, null]>((resolve) => {
+        let resolveDownload: (value: Result<string, BridgeFailure>) => void = () => {};
+        const pending = new Promise<Result<string, BridgeFailure>>((resolve) => {
             resolveDownload = resolve;
         });
         client.downloadAttachment.mockReturnValue(pending);
@@ -443,7 +491,7 @@ describe('attachment download deduplication', () => {
         const second = app.attachmentUrl('hash-1');
         expect(client.downloadAttachment).toHaveBeenCalledTimes(1);
 
-        resolveDownload(['blob:attachment', null]);
+        resolveDownload(ok('blob:attachment'));
         expect(await first).toBe('blob:attachment');
         expect(await second).toBe('blob:attachment');
         expect(await app.attachmentUrl('hash-1')).toBe('blob:attachment');

@@ -4,8 +4,8 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, Call, Candidate, ConversationSummary, Message, MessageState, RemoteSession, StorageUsage,
-    User, UserPolicy, WatchParty,
+    self, AudioDevice, Call, CallLog, Candidate, ConversationSummary, Message, MessageState,
+    RemoteSession, StorageUsage, User, UserPolicy, WatchParty,
 };
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
@@ -123,7 +123,19 @@ enum Command {
         call_id: String,
         reply: Reply<()>,
     },
+    SetCallMuted {
+        call_id: String,
+        input_muted: bool,
+        output_muted: bool,
+        reply: Reply<()>,
+    },
     GetCallState(Reply<Option<Call>>),
+    ListCallLogs {
+        user_id: String,
+        limit: u32,
+        reply: Reply<Vec<CallLog>>,
+    },
+    ListAudioDevices(Reply<Vec<AudioDevice>>),
     RequestRemoteSession {
         user_id: String,
         reply: Reply<RemoteSession>,
@@ -384,8 +396,36 @@ impl LinkHandle {
             .await
     }
 
+    pub async fn set_call_muted(
+        &self,
+        call_id: String,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> Result<()> {
+        self.request(|reply| Command::SetCallMuted {
+            call_id,
+            input_muted,
+            output_muted,
+            reply,
+        })
+        .await
+    }
+
     pub async fn call_state(&self) -> Result<Option<Call>> {
         self.request(Command::GetCallState).await
+    }
+
+    pub async fn list_call_logs(&self, user_id: String, limit: u32) -> Result<Vec<CallLog>> {
+        self.request(|reply| Command::ListCallLogs {
+            user_id,
+            limit,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn list_audio_devices(&self) -> Result<Vec<AudioDevice>> {
+        self.request(Command::ListAudioDevices).await
     }
 
     pub async fn request_remote_session(&self, user_id: String) -> Result<RemoteSession> {
@@ -586,6 +626,7 @@ async fn listen(
         .receive_call_state_changed()
         .await
         .map_err(bus_error)?;
+    let mut call_mute_changed = proxy.receive_call_mute_changed().await.map_err(bus_error)?;
     let mut call_ended = proxy.receive_call_ended().await.map_err(bus_error)?;
     let mut remote_requested = proxy
         .receive_remote_session_requested()
@@ -755,6 +796,18 @@ async fn listen(
                 let _ = events.send(DaemonEvent::CallStateChanged {
                     call_id: args.call_id.to_owned(),
                     state: args.state.to_owned(),
+                });
+            }
+            signal = call_mute_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::CallMuteChanged {
+                    call_id: args.call_id.to_owned(),
+                    input_muted: args.input_muted,
+                    output_muted: args.output_muted,
                 });
             }
             signal = call_ended.next() => {
@@ -1160,6 +1213,42 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         }
         Command::HangupCall { call_id, reply } => {
             let result = proxy.hangup_call(&call_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetCallMuted {
+            call_id,
+            input_muted,
+            output_muted,
+            reply,
+        } => {
+            let result = proxy
+                .set_call_muted(&call_id, input_muted, output_muted)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::ListCallLogs {
+            user_id,
+            limit,
+            reply,
+        } => {
+            let result = match proxy.list_call_logs(&user_id, limit).await {
+                Ok(values) => values
+                    .iter()
+                    .map(|values| events::parse_call_log(values).map_err(payload_error))
+                    .collect::<Result<Vec<_>>>(),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::ListAudioDevices(reply) => {
+            let result = match proxy.list_audio_devices().await {
+                Ok(values) => values
+                    .iter()
+                    .map(|values| events::parse_audio_device(values).map_err(payload_error))
+                    .collect::<Result<Vec<_>>>(),
+                Err(error) => Err(bus_error(error)),
+            };
             let _ = reply.send(result);
         }
         Command::StartWatchParty {

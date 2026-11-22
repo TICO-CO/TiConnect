@@ -28,6 +28,10 @@ impl PlaybackHandle {
         self.buffer.push(samples);
     }
 
+    pub fn clear(&self) {
+        self.buffer.clear();
+    }
+
     pub fn depth(&self) -> usize {
         self.buffer.depth()
     }
@@ -52,14 +56,17 @@ pub fn start_playback(device_name: Option<&str>) -> Result<PlaybackHandle, Playb
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let device = match device_name {
-        Some(name) => host.output_devices().map_err(cpal_error)?.find(|device| {
-            device
-                .description()
-                .is_ok_and(|description| description.name() == name)
-        }),
-        None => Some(host.default_output_device().ok_or(DeviceError::Missing)?),
-    }
-    .ok_or(DeviceError::Missing)?;
+        Some(name) => host
+            .output_devices()
+            .map_err(cpal_error)?
+            .find(|device| {
+                device
+                    .description()
+                    .is_ok_and(|description| description.name() == name)
+            })
+            .ok_or(DeviceError::Missing)?,
+        None => host.default_output_device().ok_or(DeviceError::Missing)?,
+    };
     let config = device.default_output_config().map_err(cpal_error)?;
     let sample_rate = config.sample_rate();
     let stop = Arc::new(AtomicBool::new(false));

@@ -738,6 +738,11 @@ impl DaemonService {
             .attachments()
             .remove_stored(&outcome.attachments)
             .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        self.state
+            .database()
+            .clear_call_logs(filter)
+            .await
+            .map_err(database_error)?;
         Ok(outcome.messages)
     }
 
@@ -845,6 +850,54 @@ impl DaemonService {
             .hangup_call(call_id)
             .await
             .map_err(call_error)
+    }
+
+    async fn set_call_muted(
+        &self,
+        call_id: &str,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> Result<(), ServiceError> {
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .set_muted(call_id, input_muted, output_muted)
+            .map_err(call_error)?;
+        Ok(())
+    }
+
+    async fn list_call_logs(
+        &self,
+        user_id: &str,
+        limit: u32,
+    ) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let filter = (!user_id.is_empty()).then_some(user_id);
+        let records = self
+            .state
+            .database()
+            .list_call_logs(filter, limit)
+            .await
+            .map_err(database_error)?;
+        records
+            .iter()
+            .map(call_log_variant)
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    async fn list_audio_devices(&self) -> Result<Vec<HashMap<String, OwnedVariant>>, ServiceError> {
+        let devices = ticonnect_media::audio::AudioDevices::discover()
+            .map_err(|error| ServiceError::Failed(error.to_string()))?;
+        Ok(devices
+            .inputs
+            .iter()
+            .map(|device| audio_device_variant(device, "input"))
+            .chain(
+                devices
+                    .outputs
+                    .iter()
+                    .map(|device| audio_device_variant(device, "output")),
+            )
+            .collect())
     }
 
     async fn get_call_metrics(&self) -> HashMap<String, OwnedVariant> {
@@ -1235,6 +1288,14 @@ impl DaemonService {
         emitter: SignalEmitter<'_>,
         call_id: &str,
         state: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn call_mute_changed(
+        emitter: SignalEmitter<'_>,
+        call_id: &str,
+        input_muted: bool,
+        output_muted: bool,
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -1775,8 +1836,21 @@ pub(crate) async fn emit_call_event(
             DaemonService::incoming_call(emitter, call_variant(&call)).await
         }
         CallEvent::StateChanged(call) => {
-            DaemonService::call_state_changed(emitter, &call.id.to_string(), call.state.as_str())
-                .await
+            let state_emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+            DaemonService::call_state_changed(
+                state_emitter,
+                &call.id.to_string(),
+                call.state.as_str(),
+            )
+            .await?;
+            let mute_emitter = SignalEmitter::new(connection, ipc::DAEMON_PATH)?;
+            DaemonService::call_mute_changed(
+                mute_emitter,
+                &call.id.to_string(),
+                call.input_muted,
+                call.output_muted,
+            )
+            .await
         }
         CallEvent::Ended {
             call_id, reason, ..
@@ -1812,6 +1886,77 @@ fn call_variant(call: &crate::calls::state::CallInfo) -> HashMap<String, OwnedVa
         (
             ipc::CALL_CONNECTED_AT.to_owned(),
             OwnedVariant::from(call.connected_at.unwrap_or_default()),
+        ),
+        (
+            ipc::CALL_INPUT_MUTED.to_owned(),
+            OwnedVariant::from(call.input_muted),
+        ),
+        (
+            ipc::CALL_OUTPUT_MUTED.to_owned(),
+            OwnedVariant::from(call.output_muted),
+        ),
+    ])
+}
+
+fn call_log_variant(
+    record: &crate::storage::CallRecord,
+) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+    let started_at = u64::try_from(record.started_at)
+        .map_err(|_| ServiceError::Failed("call start time is out of range".to_owned()))?;
+    let connected_at = record
+        .connected_at
+        .map(u64::try_from)
+        .transpose()
+        .map_err(|_| ServiceError::Failed("call connect time is out of range".to_owned()))?
+        .unwrap_or_default();
+    let ended_at = u64::try_from(record.ended_at)
+        .map_err(|_| ServiceError::Failed("call end time is out of range".to_owned()))?;
+    Ok(HashMap::from([
+        (ipc::CALL_ID.to_owned(), string_variant(record.id.clone())),
+        (
+            ipc::CALL_USER_ID.to_owned(),
+            string_variant(record.user_id.clone()),
+        ),
+        (
+            ipc::CALL_DIRECTION.to_owned(),
+            string_variant(record.direction.clone()),
+        ),
+        (
+            ipc::CALL_STARTED_AT.to_owned(),
+            OwnedVariant::from(started_at),
+        ),
+        (
+            ipc::CALL_CONNECTED_AT.to_owned(),
+            OwnedVariant::from(connected_at),
+        ),
+        (ipc::CALL_ENDED_AT.to_owned(), OwnedVariant::from(ended_at)),
+        (
+            ipc::CALL_DURATION_SECS.to_owned(),
+            OwnedVariant::from(record.duration_secs),
+        ),
+        (
+            ipc::CALL_REASON.to_owned(),
+            string_variant(record.reason.clone()),
+        ),
+    ]))
+}
+
+fn audio_device_variant(
+    device: &ticonnect_media::audio::AudioDevice,
+    kind: &str,
+) -> HashMap<String, OwnedVariant> {
+    HashMap::from([
+        (
+            ipc::AUDIO_DEVICE_ID.to_owned(),
+            string_variant(device.id.clone()),
+        ),
+        (
+            ipc::AUDIO_DEVICE_NAME.to_owned(),
+            string_variant(device.name.clone()),
+        ),
+        (
+            ipc::AUDIO_DEVICE_KIND.to_owned(),
+            string_variant(kind.to_owned()),
         ),
     ])
 }

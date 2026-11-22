@@ -15,11 +15,13 @@ use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
 
 use crate::messaging::now_unix_ms;
-use crate::storage::{DatabaseHandle, StorageError, UserPolicy};
+use crate::storage::{CallRecord, DatabaseHandle, StorageError, UserPolicy};
 use crate::trust::{TrustError, TrustStore};
 
 use session::{AudioReceiver, MediaError, MediaSession};
 use state::{CallInfo, CallRegistry, CallStateError, CallTransition, EndReason};
+
+const MEDIA_UNAVAILABLE_CODE: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallEvent {
@@ -92,7 +94,7 @@ pub struct CallService {
 
 struct Inner {
     local: NodeId,
-    _database: DatabaseHandle,
+    database: DatabaseHandle,
     trust: Arc<TrustStore>,
     transport: Arc<Transport>,
     settings: RwLock<Settings>,
@@ -119,7 +121,7 @@ impl CallService {
         Self {
             inner: Arc::new(Inner {
                 local,
-                _database: database,
+                database,
                 trust,
                 transport,
                 settings: RwLock::new(settings),
@@ -202,7 +204,7 @@ impl CallService {
             .send_signal(&session, Endpoint::User, &CallSignalFrame::Offer(call.id))
             .await
         {
-            self.fail(call.id);
+            self.fail(call.id).await;
             return Err(error);
         }
         self.spawn_timeout(call.id, call.user_id.clone());
@@ -227,14 +229,53 @@ impl CallService {
             .send_signal_for_user(&call.user_id, CallSignalFrame::Accept(call.id))
             .await
         {
-            self.fail(call.id);
+            self.fail(call.id).await;
             return Err(error);
         }
         if !self.start_media(&call) {
-            self.fail(call.id);
+            let _ = self
+                .send_signal_for_user(
+                    &call.user_id,
+                    CallSignalFrame::Error {
+                        call_id: call.id,
+                        code: MEDIA_UNAVAILABLE_CODE,
+                    },
+                )
+                .await;
+            self.fail(call.id).await;
             return Err(CallError::MediaUnavailable);
         }
         let info = call.info();
+        self.emit(CallEvent::StateChanged(info.clone()));
+        Ok(info)
+    }
+
+    pub fn set_muted(
+        &self,
+        call_id: CallId,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> Result<CallInfo, CallError> {
+        let info = {
+            let mut registry = self
+                .inner
+                .registry
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            registry
+                .set_muted(call_id, input_muted, output_muted)?
+                .info()
+        };
+        if let Some(media) = self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+        {
+            media.set_input_muted(input_muted);
+            media.set_output_muted(output_muted);
+        }
         self.emit(CallEvent::StateChanged(info.clone()));
         Ok(info)
     }
@@ -332,7 +373,16 @@ impl CallService {
                 };
                 self.inner.ringtone.stop();
                 if !self.start_media(&call) {
-                    self.fail(call.id);
+                    let _ = self
+                        .send_signal_frame(
+                            &user,
+                            CallSignalFrame::Error {
+                                call_id: call.id,
+                                code: MEDIA_UNAVAILABLE_CODE,
+                            },
+                        )
+                        .await;
+                    self.fail(call.id).await;
                     return Err(CallError::MediaUnavailable);
                 }
                 self.emit(CallEvent::StateChanged(call.info()));
@@ -437,7 +487,7 @@ impl CallService {
         Ok(())
     }
 
-    pub fn handle_disconnect(&self, user: &UserInfo) {
+    pub async fn handle_disconnect(&self, user: &UserInfo) {
         let ended = self
             .inner
             .registry
@@ -446,6 +496,7 @@ impl CallService {
             .disconnected(&user.node_id.to_string());
         if let Some((call, reason)) = ended {
             self.cleanup();
+            self.record_call(&call, reason).await;
             self.emit(CallEvent::Ended {
                 call_id: call.id,
                 user_id: call.user_id.clone(),
@@ -459,6 +510,7 @@ impl CallService {
             return;
         };
         self.cleanup();
+        self.record_call(&call, reason).await;
         if send {
             let frame = match reason {
                 EndReason::Declined => CallSignalFrame::Decline(call.id),
@@ -473,7 +525,7 @@ impl CallService {
         });
     }
 
-    fn fail(&self, call_id: CallId) {
+    async fn fail(&self, call_id: CallId) {
         let ended = {
             let mut registry = self
                 .inner
@@ -484,11 +536,48 @@ impl CallService {
         };
         self.cleanup();
         if let Some(CallTransition::Ended(call, reason)) = ended {
+            self.record_call(&call, reason).await;
             self.emit(CallEvent::Ended {
                 call_id: call.id,
                 user_id: call.user_id,
                 reason: reason.as_str().to_owned(),
             });
+        }
+    }
+
+    async fn record_call(&self, call: &state::ActiveCall, reason: EndReason) {
+        let ended_at = now_unix_ms();
+        let connected = call.connected_at.filter(|connected| *connected > 0);
+        let duration_secs = match connected.and_then(|connected| ended_at.checked_sub(connected)) {
+            Some(elapsed) if elapsed >= 0 => match u64::try_from(elapsed / 1000) {
+                Ok(seconds) => seconds,
+                Err(error) => {
+                    tracing::error!(%error, "call duration conversion failed");
+                    0
+                }
+            },
+            Some(_) => {
+                tracing::warn!("call clock moved backwards; storing zero duration");
+                0
+            }
+            None => 0,
+        };
+        let direction = match call.direction {
+            ticonnect_core::call::CallDirection::Incoming => "incoming",
+            ticonnect_core::call::CallDirection::Outgoing => "outgoing",
+        };
+        let record = CallRecord {
+            id: call.id.to_string(),
+            user_id: call.user_id.clone(),
+            direction: direction.to_owned(),
+            started_at: call.created_at,
+            connected_at: connected,
+            ended_at,
+            duration_secs,
+            reason: reason.as_str().to_owned(),
+        };
+        if let Err(error) = self.inner.database.insert_call_log(record).await {
+            tracing::error!(%error, "failed to persist call log");
         }
     }
 
@@ -537,6 +626,8 @@ impl CallService {
             session,
             settings.call_input_device(),
             settings.call_output_device(),
+            call.input_muted,
+            call.output_muted,
             self.inner.metrics.clone(),
         ) {
             Ok(media) => {
@@ -683,7 +774,7 @@ pub fn spawn(
                 event = transport_events.recv() => {
                     match event {
                         Ok(ticonnect_net::transport::TransportEvent::UserDisconnected(user)) => {
-                            service.handle_disconnect(&user);
+                            service.handle_disconnect(&user).await;
                         }
                         Ok(_) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}

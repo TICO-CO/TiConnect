@@ -263,7 +263,20 @@ async fn dispatch_inner(
             link.hangup_call(input.call_id).await?;
             Ok(Value::Null)
         }
+        "set_call_muted" => {
+            let input: SetCallMuted = params(value)?;
+            link.set_call_muted(input.call_id, input.input_muted, input.output_muted)
+                .await?;
+            Ok(Value::Null)
+        }
         "call_state" => Ok(json!(link.call_state().await?)),
+        "list_call_logs" => {
+            let input: ListCallLogs = params(value)?;
+            Ok(json!(
+                link.list_call_logs(input.user_id, input.limit).await?
+            ))
+        }
+        "list_audio_devices" => Ok(json!(link.list_audio_devices().await?)),
         "start_watch_party" => {
             let input: StartWatchParty = params(value)?;
             Ok(json!(
@@ -427,6 +440,25 @@ struct SetTyping {
 #[derive(Deserialize)]
 struct CallId {
     call_id: String,
+}
+
+#[derive(Deserialize)]
+struct SetCallMuted {
+    call_id: String,
+    input_muted: bool,
+    output_muted: bool,
+}
+
+#[derive(Deserialize)]
+struct ListCallLogs {
+    #[serde(default)]
+    user_id: String,
+    #[serde(default = "default_call_log_limit")]
+    limit: u32,
+}
+
+fn default_call_log_limit() -> u32 {
+    100
 }
 
 #[derive(Deserialize)]

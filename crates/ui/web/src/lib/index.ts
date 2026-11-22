@@ -20,13 +20,17 @@ export {
 export type { Preferences } from './preferences';
 export { DEFAULT_PREFERENCES, loadPreferences, savePreferences } from './preferences';
 export type { Result } from './result';
-export { attempt, attemptAsync } from './result';
+export { attempt, attemptAsync, err, ok } from './result';
 export type { Route, SettingsSection } from './routes';
 export { activationRoute, parseRoute, routeHash, SETTINGS_SECTIONS } from './routes';
+export type { Shortcut } from './shortcuts';
+export { matchesShortcut, parseShortcut } from './shortcuts';
 export type {
+    AudioDevice,
     BlockedUser,
     Bootstrap,
     Call,
+    CallLog,
     Connection,
     ConversationSummary,
     Identity,

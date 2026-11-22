@@ -438,6 +438,9 @@ fn key_api_sets_and_reads_typed_values() {
         settings
             .set_setting("overlay.timeout_secs", "12")
             .expect("set overlay timeout");
+        settings
+            .set_setting("calls.mute_shortcut", "Alt+M")
+            .expect("set mute shortcut");
         settings.save().expect("save");
 
         let settings = Settings::load_from(&path).expect("reload");
@@ -461,6 +464,13 @@ fn key_api_sets_and_reads_typed_values() {
                 .expect("get ringtone")
                 .render(),
             "/tmp/ring.ogg"
+        );
+        assert_eq!(
+            settings
+                .get_setting("calls.mute_shortcut")
+                .expect("get mute shortcut")
+                .render(),
+            "Alt+M"
         );
         assert!(
             settings

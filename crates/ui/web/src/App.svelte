@@ -12,7 +12,7 @@
         UsersRail,
         WatchPartyView,
     } from './components';
-    import { AppState } from './lib';
+    import { AppState, matchesShortcut, parseShortcut } from './lib';
 
     const app = new AppState();
     const showRail = $derived(app.route.kind !== 'settings' && app.route.kind !== 'watch-party');
@@ -44,6 +44,23 @@
                 return;
             }
             app.dismissNotice();
+            return;
+        }
+        if (editing || app.call === null) {
+            return;
+        }
+        const muteShortcut = parseShortcut(app.settings['calls.mute_shortcut'] ?? 'Ctrl+M');
+        if (muteShortcut !== null && matchesShortcut(event, muteShortcut)) {
+            event.preventDefault();
+            void app.toggleInputMute();
+            return;
+        }
+        const outputMuteShortcut = parseShortcut(
+            app.settings['calls.output_mute_shortcut'] ?? 'Ctrl+Shift+M',
+        );
+        if (outputMuteShortcut !== null && matchesShortcut(event, outputMuteShortcut)) {
+            event.preventDefault();
+            void app.toggleOutputMute();
         }
     }
 </script>

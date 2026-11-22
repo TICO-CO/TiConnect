@@ -33,7 +33,10 @@
         app.player?.videoId ?? currentParty?.video_id ?? latestVideoId(),
     );
     const callLogs = $derived(
-        app.callLogs.filter((log) => log.userId === app.selectedUserId).slice(-3),
+        app.callLogs
+            .filter((log) => log.user_id === app.selectedUserId)
+            .slice(0, 3)
+            .reverse(),
     );
 
     function latestVideoId(): string {
@@ -526,8 +529,8 @@
                             class="flex items-center gap-1.5 text-xs tracking-[0.04em] text-ink-3"
                         >
                             <Icon name="call" size={12} color="var(--color-ink-3)" />
-                            {log.reason === 'missed' ? 'Missed call' : 'Call ended'} · {sessionClock(
-                                log.durationSeconds,
+                            {log.reason === 'timeout' ? 'Missed call' : 'Call ended'} · {sessionClock(
+                                log.duration_secs,
                             )}
                         </span>
                         <span class="h-px flex-1 bg-line"></span>

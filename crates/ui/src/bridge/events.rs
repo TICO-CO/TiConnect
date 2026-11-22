@@ -84,6 +84,11 @@ pub enum WsEvent {
         call_id: String,
         state: String,
     },
+    CallMuteChanged {
+        call_id: String,
+        input_muted: bool,
+        output_muted: bool,
+    },
     CallEnded {
         call_id: String,
         reason: String,
@@ -177,6 +182,15 @@ impl WsEvent {
             DaemonEvent::CallStateChanged { call_id, state } => Self::CallStateChanged {
                 call_id: call_id.clone(),
                 state: state.clone(),
+            },
+            DaemonEvent::CallMuteChanged {
+                call_id,
+                input_muted,
+                output_muted,
+            } => Self::CallMuteChanged {
+                call_id: call_id.clone(),
+                input_muted: *input_muted,
+                output_muted: *output_muted,
             },
             DaemonEvent::CallEnded { call_id, reason } => Self::CallEnded {
                 call_id: call_id.clone(),

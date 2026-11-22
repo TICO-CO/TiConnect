@@ -13,8 +13,10 @@ import {
 import { attemptAsync } from './result';
 import { activationRoute, parseRoute, type Route, routeHash, type SettingsSection } from './routes';
 import type {
+    AudioDevice,
     Bootstrap,
     Call,
+    CallLog,
     Connection,
     ConversationSummary,
     Message,
@@ -57,14 +59,6 @@ export interface TransferState {
     total: number;
     done: boolean;
     failed: string;
-}
-
-interface CallLog {
-    id: string;
-    userId: string;
-    at: number;
-    durationSeconds: number;
-    reason: string;
 }
 
 interface DemoSeed {
@@ -112,6 +106,7 @@ export class AppState {
     player = $state<PlayerState | null>(null);
     typing = $state<Record<string, boolean>>({});
     callLogs = $state<CallLog[]>([]);
+    audioDevices = $state<AudioDevice[]>([]);
     addressChanged = $state(false);
     connectedSince = $state<Record<string, number>>({});
     lastChatUserId = $state('');
@@ -249,21 +244,22 @@ export class AppState {
         this.client = bridge;
         this.removeBridgeListener?.();
         this.removeBridgeListener = bridge.onEvent((event) => this.handleEvent(event));
-        const [, connectFailure] = await bridge.connect();
-        if (connectFailure) {
+        const connectionResult = await bridge.connect();
+        if (!connectionResult.ok) {
             this.connection = 'offline';
-            this.errorMessage = connectFailure.message;
+            this.errorMessage = connectionResult.error.message;
             this.scheduleReconnect();
             return;
         }
         timing('bridge connected');
-        const [bootstrap, bootstrapFailure] = await bridge.request<Bootstrap>('bootstrap');
-        if (bootstrapFailure) {
+        const bootstrapResult = await bridge.request<Bootstrap>('bootstrap');
+        if (!bootstrapResult.ok) {
             this.connection = 'offline';
-            this.errorMessage = bootstrapFailure.message;
+            this.errorMessage = bootstrapResult.error.message;
             this.scheduleReconnect();
             return;
         }
+        const bootstrap = bootstrapResult.value;
         if (bootstrap === null) {
             this.connection = 'offline';
             this.errorMessage = 'bootstrap response was empty';
@@ -283,6 +279,7 @@ export class AppState {
         this.route = parseRoute(window.location.hash);
         this.syncAvatars();
         await this.refresh();
+        await this.loadCallLogs();
         if (this.route.kind === 'chat' && this.route.id === '') {
             const first = this.summaries[0]?.user_id;
             if (first) {
@@ -310,24 +307,24 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [loadedUsers, usersFailure] = await this.client.request<User[]>('list_users');
-        if (usersFailure) {
-            this.notice = usersFailure.message;
+        const usersResult = await this.client.request<User[]>('list_users');
+        if (!usersResult.ok) {
+            this.notice = usersResult.error.message;
             return;
         }
-        this.users = loadedUsers ?? [];
+        this.users = usersResult.value ?? [];
         this.syncAvatars();
-        const [loadedSummaries, summariesFailure] = await this.client.request<
-            ConversationSummary[]
-        >('list_conversation_summaries');
-        if (summariesFailure) {
-            this.notice = summariesFailure.message;
+        const summariesResult = await this.client.request<ConversationSummary[]>(
+            'list_conversation_summaries',
+        );
+        if (!summariesResult.ok) {
+            this.notice = summariesResult.error.message;
             return;
         }
-        this.summaries = loadedSummaries ?? [];
-        const [party, partyFailure] = await this.client.request<WatchParty | null>('watch_party');
-        if (!partyFailure) {
-            this.adoptParty(party);
+        this.summaries = summariesResult.value ?? [];
+        const partyResult = await this.client.request<WatchParty | null>('watch_party');
+        if (partyResult.ok) {
+            this.adoptParty(partyResult.value);
         }
     }
 
@@ -389,17 +386,18 @@ export class AppState {
             this.avatarPending.delete(fingerprint);
             return;
         }
-        const [url, failure] = await client.downloadAvatar(fingerprint);
+        const avatarResult = await client.downloadAvatar(fingerprint);
         if (this.avatarPending.get(fingerprint) !== avatarHash) {
-            if (url !== null) {
-                URL.revokeObjectURL(url);
+            if (avatarResult.ok) {
+                URL.revokeObjectURL(avatarResult.value);
             }
             return;
         }
         this.avatarPending.delete(fingerprint);
-        if (failure || url === null) {
+        if (!avatarResult.ok) {
             return;
         }
+        const url = avatarResult.value;
         const previousUrl = this.avatarUrls[fingerprint] ?? '';
         const previousSelfAvatarUrl = this.selfAvatarUrl;
         if (previousUrl !== '') {
@@ -468,7 +466,11 @@ export class AppState {
         if (client === null) {
             return;
         }
-        const [bootstrap] = await client.request<Bootstrap>('bootstrap');
+        const bootstrapResult = await client.request<Bootstrap>('bootstrap');
+        if (!bootstrapResult.ok) {
+            return;
+        }
+        const bootstrap = bootstrapResult.value;
         if (bootstrap === null) {
             return;
         }
@@ -495,6 +497,9 @@ export class AppState {
             this.applyAppearance();
             if (this.route.section === 'storage') {
                 await this.loadStorageUsage();
+            }
+            if (this.route.section === 'calls') {
+                await this.loadAudioDevices();
             }
             return;
         }
@@ -558,10 +563,15 @@ export class AppState {
         if (client === null) {
             return;
         }
-        const [message, failure] = await client.request<Message>('get_message', {
+        const messageResult = await client.request<Message>('get_message', {
             message_id: messageId,
         });
-        if (failure || message === null) {
+        if (!messageResult.ok) {
+            await this.loadMessages(userId);
+            return;
+        }
+        const message = messageResult.value;
+        if (message === null) {
             await this.loadMessages(userId);
             return;
         }
@@ -588,30 +598,32 @@ export class AppState {
             return;
         }
         const conversationId = summary.conversation_id;
-        const [total, countFailure] = await this.client.request<number>('count_messages', {
+        const countResult = await this.client.request<number>('count_messages', {
             conversation_id: conversationId,
         });
-        if (countFailure) {
-            this.notice = countFailure.message;
+        if (!countResult.ok) {
+            this.notice = countResult.error.message;
             return;
         }
-        const messageCount = total ?? 0;
+        const messageCount = countResult.value ?? 0;
         if (messageCount > 0) {
             const limit = Math.min(HISTORY_PAGE_SIZE, messageCount);
             const offset = messageCount - limit;
-            const [loaded, failure] = await this.client.request<Message[]>('list_messages', {
+            const messagesResult = await this.client.request<Message[]>('list_messages', {
                 conversation_id: conversationId,
                 limit,
                 offset,
             });
-            if (failure) {
-                this.notice = failure.message;
+            if (!messagesResult.ok) {
+                this.notice = messagesResult.error.message;
                 return;
             }
             if (this.route.kind !== 'chat' || this.route.id !== userId) {
                 return;
             }
-            this.messages = (loaded ?? []).map((message) => this.normalizeMessage(message));
+            this.messages = (messagesResult.value ?? []).map((message) =>
+                this.normalizeMessage(message),
+            );
             this.messageOffset = offset;
             this.hasOlderMessages = offset > 0;
         }
@@ -639,21 +651,21 @@ export class AppState {
         const limit = Math.min(HISTORY_PAGE_SIZE, this.messageOffset);
         const offset = this.messageOffset - limit;
         this.loadingOlderMessages = true;
-        const [loaded, failure] = await this.client.request<Message[]>('list_messages', {
+        const messagesResult = await this.client.request<Message[]>('list_messages', {
             conversation_id: conversationId,
             limit,
             offset,
         });
         this.loadingOlderMessages = false;
-        if (failure) {
-            this.notice = failure.message;
+        if (!messagesResult.ok) {
+            this.notice = messagesResult.error.message;
             return;
         }
         if (this.route.kind !== 'chat' || this.route.id !== userId) {
             return;
         }
         const existing = new SvelteSet(this.messages.map((message) => message.id));
-        const older = (loaded ?? [])
+        const older = (messagesResult.value ?? [])
             .map((message) => this.normalizeMessage(message))
             .filter((message) => !existing.has(message.id));
         this.messages = [...older, ...this.messages];
@@ -665,11 +677,11 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [, failure] = await this.client.request('mark_conversation_read', {
+        const result = await this.client.request('mark_conversation_read', {
             conversation_id: conversationId,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!result.ok) {
+            this.notice = result.error.message;
             return;
         }
         this.setSummaryUnreadCount(conversationId, 0);
@@ -680,12 +692,12 @@ export class AppState {
         if (this.client === null || messageIds.length === 0) {
             return;
         }
-        const [, failure] = await this.client.request('mark_read', {
+        const result = await this.client.request('mark_read', {
             conversation_id: conversationId,
             message_ids: messageIds,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!result.ok) {
+            this.notice = result.error.message;
             return;
         }
         messageIds.forEach((messageId) => this.readMessageIds.add(messageId));
@@ -713,13 +725,14 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [loaded, failure] = await this.client.request<UserDetails>('get_user', {
+        const detailsResult = await this.client.request<UserDetails>('get_user', {
             user_id: userId,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!detailsResult.ok) {
+            this.notice = detailsResult.error.message;
             return;
         }
+        const loaded = detailsResult.value;
         if (loaded !== null) {
             const previous = this.preferences.previousAddresses[userId];
             this.addressChanged =
@@ -741,16 +754,15 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [values, failure] =
-            await this.client.request<Record<string, string>>('list_settings');
-        if (failure) {
-            this.notice = failure.message;
+        const valuesResult = await this.client.request<Record<string, string>>('list_settings');
+        if (!valuesResult.ok) {
+            this.notice = valuesResult.error.message;
             return;
         }
-        this.settings = { ...(values ?? {}) };
+        this.settings = { ...(valuesResult.value ?? {}) };
         this.settingsDraft = { ...this.settings };
-        const [enabled] = await this.client.request<boolean>('autostart_get');
-        this.autostart = enabled ?? false;
+        const autostartResult = await this.client.request<boolean>('autostart_get');
+        this.autostart = autostartResult.ok ? autostartResult.value : false;
         this.autostartDraft = this.autostart;
         this.applyAppearance();
     }
@@ -759,23 +771,54 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [loaded] = await this.client.request<Call | null>('call_state');
-        this.call = loaded;
+        const callResult = await this.client.request<Call | null>('call_state');
+        this.call = callResult.ok ? callResult.value : null;
+    }
+
+    async loadCallLogs(): Promise<void> {
+        if (this.client === null) {
+            return;
+        }
+        const callLogsResult = await this.client.request<CallLog[]>('list_call_logs', {
+            user_id: '',
+            limit: 100,
+        });
+        if (!callLogsResult.ok) {
+            this.notice = callLogsResult.error.message;
+            return;
+        }
+        this.callLogs = callLogsResult.value ?? [];
+    }
+
+    async loadAudioDevices(): Promise<void> {
+        if (this.client === null) {
+            return;
+        }
+        const devicesResult = await this.client.request<AudioDevice[]>('list_audio_devices');
+        if (!devicesResult.ok) {
+            this.notice = devicesResult.error.message;
+            return;
+        }
+        this.audioDevices = devicesResult.value ?? [];
     }
 
     private async loadRemote(): Promise<void> {
         if (this.client === null) {
             return;
         }
-        const [loaded] = await this.client.request<RemoteSession | null>('remote_session');
-        this.remote = loaded;
+        const remoteResult = await this.client.request<RemoteSession | null>('remote_session');
+        this.remote = remoteResult.ok ? remoteResult.value : null;
     }
 
     private async loadParty(): Promise<void> {
         if (this.client === null) {
             return;
         }
-        const [loaded] = await this.client.request<WatchParty | null>('watch_party');
+        const partyResult = await this.client.request<WatchParty | null>('watch_party');
+        if (!partyResult.ok) {
+            return;
+        }
+        const loaded = partyResult.value;
         this.adoptParty(loaded);
         if (loaded !== null) {
             this.prefetchYouTubeStream(loaded.video_id);
@@ -908,13 +951,13 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [usage, failure] = await this.client.request<StorageUsage>('storage_usage');
-        if (failure) {
-            this.notice = failure.message;
+        const usageResult = await this.client.request<StorageUsage>('storage_usage');
+        if (!usageResult.ok) {
+            this.notice = usageResult.error.message;
             return;
         }
-        if (usage !== null) {
-            this.storageUsage = usage;
+        if (usageResult.value !== null) {
+            this.storageUsage = usageResult.value;
         }
     }
 
@@ -923,9 +966,9 @@ export class AppState {
             this.notice = 'History clearing is not available in the demo.';
             return;
         }
-        const [, failure] = await this.client.request('clear_history', { user_id: userId });
-        if (failure) {
-            this.notice = failure.message;
+        const clearResult = await this.client.request('clear_history', { user_id: userId });
+        if (!clearResult.ok) {
+            this.notice = clearResult.error.message;
             return;
         }
         this.notice = userId === '' ? 'Local history cleared.' : 'Conversation history cleared.';
@@ -935,6 +978,7 @@ export class AppState {
         this.hasOlderMessages = false;
         await this.refresh();
         await this.loadStorageUsage();
+        await this.loadCallLogs();
         if (this.route.kind === 'settings') {
             return;
         }
@@ -957,14 +1001,15 @@ export class AppState {
             this.notice = 'Voice recording is not supported by this webview.';
             return;
         }
-        const [stream, streamFailure] = await attemptAsync<MediaStream, Error>(() =>
+        const streamResult = await attemptAsync<MediaStream, Error>(() =>
             navigator.mediaDevices.getUserMedia({ audio: true }),
         );
-        if (streamFailure !== null || stream === null) {
+        if (!streamResult.ok) {
             this.releaseRecording();
-            this.notice = `Microphone unavailable: ${streamFailure?.message ?? 'permission denied'}`;
+            this.notice = `Microphone unavailable: ${streamResult.error.message}`;
             return;
         }
+        const stream = streamResult.value;
         this.recordingStream = stream;
         const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
         const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
@@ -1069,12 +1114,17 @@ export class AppState {
             this.updateSummary(message);
             return;
         }
-        const [messageId, failure] = await this.client.request<string>('send_message', {
+        const messageResult = await this.client.request<string>('send_message', {
             user_id: userId,
             body,
         });
-        if (failure || messageId === null) {
-            this.notice = failure?.message ?? 'send message returned no message id';
+        if (!messageResult.ok) {
+            this.notice = messageResult.error.message;
+            return;
+        }
+        const messageId = messageResult.value;
+        if (messageId === null) {
+            this.notice = 'send message returned no message id';
             return;
         }
         await this.loadSentMessage(messageId, userId);
@@ -1112,11 +1162,12 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const [messageId, failure] = await this.client.uploadAttachment(userId, file);
-        if (failure) {
-            this.notice = failure.message;
+        const attachmentResult = await this.client.uploadAttachment(userId, file);
+        if (!attachmentResult.ok) {
+            this.notice = attachmentResult.error.message;
             return;
         }
+        const messageId = attachmentResult.value;
         if (messageId === null) {
             this.notice = 'attachment upload returned no message id';
             return;
@@ -1130,16 +1181,19 @@ export class AppState {
             this.notice = 'Avatar preview updated for this demo.';
             return;
         }
-        const [, failure] = await this.client.uploadAvatar(file);
-        if (failure) {
-            this.notice = failure.message;
+        const uploadResult = await this.client.uploadAvatar(file);
+        if (!uploadResult.ok) {
+            this.notice = uploadResult.error.message;
             return;
         }
         this.notice = 'Avatar updated.';
-        const [bootstrap] = await this.client.request<Bootstrap>('bootstrap');
-        if (bootstrap !== null) {
-            this.bootstrap = bootstrap;
-            this.syncAvatars();
+        const bootstrapResult = await this.client.request<Bootstrap>('bootstrap');
+        if (bootstrapResult.ok) {
+            const bootstrap = bootstrapResult.value;
+            if (bootstrap !== null) {
+                this.bootstrap = bootstrap;
+                this.syncAvatars();
+            }
         }
     }
 
@@ -1148,11 +1202,12 @@ export class AppState {
             this.notice = 'This attachment is not available in the demo.';
             return;
         }
-        const [url, failure] = await this.client.downloadAttachment(hash);
-        if (failure) {
-            this.notice = failure.message;
+        const downloadResult = await this.client.downloadAttachment(hash);
+        if (!downloadResult.ok) {
+            this.notice = downloadResult.error.message;
             return;
         }
+        const url = downloadResult.value;
         if (url === null) {
             return;
         }
@@ -1196,9 +1251,14 @@ export class AppState {
         if (this.client === null) {
             return '';
         }
-        const [url, failure] = await this.client.downloadAttachment(hash);
-        if (failure || url === null) {
-            this.notice = failure?.message ?? 'Attachment download failed.';
+        const downloadResult = await this.client.downloadAttachment(hash);
+        if (!downloadResult.ok) {
+            this.notice = downloadResult.error.message;
+            return '';
+        }
+        const url = downloadResult.value;
+        if (url === null) {
+            this.notice = 'Attachment download failed.';
             return '';
         }
         this.attachmentUrls.set(hash, url);
@@ -1231,12 +1291,12 @@ export class AppState {
             );
             return;
         }
-        const [, failure] = await this.client.request('set_user_policy', {
+        const policyResult = await this.client.request('set_user_policy', {
             user_id: userId,
             policy,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!policyResult.ok) {
+            this.notice = policyResult.error.message;
             return;
         }
         await this.refresh();
@@ -1247,9 +1307,9 @@ export class AppState {
 
     async blockUser(userId: string): Promise<void> {
         if (this.client !== null) {
-            const [, failure] = await this.client.request('block_user', { user_id: userId });
-            if (failure) {
-                this.notice = failure.message;
+            const blockResult = await this.client.request('block_user', { user_id: userId });
+            if (!blockResult.ok) {
+                this.notice = blockResult.error.message;
                 return;
             }
         }
@@ -1266,13 +1326,16 @@ export class AppState {
                 state: 'ringing',
                 started_at: nowSeconds(),
                 connected_at: 0,
+                input_muted: false,
+                output_muted: false,
             };
             this.navigate({ kind: 'call', id: userId });
             return;
         }
-        const [, failure] = await this.client.request<string>('start_call', { user_id: userId });
-        if (failure) {
-            this.notice = failure.message;
+        const callResult = await this.client.request<string>('start_call', { user_id: userId });
+        if (!callResult.ok) {
+            this.notice = callResult.error.message;
+            this.call = null;
             return;
         }
         await this.loadCall();
@@ -1283,9 +1346,9 @@ export class AppState {
         if (this.client === null || this.call === null) {
             return;
         }
-        const [, failure] = await this.client.request('accept_call', { call_id: this.call.id });
-        if (failure) {
-            this.notice = failure.message;
+        const acceptResult = await this.client.request('accept_call', { call_id: this.call.id });
+        if (!acceptResult.ok) {
+            this.notice = acceptResult.error.message;
             return;
         }
         await this.loadCall();
@@ -1297,7 +1360,13 @@ export class AppState {
             this.call = null;
             return;
         }
-        await this.client.request('decline_call', { call_id: this.call.id });
+        const declineResult = await this.client.request('decline_call', {
+            call_id: this.call.id,
+        });
+        if (!declineResult.ok) {
+            this.notice = declineResult.error.message;
+            return;
+        }
         this.call = null;
     }
 
@@ -1306,8 +1375,50 @@ export class AppState {
             this.call = null;
             return;
         }
-        await this.client.request('hangup_call', { call_id: this.call.id });
+        const hangupResult = await this.client.request('hangup_call', {
+            call_id: this.call.id,
+        });
+        if (!hangupResult.ok) {
+            this.notice = hangupResult.error.message;
+            return;
+        }
         this.call = null;
+    }
+
+    async toggleInputMute(): Promise<void> {
+        if (this.call === null) {
+            return;
+        }
+        await this.setCallMuted(!this.call.input_muted, this.call.output_muted);
+    }
+
+    async toggleOutputMute(): Promise<void> {
+        if (this.call === null) {
+            return;
+        }
+        await this.setCallMuted(this.call.input_muted, !this.call.output_muted);
+    }
+
+    private async setCallMuted(inputMuted: boolean, outputMuted: boolean): Promise<void> {
+        if (this.client === null || this.call === null) {
+            this.call =
+                this.call === null
+                    ? null
+                    : { ...this.call, input_muted: inputMuted, output_muted: outputMuted };
+            return;
+        }
+        const muteResult = await this.client.request('set_call_muted', {
+            call_id: this.call.id,
+            input_muted: inputMuted,
+            output_muted: outputMuted,
+        });
+        if (!muteResult.ok) {
+            this.notice = muteResult.error.message;
+            return;
+        }
+        if (this.call !== null) {
+            this.call = { ...this.call, input_muted: inputMuted, output_muted: outputMuted };
+        }
     }
 
     async requestRemote(userId: string): Promise<void> {
@@ -1324,11 +1435,11 @@ export class AppState {
             this.navigate({ kind: 'remote', id: userId });
             return;
         }
-        const [, failure] = await this.client.request<RemoteSession>('request_remote_session', {
+        const remoteResult = await this.client.request<RemoteSession>('request_remote_session', {
             user_id: userId,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!remoteResult.ok) {
+            this.notice = remoteResult.error.message;
             return;
         }
         await this.loadRemote();
@@ -1342,11 +1453,11 @@ export class AppState {
             }
             return;
         }
-        const [, failure] = await this.client.request('accept_remote_session', {
+        const acceptResult = await this.client.request('accept_remote_session', {
             session_id: this.remote.session_id,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!acceptResult.ok) {
+            this.notice = acceptResult.error.message;
             return;
         }
         await this.loadRemote();
@@ -1395,15 +1506,15 @@ export class AppState {
             this.navigate({ kind: 'watch-party' });
             return;
         }
-        const [party, failure] = await this.client.request<WatchParty>('start_watch_party', {
+        const partyResult = await this.client.request<WatchParty>('start_watch_party', {
             user_ids: userIds,
             video_id: videoId,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!partyResult.ok) {
+            this.notice = partyResult.error.message;
             return;
         }
-        this.adoptParty(party);
+        this.adoptParty(partyResult.value);
         this.prefetchYouTubeStream(videoId);
         this.navigate({ kind: 'watch-party' });
     }
@@ -1412,15 +1523,15 @@ export class AppState {
         if (this.client === null || this.party === null) {
             return;
         }
-        const [party, failure] = await this.client.request<WatchParty>('invite_watch_party', {
+        const partyResult = await this.client.request<WatchParty>('invite_watch_party', {
             party_id: this.party.party_id,
             user_ids: userIds,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!partyResult.ok) {
+            this.notice = partyResult.error.message;
             return;
         }
-        this.adoptParty(party);
+        this.adoptParty(partyResult.value);
     }
 
     async youtubePreview(videoId: string): Promise<YoutubePreview | null> {
@@ -1441,10 +1552,14 @@ export class AppState {
             this.videoPreviews.set(videoId, preview);
             return preview;
         }
-        const [preview, failure] = await this.client.request<YoutubePreview>('youtube_preview', {
+        const previewResult = await this.client.request<YoutubePreview>('youtube_preview', {
             video_id: videoId,
         });
-        if (failure || preview === null) {
+        if (!previewResult.ok) {
+            return null;
+        }
+        const preview = previewResult.value;
+        if (preview === null) {
             return null;
         }
         this.videoPreviews.set(videoId, preview);
@@ -1491,15 +1606,16 @@ export class AppState {
         if (this.client === null) {
             return null;
         }
-        const [stream, failure] = await this.client.request<YoutubeStream>('youtube_stream', {
+        const streamResult = await this.client.request<YoutubeStream>('youtube_stream', {
             video_id: videoId,
         });
-        if (failure) {
+        if (!streamResult.ok) {
             if (notify) {
-                this.notice = `Video stream unavailable: ${failure.message}`;
+                this.notice = `Video stream unavailable: ${streamResult.error.message}`;
             }
             return null;
         }
+        const stream = streamResult.value;
         if (stream === null) {
             if (notify) {
                 this.notice = 'Video stream unavailable.';
@@ -1522,11 +1638,11 @@ export class AppState {
         }
         let failed = 0;
         for (const userId of userIds) {
-            const [, failure] = await this.client.request<string>('send_message', {
+            const sendResult = await this.client.request<string>('send_message', {
                 user_id: userId,
                 body,
             });
-            if (failure) {
+            if (!sendResult.ok) {
                 failed += 1;
             }
         }
@@ -1543,13 +1659,14 @@ export class AppState {
             }
             return;
         }
-        const [party, failure] = await this.client.request<WatchParty>('accept_watch_party', {
+        const partyResult = await this.client.request<WatchParty>('accept_watch_party', {
             party_id: this.party.party_id,
         });
-        if (failure) {
-            this.notice = failure.message;
+        if (!partyResult.ok) {
+            this.notice = partyResult.error.message;
             return;
         }
+        const party = partyResult.value;
         if (party !== null) {
             this.adoptParty(party);
             this.prefetchYouTubeStream(party.video_id);
@@ -1573,13 +1690,13 @@ export class AppState {
             }
             return;
         }
-        const [party, failure] = await this.client.request<WatchParty>('publish_watch_party', {
+        const partyResult = await this.client.request<WatchParty>('publish_watch_party', {
             party_id: this.party.party_id,
             position_ms: positionMs,
             playing,
         });
-        if (!failure && party !== null) {
-            this.adoptParty(party);
+        if (partyResult.ok && partyResult.value !== null) {
+            this.adoptParty(partyResult.value);
         }
     }
 
@@ -1629,18 +1746,18 @@ export class AppState {
             if (this.settings[key] === value) {
                 continue;
             }
-            const [, failure] = await this.client.request('settings_save', { key, value });
-            if (failure) {
-                this.notice = failure.message;
+            const settingsResult = await this.client.request('settings_save', { key, value });
+            if (!settingsResult.ok) {
+                this.notice = settingsResult.error.message;
                 return;
             }
         }
         if (this.autostart !== this.autostartDraft) {
-            const [, failure] = await this.client.request('autostart_set', {
+            const autostartResult = await this.client.request('autostart_set', {
                 enabled: this.autostartDraft,
             });
-            if (failure) {
-                this.notice = failure.message;
+            if (!autostartResult.ok) {
+                this.notice = autostartResult.error.message;
                 return;
             }
         }
@@ -1769,6 +1886,15 @@ export class AppState {
                     this.call = { ...this.call, state: String(event.state ?? this.call.state) };
                 }
                 break;
+            case 'call_mute_changed':
+                if (this.call !== null && this.call.id === String(event.call_id ?? '')) {
+                    this.call = {
+                        ...this.call,
+                        input_muted: Boolean(event.input_muted),
+                        output_muted: Boolean(event.output_muted),
+                    };
+                }
+                break;
             case 'call_ended': {
                 this.finishCall(String(event.call_id ?? ''), String(event.reason ?? ''));
                 break;
@@ -1872,18 +1998,26 @@ export class AppState {
         const finished = this.call;
         this.call = null;
         if (finished === null) {
+            void this.loadCallLogs();
             return;
         }
-        const duration = Math.max(0, Math.floor((Date.now() - finished.started_at) / 1_000));
+        const endedAt = Date.now();
+        const duration =
+            finished.connected_at > 0
+                ? Math.max(0, Math.floor((endedAt - finished.connected_at) / 1_000))
+                : 0;
         this.callLogs = [
-            ...this.callLogs,
             {
                 id: callId,
-                userId: finished.user_id,
-                at: nowSeconds(),
-                durationSeconds: duration,
+                user_id: finished.user_id,
+                direction: finished.direction,
+                started_at: finished.started_at,
+                connected_at: finished.connected_at,
+                ended_at: endedAt,
+                duration_secs: duration,
                 reason,
             },
+            ...this.callLogs,
         ];
         this.toasts = [
             ...this.toasts,
@@ -1895,6 +2029,7 @@ export class AppState {
                 sentAt: nowSeconds(),
             },
         ].slice(-3);
+        void this.loadCallLogs();
     }
 
     userName(userId: string): string {

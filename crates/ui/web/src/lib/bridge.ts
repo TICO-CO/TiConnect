@@ -1,7 +1,7 @@
 import type { BridgeFailure } from './bridge-failures';
 import { BridgeFailures } from './bridge-failures';
 import type { Result } from './result';
-import { attempt, attemptAsync } from './result';
+import { attempt, attemptAsync, err, ok } from './result';
 import type { RemoteTicket, RpcResponse, WebSocketEvent } from './types';
 import { BridgeMessages } from './types';
 
@@ -59,19 +59,19 @@ export class BridgeClient {
             return this.ready;
         }
         this.closeRequested = false;
-        const [socket, socketError] = attempt<WebSocket>(
-            () => new WebSocket(this.bridgeInfo.webSocketUrl),
-        );
-        if (socketError) {
+        const socketResult = attempt<WebSocket>(() => new WebSocket(this.bridgeInfo.webSocketUrl));
+        if (!socketResult.ok) {
             const message =
-                socketError instanceof Error ? socketError.message : String(socketError);
-            return Promise.resolve([null, BridgeFailures.connectionFailed(message)]);
+                socketResult.error instanceof Error
+                    ? socketResult.error.message
+                    : String(socketResult.error);
+            return Promise.resolve(err(BridgeFailures.connectionFailed(message)));
         }
+        const socket = socketResult.value;
         if (socket === null) {
-            return Promise.resolve([
-                null,
-                BridgeFailures.connectionFailed('bridge socket unavailable'),
-            ]);
+            return Promise.resolve(
+                err(BridgeFailures.connectionFailed('bridge socket unavailable')),
+            );
         }
 
         this.socket = socket;
@@ -83,7 +83,7 @@ export class BridgeClient {
                     return;
                 }
                 settled = true;
-                resolve([null, failure]);
+                resolve(err(failure));
             };
 
             const settleSuccess = (): void => {
@@ -91,11 +91,11 @@ export class BridgeClient {
                     return;
                 }
                 settled = true;
-                resolve([null, null]);
+                resolve(ok(undefined));
             };
 
             socket.addEventListener('open', () => {
-                const [, sendError] = attempt(() =>
+                const sendResult = attempt(() =>
                     socket.send(
                         JSON.stringify({
                             type: 'auth',
@@ -103,9 +103,11 @@ export class BridgeClient {
                         }),
                     ),
                 );
-                if (sendError) {
+                if (!sendResult.ok) {
                     const message =
-                        sendError instanceof Error ? sendError.message : String(sendError);
+                        sendResult.error instanceof Error
+                            ? sendResult.error.message
+                            : String(sendResult.error);
                     settleFailure(BridgeFailures.connectionFailed(message));
                 }
             });
@@ -160,23 +162,26 @@ export class BridgeClient {
     ): Promise<Result<T, BridgeFailure>> {
         const socket = this.socket;
         if (socket === null || socket.readyState !== WebSocket.OPEN) {
-            return Promise.resolve([null, BridgeFailures.notConnected()]);
+            return Promise.resolve(err(BridgeFailures.notConnected()));
         }
         const id = this.nextId++;
         return new Promise<Result<T, BridgeFailure>>((resolve) => {
             this.pendingRequests.set(id, {
-                succeed: (value) => resolve([value as T, null]),
-                fail: (failure) => resolve([null, failure]),
+                succeed: (value) => resolve(ok(value as T)),
+                fail: (failure) => resolve(err(failure)),
             });
-            const [, sendError] = attempt(() =>
+            const sendResult = attempt(() =>
                 socket.send(JSON.stringify({ id, method, params: parameters })),
             );
-            if (!sendError) {
+            if (sendResult.ok) {
                 return;
             }
             this.pendingRequests.delete(id);
-            const message = sendError instanceof Error ? sendError.message : String(sendError);
-            resolve([null, BridgeFailures.requestFailed(message)]);
+            const message =
+                sendResult.error instanceof Error
+                    ? sendResult.error.message
+                    : String(sendResult.error);
+            resolve(err(BridgeFailures.requestFailed(message)));
         });
     }
 
@@ -198,23 +203,27 @@ export class BridgeClient {
 
     async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
         const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
-        const [value, failure] = await this.upload(path, file);
-        if (failure) {
-            return [null, failure];
+        const uploadResult = await this.upload(path, file);
+        if (!uploadResult.ok) {
+            return err(uploadResult.error);
         }
+        const value = uploadResult.value;
         if (typeof value !== 'object' || value === null || !('message_id' in value)) {
-            return [null, BridgeFailures.requestFailed('attachment upload returned no message id')];
+            return err(BridgeFailures.requestFailed('attachment upload returned no message id'));
         }
         const messageId = value.message_id;
         if (typeof messageId !== 'string') {
-            return [null, BridgeFailures.requestFailed('attachment upload returned no message id')];
+            return err(BridgeFailures.requestFailed('attachment upload returned no message id'));
         }
-        return [messageId, null];
+        return ok(messageId);
     }
 
     async uploadAvatar(file: File): Promise<Result<void, BridgeFailure>> {
-        const [, failure] = await this.upload('/avatar', file);
-        return [null, failure];
+        const uploadResult = await this.upload('/avatar', file);
+        if (!uploadResult.ok) {
+            return err(uploadResult.error);
+        }
+        return ok(undefined);
     }
 
     private async download(
@@ -226,36 +235,36 @@ export class BridgeClient {
         let delay = 200;
         let lastStatus = 0;
         for (;;) {
-            const [ticket, ticketFailure] = await this.request<RemoteTicket>(method, parameters);
-            if (ticketFailure) {
-                return [null, ticketFailure];
+            const ticketResult = await this.request<RemoteTicket>(method, parameters);
+            if (!ticketResult.ok) {
+                return err(ticketResult.error);
             }
+            const ticket = ticketResult.value;
             if (ticket === null || typeof ticket.url !== 'string') {
-                return [
-                    null,
-                    BridgeFailures.requestFailed('bridge did not return a download ticket'),
-                ];
+                return err(BridgeFailures.requestFailed('bridge did not return a download ticket'));
             }
-            const [response, fetchFailure] = await attemptAsync(() =>
+            const responseResult = await attemptAsync(() =>
                 fetch(ticket.url, { cache: 'no-store' }),
             );
+            const fetchFailed = !responseResult.ok;
+            const response = responseResult.ok ? responseResult.value : null;
             lastStatus = response?.status ?? 0;
-            if (!fetchFailure && response !== null && response.ok) {
-                const [blob, blobFailure] = await attemptAsync(() => response.blob());
-                if (blobFailure || blob === null) {
-                    return [null, BridgeFailures.requestFailed('download response was empty')];
+            if (response !== null && response.ok) {
+                const blobResult = await attemptAsync(() => response.blob());
+                if (!blobResult.ok) {
+                    return err(BridgeFailures.requestFailed('download response was empty'));
                 }
-                const [url, urlFailure] = attempt(() => URL.createObjectURL(blob));
-                if (urlFailure || url === null) {
-                    return [null, BridgeFailures.requestFailed('download could not be opened')];
+                const urlResult = attempt(() => URL.createObjectURL(blobResult.value));
+                if (!urlResult.ok) {
+                    return err(BridgeFailures.requestFailed('download could not be opened'));
                 }
-                return [url, null];
+                return ok(urlResult.value);
             }
-            if (!shouldRetryDownload(fetchFailure !== null, lastStatus)) {
-                return [null, downloadFailure(lastStatus)];
+            if (!shouldRetryDownload(fetchFailed, lastStatus)) {
+                return err(downloadFailure(lastStatus));
             }
             if (Date.now() >= deadline) {
-                return [null, downloadFailure(lastStatus, true)];
+                return err(downloadFailure(lastStatus, true));
             }
             await wait(delay);
             delay = Math.min(delay * 2, 1_000);
@@ -267,24 +276,25 @@ export class BridgeClient {
         if (this.bridgeInfo.token) {
             headers.Authorization = `Bearer ${this.bridgeInfo.token}`;
         }
-        const [response, fetchFailure] = await attemptAsync(() =>
+        const responseResult = await attemptAsync(() =>
             fetch(`${this.bridgeInfo.httpBaseUrl}${path}`, {
                 method: 'POST',
                 headers,
                 body: file,
             }),
         );
-        if (fetchFailure) {
-            return [null, BridgeFailures.requestFailed('upload request failed')];
+        if (!responseResult.ok) {
+            return err(BridgeFailures.requestFailed('upload request failed'));
         }
-        if (response === null || !response.ok) {
-            return [null, BridgeFailures.requestFailed('upload request failed')];
+        const response = responseResult.value;
+        if (!response.ok) {
+            return err(BridgeFailures.requestFailed('upload request failed'));
         }
-        const [value, parseFailure] = await attemptAsync<unknown>(() => response.json());
-        if (parseFailure) {
-            return [null, BridgeFailures.requestFailed('upload response was malformed')];
+        const valueResult = await attemptAsync<unknown>(() => response.json());
+        if (!valueResult.ok) {
+            return err(BridgeFailures.requestFailed('upload response was malformed'));
         }
-        return [value, null];
+        return ok(valueResult.value);
     }
 
     close(): void {
@@ -298,10 +308,11 @@ export class BridgeClient {
         if (typeof rawData !== 'string') {
             return null;
         }
-        const [parsed, parseError] = attempt<unknown>(() => JSON.parse(rawData));
-        if (parseError) {
+        const parseResult = attempt<unknown>(() => JSON.parse(rawData));
+        if (!parseResult.ok) {
             return null;
         }
+        const parsed = parseResult.value;
         if (parsed === null) {
             return null;
         }
