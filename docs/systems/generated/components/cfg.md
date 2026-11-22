@@ -17,7 +17,6 @@ flowchart LR
     n_cfg_config_file[("CFG.config-file (toml-file)")]
   end
   subgraph ext["External"]
-    n_aud_ringtone["AUD.ringtone<br/>AUD"]
     n_cli_settings["CLI.settings<br/>CLI"]
     n_disc_dbus["DISC.dbus<br/>DISC"]
     n_disc_supervisor["DISC.supervisor<br/>DISC"]
@@ -43,7 +42,6 @@ flowchart LR
   n_id_key_load -.->|config-read / sync: config directory| n_cfg_file_store
   n_disc_supervisor -.->|config-read / sync: discovery settings| n_cfg_file_store
   n_pol_dnd -.->|config-read / sync: DND setting| n_cfg_file_store
-  n_aud_ringtone -.->|config-read / sync: ringtone path| n_cfg_file_store
   n_ui_settings -->|calls / sync: direct settings write| n_cfg_file_store
   n_ui_settings -.->|consumes / event: SettingsChanged| n_cfg_watch
   n_ovl_client -.->|config-read / sync: overlay enabled and timeout| n_cfg_file_store
@@ -51,7 +49,7 @@ flowchart LR
   n_cfg_watch -.->|invokes / async: reconfigure discovery| n_disc_dbus
   n_ovl_client -.->|consumes / event: SettingsChanged| n_cfg_watch
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_aud_ringtone, n_cli_settings, n_disc_dbus, n_disc_supervisor, n_id_key_load, n_ipc_signal_bus, n_ovl_client, n_pol_dnd, n_rt_autostart, n_rt_wiring, n_ui_settings external;
+  class n_cli_settings, n_disc_dbus, n_disc_supervisor, n_id_key_load, n_ipc_signal_bus, n_ovl_client, n_pol_dnd, n_rt_autostart, n_rt_wiring, n_ui_settings external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -70,7 +68,6 @@ flowchart LR
 | `ID.key-load` | config-read | sync | `CFG.file-store` | config directory |  |  | 3 |
 | `DISC.supervisor` | config-read | sync | `CFG.file-store` | discovery settings |  |  | 4 |
 | `POL.dnd` | config-read | sync | `CFG.file-store` | DND setting |  |  | 6 |
-| `AUD.ringtone` | config-read | sync | `CFG.file-store` | ringtone path |  |  | 10 |
 | `UI.settings` | calls | sync | `CFG.file-store` | direct settings write |  |  | 7 |
 | `UI.settings` | consumes | event | `CFG.watch` | SettingsChanged |  |  | 7 |
 | `OVL.client` | config-read | sync | `CFG.file-store` | overlay enabled and timeout |  |  | 8 |

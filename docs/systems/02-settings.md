@@ -57,7 +57,6 @@ Leaf crate. No domain, network, storage, or logging dependency. Exposes effectiv
 | `ID.key-load` | `config-read` | `sync` | `CFG.file-store` | config directory |  |  |
 | `DISC.supervisor` | `config-read` | `sync` | `CFG.file-store` | discovery settings |  |  |
 | `POL.dnd` | `config-read` | `sync` | `CFG.file-store` | DND setting |  |  |
-| `AUD.ringtone` | `config-read` | `sync` | `CFG.file-store` | ringtone path |  |  |
 | `UI.settings` | `calls` | `sync` | `CFG.file-store` | direct settings write |  |  |
 | `UI.settings` | `consumes` | `event` | `CFG.watch` | SettingsChanged |  |  |
 | `OVL.client` | `config-read` | `sync` | `CFG.file-store` | overlay enabled and timeout |  |  |

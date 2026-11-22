@@ -45,7 +45,6 @@ flowchart LR
   n_att -->|emits / event| n_ipc
   n_att -->|calls / sync| n_msg
   n_att -->|invokes / async| n_tx
-  n_aud -->|config-read / sync| n_cfg
   n_aud -->|invokes / async gate:CALL.policy| n_tx
   n_call -->|calls / sync gate:CALL.policy| n_aud
   n_call -->|emits / event| n_ipc
@@ -118,9 +117,8 @@ flowchart LR
 | `ATT` | `IPC` | emits | event |  | 1 |
 | `ATT` | `MSG` | calls | sync |  | 1 |
 | `ATT` | `TX` | invokes | async |  | 1 |
-| `AUD` | `CFG` | config-read | sync |  | 1 |
 | `AUD` | `TX` | invokes | async | CALL.policy | 1 |
-| `CALL` | `AUD` | calls | sync | CALL.policy | 5 |
+| `CALL` | `AUD` | calls | sync | CALL.policy | 4 |
 | `CALL` | `IPC` | emits | event |  | 1 |
 | `CALL` | `POL` | calls | sync | POL.inbound | 1 |
 | `CALL` | `TX` | calls, invokes | async, sync |  | 3 |

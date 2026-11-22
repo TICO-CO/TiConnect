@@ -14,7 +14,6 @@ use ticonnect_daemon::remote::{NoopRemoteHost, RemoteService};
 use ticonnect_daemon::storage::{DatabaseHandle, NewUser, UserPolicy};
 use ticonnect_daemon::trust::TrustStore;
 use ticonnect_daemon::watch_party::WatchPartyService;
-use ticonnect_media::ringtone::NullRingtone;
 use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
@@ -88,7 +87,6 @@ impl TestNode {
             trust.clone(),
             transport.clone(),
             settings.clone(),
-            Arc::new(NullRingtone::default()),
         );
         calls.set_media_enabled(false);
         let remote = RemoteService::with_clock(

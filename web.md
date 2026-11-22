@@ -148,7 +148,7 @@ Port in this order:
 5. user page: fingerprint, current addresses, optional MAC, OS, desktop,
    display server, app version, policy, block/forget
 6. settings: every current field, blocked users, DND, outbox TTL, autostart,
-   read receipts, discovery, ringtone path, appearance
+   read receipts, discovery, appearance
 7. call/remote/watch-party: overlay notifications and YouTube player
 
 Webview hardening:

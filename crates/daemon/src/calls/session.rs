@@ -83,6 +83,16 @@ impl MediaSession {
                 }
             }
         });
+        tracing::info!(
+            call_id = %call_id,
+            input_rate = input_rate,
+            input_channels = capture.channels(),
+            input_format = ?capture.sample_format(),
+            output_rate = output_rate,
+            output_channels = playback.channels(),
+            output_format = ?playback.sample_format(),
+            "call media session started"
+        );
         Ok(Self {
             call_id,
             capture,
@@ -123,6 +133,7 @@ impl MediaSession {
     }
 
     pub fn stop(&self) {
+        tracing::info!(call_id = %self.call_id, "call media session stopped");
         self.capture.stop();
         self.playback.stop();
         self.encoder_task.abort();

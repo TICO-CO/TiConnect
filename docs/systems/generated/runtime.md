@@ -47,7 +47,6 @@ flowchart LR
   n_att -->|emits / event| n_ipc
   n_att -->|calls / sync| n_msg
   n_att -->|invokes / async| n_tx
-  n_aud -->|config-read / sync| n_cfg
   n_aud -->|invokes / async gate:CALL.policy| n_tx
   n_call -->|calls / sync gate:CALL.policy| n_aud
   n_call -->|emits / event| n_ipc
@@ -172,13 +171,11 @@ flowchart LR
 | `ATT.progress` | `IPC.signal-bus` | emits | event | TransferProgress and TransferDone |  |  | 9 |
 | `ATT.recv-verify` | `DB.attachments` | calls | sync | attachment metadata |  |  | 9 |
 | `AUD.encode` | `TX.datagrams` | invokes | async | send audio datagram | CALL.policy |  | 10 |
-| `AUD.ringtone` | `CFG.file-store` | config-read | sync | ringtone path |  |  | 10 |
 | `CALL.signaling` | `TX.streams` | invokes | async | call signaling frame |  |  | 10 |
 | `CALL.signaling` | `TX.datagrams` | invokes | async | call control datagram |  |  | 10 |
 | `CALL.media` | `AUD.devices` | calls | sync | audio devices | CALL.policy |  | 10 |
 | `CALL.media` | `AUD.encode` | calls | sync | encode call audio |  |  | 10 |
 | `CALL.media` | `AUD.decode` | calls | sync | decode call audio |  |  | 10 |
-| `CALL.ringtone` | `AUD.ringtone` | calls | sync | ringtone playback |  |  | 10 |
 | `CALL.state` | `IPC.signal-bus` | emits | event | IncomingCall and CallStateChanged |  |  | 10 |
 | `CALL.policy` | `POL.inbound` | calls | sync | call policy decision | POL.inbound |  | 10 |
 | `CALL.cleanup` | `AUD.devices` | calls | sync | release audio devices |  |  | 10 |

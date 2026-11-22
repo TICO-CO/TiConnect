@@ -11,7 +11,6 @@ flowchart LR
     n_call_media["CALL.media<br/>Media coordinator"]
     n_call_policy["CALL.policy<br/>Call policy gate"]
     n_call_registry["CALL.registry<br/>Call registry"]
-    n_call_ringtone["CALL.ringtone<br/>Ringtone coordinator"]
     n_call_signaling["CALL.signaling<br/>Call signaling"]
     n_call_state["CALL.state<br/>Call state machine"]
   end
@@ -19,7 +18,6 @@ flowchart LR
     n_aud_decode["AUD.decode<br/>AUD"]
     n_aud_devices["AUD.devices<br/>AUD"]
     n_aud_encode["AUD.encode<br/>AUD"]
-    n_aud_ringtone["AUD.ringtone<br/>AUD"]
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
     n_pol_inbound["POL.inbound<br/>POL"]
     n_tx_datagrams["TX.datagrams<br/>TX"]
@@ -30,7 +28,6 @@ flowchart LR
   n_call_state -->|calls / sync: call registration| n_call_registry
   n_call_signaling -->|calls / sync: signaling event| n_call_state
   n_call_media -->|calls / sync: media state| n_call_state
-  n_call_ringtone -->|calls / sync: ringing state| n_call_state
   n_call_cleanup -->|calls / sync: terminal transition| n_call_state
   n_call_policy -->|calls / sync: call policy| n_call_state
   n_call_signaling -.->|invokes / async: call signaling frame| n_tx_streams
@@ -38,13 +35,12 @@ flowchart LR
   n_call_media -->|calls / sync gate:CALL.policy: audio devices| n_aud_devices
   n_call_media -->|calls / sync: encode call audio| n_aud_encode
   n_call_media -->|calls / sync: decode call audio| n_aud_decode
-  n_call_ringtone -->|calls / sync: ringtone playback| n_aud_ringtone
   n_call_state -.->|emits / event: IncomingCall and CallStateChanged| n_ipc_signal_bus
   n_call_policy -->|calls / sync gate:POL.inbound: call policy decision| n_pol_inbound
   n_call_cleanup -->|calls / sync: release audio devices| n_aud_devices
   n_call_cleanup -->|calls / sync: close call transport| n_tx_session
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_aud_decode, n_aud_devices, n_aud_encode, n_aud_ringtone, n_ipc_signal_bus, n_pol_inbound, n_tx_datagrams, n_tx_session, n_tx_streams external;
+  class n_aud_decode, n_aud_devices, n_aud_encode, n_ipc_signal_bus, n_pol_inbound, n_tx_datagrams, n_tx_session, n_tx_streams external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -53,7 +49,6 @@ flowchart LR
 | `CALL.state` | calls | sync | `CALL.registry` | call registration |  |  | 10 |
 | `CALL.signaling` | calls | sync | `CALL.state` | signaling event |  |  | 10 |
 | `CALL.media` | calls | sync | `CALL.state` | media state |  |  | 10 |
-| `CALL.ringtone` | calls | sync | `CALL.state` | ringing state |  |  | 10 |
 | `CALL.cleanup` | calls | sync | `CALL.state` | terminal transition |  |  | 10 |
 | `CALL.policy` | calls | sync | `CALL.state` | call policy |  |  | 10 |
 | `CALL.signaling` | invokes | async | `TX.streams` | call signaling frame |  |  | 10 |
@@ -61,7 +56,6 @@ flowchart LR
 | `CALL.media` | calls | sync | `AUD.devices` | audio devices | CALL.policy |  | 10 |
 | `CALL.media` | calls | sync | `AUD.encode` | encode call audio |  |  | 10 |
 | `CALL.media` | calls | sync | `AUD.decode` | decode call audio |  |  | 10 |
-| `CALL.ringtone` | calls | sync | `AUD.ringtone` | ringtone playback |  |  | 10 |
 | `CALL.state` | emits | event | `IPC.signal-bus` | IncomingCall and CallStateChanged |  |  | 10 |
 | `CALL.policy` | calls | sync | `POL.inbound` | call policy decision | POL.inbound |  | 10 |
 | `CALL.cleanup` | calls | sync | `AUD.devices` | release audio devices |  |  | 10 |

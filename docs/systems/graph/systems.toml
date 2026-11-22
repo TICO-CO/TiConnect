@@ -201,12 +201,12 @@ owner = "ticonnect-media"
 layer = "services"
 stage = 10
 doc = "15-audio.md"
-purpose = "Own device selection, capture, resampling, Opus codec, jitter buffer, playback, metrics, and ringtone playback."
+purpose = "Own device selection, capture, resampling, Opus codec, jitter buffer, playback, and metrics."
 boundary = "Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline."
 owned_state = ["device handles", "jitter buffer", "playback ring"]
-interfaces = ["cpal devices", "Opus frames", "jitter buffer", "ringtone sink"]
+interfaces = ["cpal devices", "Opus frames", "jitter buffer"]
 failure_semantics = ["device loss does not panic", "bounded rings", "no microphone before call acceptance"]
-open_decisions = ["sample-rate policy", "jitter target", "ringtone ducking behavior"]
+open_decisions = ["sample-rate policy", "jitter target"]
 
 [[systems]]
 id = "CALL"
@@ -215,7 +215,7 @@ owner = "ticonnect-daemon"
 layer = "daemon"
 stage = 10
 doc = "16-calls.md"
-purpose = "Own call state, signaling, media coordination, ringtone coordination, policy gates, timeout, and cleanup."
+purpose = "Own call state, signaling, media coordination, policy gates, timeout, and cleanup."
 boundary = "Daemon service. Uses audio, transport, policy, and IPC. UI only presents controls."
 owned_state = ["call registry", "call state"]
 interfaces = ["call state machine", "call signals", "call controls", "IncomingCall signal"]

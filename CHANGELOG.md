@@ -19,6 +19,14 @@
 - Persist call history in SQLite and load it into the web UI.
 - Allow hanging up an outgoing ringing call and notify peers when media setup
   fails; configured audio devices now fail explicitly instead of falling back.
+- Fix call audio on stereo and non-F32 devices by downmixing capture to mono,
+  expanding playback across device channels, and honoring supported sample
+  formats.
+- Accept signed D-Bus timestamps when parsing live call state, fixing the web
+  bridge call view and incoming-call events.
+- Remove ringtone playback and the `ringtone.path` setting; incoming calls are
+  shown without audio. Route lab call audio through null devices by default to
+  avoid same-host speaker/microphone feedback.
 - Bundle GStreamer plugins for voice capture and media playback on Nix.
 - Add voice-message recording and inline audio playback in the web UI.
 - Add local history clearing for all conversations and per-user conversations.

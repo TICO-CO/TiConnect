@@ -71,6 +71,12 @@ The lab sets distinct display names and UI window titles for the two nodes.
 Both UIs can run at the same time against their separate buses. Both overlays
 anchor top-right and overlap, so run one `ovl` at a time for clear testing.
 
+Call audio uses null devices by default because two nodes on one host share the
+same microphone and speakers. Real devices create an acoustic feedback loop.
+For real call audio, use headphones and run `call-audio hardware` in both lab
+panes, or start the lab with `LAB_CALL_AUDIO=hardware make lab`. Use
+`call-audio silent` to return to null devices.
+
 Group watch parties need at least three nodes. The daemon integration test
 starts three nodes itself:
 

@@ -170,13 +170,6 @@ impl Default for VideoSettings {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct RingtoneSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default)]
 pub struct DndSettings {
     pub enabled: bool,
 }
@@ -264,7 +257,6 @@ pub const SETTING_KEYS: &[&str] = &[
     "video.bitrate_kbps",
     "video.fps",
     "video.keyframe_interval",
-    "ringtone.path",
     "dnd.enabled",
     "appearance.color_scheme",
 ];
@@ -446,16 +438,6 @@ settings_schema! {
         };
         set(&mut self, value: VideoSettings) -> set_video as active {
             active.video = value;
-        };
-    };
-
-    #[serde(default)]
-    ringtone: RingtoneSettings = RingtoneSettings::default() => {
-        get(&self) -> &RingtoneSettings as active {
-            &active.ringtone
-        };
-        set(&mut self, value: RingtoneSettings) -> set_ringtone as active {
-            active.ringtone = value;
         };
     };
 
@@ -685,15 +667,6 @@ impl Settings {
         self.active.video.keyframe_interval = value;
     }
 
-    pub fn ringtone_path(&self) -> Option<&Path> {
-        self.active.ringtone.path.as_deref()
-    }
-
-    pub fn set_ringtone_path(&mut self, path: Option<PathBuf>) {
-        self.changes.ringtone = true;
-        self.active.ringtone.path = path;
-    }
-
     pub fn dnd_enabled(&self) -> bool {
         self.active.dnd.enabled
     }
@@ -752,9 +725,6 @@ impl Settings {
             "video.bitrate_kbps" => Ok(SettingValue::Integer(self.video_bitrate_kbps())),
             "video.fps" => Ok(SettingValue::Integer(self.video_fps())),
             "video.keyframe_interval" => Ok(SettingValue::Integer(self.video_keyframe_interval())),
-            "ringtone.path" => Ok(SettingValue::Path(
-                self.ringtone_path().map(Path::to_path_buf),
-            )),
             "dnd.enabled" => Ok(SettingValue::Bool(self.dnd_enabled())),
             "appearance.color_scheme" => {
                 Ok(SettingValue::String(self.appearance().as_str().to_owned()))
@@ -895,7 +865,6 @@ impl Settings {
                     parse_bounded_u32(key, value, VIDEO_KEYFRAME_MIN, VIDEO_KEYFRAME_MAX)?;
                 self.set_video_keyframe_interval(interval);
             }
-            "ringtone.path" => self.set_ringtone_path(parse_optional_path(value)),
             "dnd.enabled" => self.set_dnd_enabled(parse_bool(key, value)?),
             "appearance.color_scheme" => {
                 let appearance = Appearance::parse(value).ok_or_else(|| Error::InvalidSetting {

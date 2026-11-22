@@ -30,7 +30,7 @@
         {
             user: 'Your identity on this network',
             notifications: 'Do not disturb, overlay and message toasts',
-            calls: 'Ringtones, devices and ringing timeout',
+            calls: 'Devices, shortcuts and ringing timeout',
             remote: 'Consent, session limits and video quality',
             media: 'YouTube overlay, incoming videos, watch parties',
             storage: 'Outbox, attachments and local history',
@@ -537,25 +537,6 @@
                             oninput={(event) =>
                                 setValue(
                                     'calls.output_mute_shortcut',
-                                    (event.currentTarget as HTMLInputElement).value,
-                                )}
-                        />
-                    </div>
-                    <div
-                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
-                    >
-                        <div class="flex flex-col gap-0.5">
-                            <strong class="text-sm">Ringtone path</strong><span
-                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                                >Empty uses the bundled tone</span
-                            >
-                        </div>
-                        <input
-                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink placeholder:text-ink-3 hover:border-line-strong"
-                            value={value('ringtone.path')}
-                            oninput={(event) =>
-                                setValue(
-                                    'ringtone.path',
                                     (event.currentTarget as HTMLInputElement).value,
                                 )}
                         />

@@ -66,12 +66,10 @@
 | `AUD.metrics` | `AUD` | Audio metrics | `module` | `crates/media/src/audio/mod.rs` | 10 | counters | docs/systems/15-audio.md#components | planned: crates/media/tests/metrics.rs |
 | `AUD.playback` | `AUD` | Playback | `module` | `crates/media/src/audio/playback.rs` | 10 | playback ring | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
 | `AUD.resample` | `AUD` | Resampler | `module` | `crates/media/src/audio/resample.rs` | 10 |  | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
-| `AUD.ringtone` | `AUD` | Ringtone player | `module` | `crates/media/src/ringtone.rs` | 10 | ringtone loop | docs/systems/15-audio.md#components | planned: crates/media/tests/ringtone.rs |
 | `CALL.cleanup` | `CALL` | Call cleanup | `module` | `crates/daemon/src/calls/session.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.media` | `CALL` | Media coordinator | `module` | `crates/daemon/src/calls/session.rs` | 10 | audio pipeline handles | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.policy` | `CALL` | Call policy gate | `module` | `crates/daemon/src/calls/mod.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.registry` | `CALL` | Call registry | `module` | `crates/daemon/src/calls/mod.rs` | 10 | active call | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
-| `CALL.ringtone` | `CALL` | Ringtone coordinator | `module` | `crates/daemon/src/calls/session.rs` | 10 | ringtone handle | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.signaling` | `CALL` | Call signaling | `module` | `crates/daemon/src/calls/session.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.state` | `CALL` | Call state machine | `module` | `crates/daemon/src/calls/state.rs` | 10 | call state | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CFG.defaults` | `CFG` | Defaults | `module` | `crates/settings/src/settings.rs` | 1 |  | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |

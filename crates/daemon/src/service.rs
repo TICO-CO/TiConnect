@@ -133,7 +133,6 @@ impl DaemonState {
             trust.clone(),
             transport.clone(),
             settings.clone(),
-            Arc::new(ticonnect_media::ringtone::RodioRingtone::new()),
         ));
         let remote = Arc::new(RemoteService::new(
             trust.clone(),
@@ -2230,7 +2229,6 @@ mod tests {
             trust.clone(),
             transport.clone(),
             settings.clone(),
-            Arc::new(ticonnect_media::ringtone::NullRingtone::default()),
         ));
         calls.set_media_enabled(false);
         let remote = Arc::new(RemoteService::new(

@@ -430,9 +430,6 @@ fn key_api_sets_and_reads_typed_values() {
 
         settings.set_setting("dnd.enabled", "yes").expect("set dnd");
         settings
-            .set_setting("ringtone.path", "/tmp/ring.ogg")
-            .expect("set ringtone");
-        settings
             .set_setting("outbox.ttl_days", "30")
             .expect("set ttl");
         settings
@@ -457,13 +454,6 @@ fn key_api_sets_and_reads_typed_values() {
                 .get_setting("overlay.timeout_secs")
                 .expect("get overlay timeout"),
             crate::SettingValue::Integer(12)
-        );
-        assert_eq!(
-            settings
-                .get_setting("ringtone.path")
-                .expect("get ringtone")
-                .render(),
-            "/tmp/ring.ogg"
         );
         assert_eq!(
             settings

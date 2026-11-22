@@ -5,7 +5,6 @@ pub mod h264;
 pub mod jitter;
 pub mod notification;
 pub mod opus_codec;
-pub mod ringtone;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

@@ -117,8 +117,8 @@ TLS handshake and before accepting the handshake stream.
 - The microphone is opened only after the local call is accepted.
 - Audio datagrams are accepted only for the active call and the matching user.
 - Packet size, jitter depth, and playback buffers are bounded.
-- Ignore policy drops calls before any media setup; DND suppresses the ringtone
-  but still reports the incoming call.
+- Ignore policy drops calls before any media setup; DND suppresses notification
+  sounds but still reports the incoming call.
 - Logs contain call state and user id, not audio contents.
 
 ## Remote desktop

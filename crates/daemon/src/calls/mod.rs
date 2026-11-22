@@ -9,7 +9,6 @@ use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId, CallSignalFrame, CallState};
 use ticonnect_core::id::NodeId;
 use ticonnect_media::jitter::{JitterBuffer, JitterFrame};
-use ticonnect_media::ringtone::{RingtoneControl, RingtoneError};
 use ticonnect_net::transport::{Session, Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
@@ -100,7 +99,6 @@ struct Inner {
     settings: RwLock<Settings>,
     events: tokio::sync::broadcast::Sender<CallEvent>,
     registry: Mutex<CallRegistry>,
-    ringtone: Arc<dyn RingtoneControl>,
     media: Mutex<Option<MediaSession>>,
     audio: Mutex<Option<AudioReceiver>>,
     jitter: Mutex<JitterBuffer>,
@@ -115,7 +113,6 @@ impl CallService {
         trust: Arc<TrustStore>,
         transport: Arc<Transport>,
         settings: Settings,
-        ringtone: Arc<dyn RingtoneControl>,
     ) -> Self {
         let (events, _) = tokio::sync::broadcast::channel(64);
         Self {
@@ -127,7 +124,6 @@ impl CallService {
                 settings: RwLock::new(settings),
                 events,
                 registry: Mutex::new(CallRegistry::default()),
-                ringtone,
                 media: Mutex::new(None),
                 audio: Mutex::new(None),
                 jitter: Mutex::new(JitterBuffer::default()),
@@ -199,6 +195,7 @@ impl CallService {
             }
         };
         let info = call.info();
+        tracing::info!(call_id = %call.id, user_id = %call.user_id, "outgoing call started");
         self.emit(CallEvent::StateChanged(info.clone()));
         if let Err(error) = self
             .send_signal(&session, Endpoint::User, &CallSignalFrame::Offer(call.id))
@@ -223,8 +220,7 @@ impl CallService {
         let CallTransition::InCall(call) = transition else {
             return Err(CallError::InvalidState);
         };
-        self.inner.ringtone.stop();
-        self.inner.ringtone.duck(false);
+        tracing::info!(call_id = %call.id, user_id = %call.user_id, "call accepted");
         if let Err(error) = self
             .send_signal_for_user(&call.user_id, CallSignalFrame::Accept(call.id))
             .await
@@ -232,7 +228,7 @@ impl CallService {
             self.fail(call.id).await;
             return Err(error);
         }
-        if !self.start_media(&call) {
+        if let Err(error) = self.start_media(&call) {
             let _ = self
                 .send_signal_for_user(
                     &call.user_id,
@@ -243,7 +239,7 @@ impl CallService {
                 )
                 .await;
             self.fail(call.id).await;
-            return Err(CallError::MediaUnavailable);
+            return Err(error);
         }
         let info = call.info();
         self.emit(CallEvent::StateChanged(info.clone()));
@@ -342,13 +338,8 @@ impl CallService {
                     Err(error) => return Err(error.into()),
                 };
                 let info = call.info();
+                tracing::info!(call_id = %call.id, user_id = %user_id, "incoming call received");
                 self.emit(CallEvent::IncomingCall(info.clone()));
-                let settings = self.settings();
-                if !settings.dnd_enabled()
-                    && let Err(error) = self.inner.ringtone.start(settings.ringtone_path())
-                {
-                    tracing::warn!(%error, "failed to start ringtone");
-                }
                 let _ = self
                     .send_signal_frame(&user, CallSignalFrame::Ringing(call.id))
                     .await;
@@ -371,8 +362,7 @@ impl CallService {
                 let CallTransition::InCall(call) = transition? else {
                     return Err(CallError::InvalidState);
                 };
-                self.inner.ringtone.stop();
-                if !self.start_media(&call) {
+                if let Err(error) = self.start_media(&call) {
                     let _ = self
                         .send_signal_frame(
                             &user,
@@ -383,7 +373,7 @@ impl CallService {
                         )
                         .await;
                     self.fail(call.id).await;
-                    return Err(CallError::MediaUnavailable);
+                    return Err(error);
                 }
                 self.emit(CallEvent::StateChanged(call.info()));
                 Ok(())
@@ -509,6 +499,7 @@ impl CallService {
         let CallTransition::Ended(call, reason) = transition else {
             return;
         };
+        tracing::info!(call_id = %call.id, user_id = %call.user_id, reason = reason.as_str(), "call finished");
         self.cleanup();
         self.record_call(&call, reason).await;
         if send {
@@ -536,6 +527,7 @@ impl CallService {
         };
         self.cleanup();
         if let Some(CallTransition::Ended(call, reason)) = ended {
+            tracing::warn!(call_id = %call.id, user_id = %call.user_id, reason = reason.as_str(), "call failed");
             self.record_call(&call, reason).await;
             self.emit(CallEvent::Ended {
                 call_id: call.id,
@@ -582,8 +574,6 @@ impl CallService {
     }
 
     fn cleanup(&self) {
-        self.inner.ringtone.stop();
-        self.inner.ringtone.duck(false);
         if let Some(media) = self
             .inner
             .media
@@ -605,23 +595,27 @@ impl CallService {
             .unwrap_or_else(PoisonError::into_inner) = JitterBuffer::default();
     }
 
-    fn start_media(&self, call: &state::ActiveCall) -> bool {
+    fn start_media(&self, call: &state::ActiveCall) -> Result<(), CallError> {
         if !self
             .inner
             .media_enabled
             .load(std::sync::atomic::Ordering::Relaxed)
         {
-            return true;
+            return Ok(());
         }
-        let Some(session) = parse_user(&call.user_id)
+        let session = parse_user(&call.user_id)
             .ok()
             .and_then(|node_id| self.inner.transport.session_by_node_id(node_id))
-        else {
-            tracing::warn!(user_id = %call.user_id, "call media session is unavailable");
-            return false;
-        };
+            .ok_or(CallError::UserOffline)?;
         let settings = self.settings();
-        match MediaSession::start(
+        tracing::info!(
+            call_id = %call.id,
+            user_id = %call.user_id,
+            input_device = settings.call_input_device().unwrap_or("system default"),
+            output_device = settings.call_output_device().unwrap_or("system default"),
+            "starting call media"
+        );
+        let media = MediaSession::start(
             call.id,
             session,
             settings.call_input_device(),
@@ -629,26 +623,22 @@ impl CallService {
             call.input_muted,
             call.output_muted,
             self.inner.metrics.clone(),
-        ) {
-            Ok(media) => {
-                *self
-                    .inner
-                    .media
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner) = Some(media);
-                *self
-                    .inner
-                    .audio
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner) = AudioReceiver::new().ok();
-                self.inner.ringtone.duck(true);
-                true
-            }
-            Err(error) => {
-                tracing::warn!(%error, "failed to start call audio");
-                false
-            }
-        }
+        )
+        .map_err(|error| {
+            tracing::warn!(call_id = %call.id, user_id = %call.user_id, %error, "failed to start call media");
+            CallError::Media(error)
+        })?;
+        *self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(media);
+        *self
+            .inner
+            .audio
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = AudioReceiver::new().ok();
+        Ok(())
     }
 
     fn ensure_active(&self, call_id: CallId, user_id: &str) -> Result<(), CallError> {
@@ -807,9 +797,6 @@ pub enum CallError {
     Transport(#[from] TransportError),
 
     #[error(transparent)]
-    Ringtone(#[from] RingtoneError),
-
-    #[error(transparent)]
     Media(#[from] MediaError),
 
     #[error(transparent)]
@@ -832,9 +819,6 @@ pub enum CallError {
 
     #[error("call state is invalid")]
     InvalidState,
-
-    #[error("call audio devices are unavailable")]
-    MediaUnavailable,
 
     #[error("call protocol error: {0}")]
     Protocol(String),

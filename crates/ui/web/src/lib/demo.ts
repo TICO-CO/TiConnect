@@ -65,7 +65,6 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
         'calls.output_device': '',
         'calls.mute_shortcut': 'Ctrl+M',
         'calls.output_mute_shortcut': 'Ctrl+Shift+M',
-        'ringtone.path': '',
         'remote.session_timeout_secs': '0',
         'remote.request_timeout_secs': '300',
         'video.bitrate_kbps': '2500',

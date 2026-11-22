@@ -59,6 +59,7 @@ NODE_B="$WORK/node-b"
 TAB_NAME="ticonnect-lab-$$"
 PIDS=()
 SEEN_TAB=0
+CALL_AUDIO_DISCARD='Discard all samples (playback) or generate zero samples (capture)'
 
 zellij_action() {
     if [ -n "${ZELLIJ:-}" ] || [ -z "${ZELLIJ_SESSION_NAME:-}" ]; then
@@ -368,6 +369,24 @@ stop-ovl() {
     fi
 }
 logs() { tail -n "\${1:-50}" "\$LAB_NODE_DIR/daemon.log"; }
+call-audio() {
+    case "\${1:-}" in
+        silent)
+            ticonnect settings set calls.input_device '${CALL_AUDIO_DISCARD}'
+            ticonnect settings set calls.output_device '${CALL_AUDIO_DISCARD}'
+            echo "Call audio muted; next call uses the null device"
+            ;;
+        hardware)
+            ticonnect settings set calls.input_device ''
+            ticonnect settings set calls.output_device ''
+            echo "Call audio restored; use headphones to avoid feedback"
+            ;;
+        *)
+            echo "usage: call-audio silent|hardware" >&2
+            return 1
+            ;;
+    esac
+}
 lab-stop() { zellij action close-tab; }
 help-lab() {
     cat <<'HELP'
@@ -379,6 +398,7 @@ node commands:
   inbox [limit]      show messages from the user
   ui / stop-ui       start or stop this node's UI
   ovl / stop-ovl     start or stop this node's overlay
+  call-audio silent|hardware  route calls to null devices or hardware
   logs [lines]       show the daemon log
   lab-stop           close the lab tab
 HELP
@@ -454,6 +474,23 @@ export TICONNECT_YTDLP
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
 write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair
+
+case "${LAB_CALL_AUDIO:-silent}" in
+    silent)
+        cli a settings set calls.input_device "$CALL_AUDIO_DISCARD"
+        cli b settings set calls.input_device "$CALL_AUDIO_DISCARD"
+        cli a settings set calls.output_device "$CALL_AUDIO_DISCARD"
+        cli b settings set calls.output_device "$CALL_AUDIO_DISCARD"
+        printf 'lab: call audio uses null devices to avoid same-host feedback\n'
+        printf 'lab: run call-audio hardware in both panes and use headphones for real audio\n'
+        ;;
+    hardware)
+        printf 'lab: call audio uses host devices; use headphones to avoid feedback\n'
+        ;;
+    *)
+        fail "LAB_CALL_AUDIO must be silent or hardware"
+        ;;
+esac
 
 if [ "$SMOKE" = "1" ]; then
     wait_for "cli a users list | grep -q '$B_ID'" 300 ||

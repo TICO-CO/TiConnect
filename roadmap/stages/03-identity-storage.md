@@ -82,7 +82,7 @@ Stages 1, 1.5, and 2 complete.
   never stores configuration.
 - [x] Extend the `ticonnect-settings` schema with keys:
   `identity.display_name`, `discovery.enabled`, `overlay.enabled`,
-  `read_receipts.enabled`, `outbox.ttl_days`, `ringtone.path`, `dnd.enabled`.
+  `read_receipts.enabled`, `outbox.ttl_days`, `dnd.enabled`.
 - [x] Defaults live in code; TOML stores explicit values only.
 - [x] Validate `outbox.ttl_days` is positive and bounded in `ticonnect-settings`.
 - [x] Any process may update settings through `ticonnect-settings`. Writes take

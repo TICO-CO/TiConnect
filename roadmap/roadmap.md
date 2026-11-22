@@ -44,7 +44,7 @@ be split.
 | 7 | GTK4 UI | Main window: users, threads, settings, trust dialog | 1, 1.5, 2, 6 | UI/daemon coupling |
 | 8 | Overlay & notifications | Message cards, X11 fallback, activation, system notifications | 1, 1.5, 2, 6 | layer-shell portability |
 | 9 | Attachments | Content-addressed store, resumable transfer, media rendering | 1, 1.5, 3, 5, 6, 7 | Large-file and resume state |
-| 10 | Voice calls | Call state machine, ringtone, Opus over datagrams, jitter buffer | 1, 1.5, 3, 5, 6 | Audio latency and device quirks |
+| 10 | Voice calls | Call state machine, Opus over datagrams, jitter buffer | 1, 1.5, 3, 5, 6 | Audio latency and device quirks |
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 1.5, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 

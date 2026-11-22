@@ -17,7 +17,7 @@ Constraints:
 ticonnect          launcher: starts the daemon if absent, opens the GTK4 UI
 ticonnect <cmd>    command-line client: scripting and diagnostics
 ticonnect daemon   hidden internal: headless daemon, discovery, transport,
-                   storage, calls, capture, ringtone
+                   storage, calls, capture
 ticonnect ui       hidden internal: GTK4 application, main window
 ticonnect overlay  hidden internal: corner overlay agent, toast cards
 ```
@@ -107,7 +107,6 @@ startup step and let `anyhow` aggregate crate errors. Only `src/main.rs` uses
 | Video codec | `openh264` (software), 1080p target |
 | Screen capture | `ashpd` RemoteDesktop portal + `pipewire-rs` |
 | Input injection | `reis` (libei) on Wayland, `x11rb` XTEST on X11 |
-| Ringtone | `rodio` + `symphonia` decoders |
 | UI | `gtk4`, `webkit6`, `axum`, Svelte 5 |
 | Toast overlay | `gtk4-layer-shell` |
 | Notifications | `notify-rust` |
@@ -260,10 +259,6 @@ There is deliberately no `settings` table. Configuration lives in
 - A jitter buffer with packet-loss concealment handles loss and reordering.
 - The daemon owns the call state machine: `idle`, `ringing`, `in-call`,
   `ended`. State changes are D-Bus signals.
-- Ringtone playback uses `rodio`, reads a configurable file, and loops until
-  the call is answered or declined. It respects mute/DND and ducks under the
-  call audio once connected.
-- Ringtone runs inside the daemon so calls ring with the UI closed.
 
 ## 7. Remote desktop
 
@@ -339,9 +334,9 @@ UI.
 2. Identity, mDNS discovery, automatic LAN trust, TLS pinning.
 3. Text messaging: signed records, outbox with expiry, gap sync, read receipts,
    SQLite history, mute/ignore, tray.
-4. GTK4 main window, corner overlay, ringtone.
+4. GTK4 main window and corner overlay.
 5. File/image/audio transfer with resume and content-addressed storage.
-6. Voice calls: cpal, Opus, datagrams, jitter buffer, ringtone ducking.
+6. Voice calls: cpal, Opus, datagrams, and jitter buffer.
 7. Remote desktop: portal capture, openh264, libei/XTEST input, consent flow.
 8. Packaging, flatpak, performance pass.
 

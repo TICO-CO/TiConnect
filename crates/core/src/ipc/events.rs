@@ -663,6 +663,10 @@ fn variant_u64(value: &OwnedVariant, key: &str) -> Result<u64> {
         Ok(u64::from(value))
     } else if let Ok(value) = u8::try_from(value) {
         Ok(u64::from(value))
+    } else if let Ok(value) = i64::try_from(value) {
+        u64::try_from(value).map_err(|_| ParseError::OutOfRange {
+            field: key.to_owned(),
+        })
     } else {
         Err(ParseError::InvalidType {
             field: key.to_owned(),
@@ -685,6 +689,20 @@ mod tests {
             serde_json::to_string(&MessageState::Delivered).unwrap(),
             "\"delivered\""
         );
+    }
+
+    #[test]
+    fn signed_integer_timestamps_are_accepted() {
+        let mut values = HashMap::new();
+        values.insert(
+            CALL_ID.to_owned(),
+            OwnedVariant::from(zbus::Str::from("call-1")),
+        );
+        values.insert(CALL_STARTED_AT.to_owned(), OwnedVariant::from(123_i64));
+        values.insert(CALL_CONNECTED_AT.to_owned(), OwnedVariant::from(456_i64));
+        let call = parse_call(&values).expect("call");
+        assert_eq!(call.started_at, 123);
+        assert_eq!(call.connected_at, 456);
     }
 
     #[test]

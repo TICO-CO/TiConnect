@@ -69,7 +69,6 @@ Stages 1, 1.5, 2, and 6 complete.
 
 - [x] Display name.
 - [x] Per-user policy list.
-- [x] Ringtone path (placeholder until Stage 10).
 - [x] Discovery enable/disable and backend toggles.
 - [x] Autostart enable/disable via XDG autostart file.
 - [x] Overlay enable/disable (placeholder until Stage 8).

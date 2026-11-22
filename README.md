@@ -15,7 +15,7 @@ the architecture graph, the D-Bus daemon and CLI, systemd/autostart packaging,
 Ed25519 identity, SQLite storage, mDNS and broadcast discovery, automatic LAN trust,
 pinned QUIC/TLS transport, signed messaging with sync/receipts/policy, the GTK4
 window, overlay and notification fallback, resumable BLAKE3 attachments, Opus
-voice calls with daemon ringtone and jitter buffer, and consent-based remote
+voice calls with jitter buffer, and consent-based remote
 desktop with portal capture, H.264, input injection, indicator, and kill
 switch. Stage 12 adds Flatpak metadata, hardened units, benchmarks, release
 documentation, the AppImage user installer, and the unified launcher.
@@ -210,6 +210,11 @@ frontend edits; set `LAB_HOT_RELOAD=0` to use the embedded bundle instead. Set
 outside the lab; this disables bridge token checks and must not be used on a
 shared machine.
 
+`make lab` routes call audio through null devices by default because both nodes
+share the host microphone and speakers. For real audio, use headphones and run
+`call-audio hardware` in both lab panes, or start with
+`LAB_CALL_AUDIO=hardware make lab`.
+
 Keyboard shortcuts:
 
 | Shortcut | Action |
@@ -314,7 +319,6 @@ Settings keys:
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
 | `video.fps` | integer | `30` | Valid range `5..=60` |
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
-| `ringtone.path` | optional path | unset | Empty value clears it |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
 | `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
 
@@ -431,13 +435,13 @@ confirms before calling it.
 
 ## Voice calls
 
-- The daemon owns `idle`, `ringing`, `in-call`, and `ended` states and rings with
-  the UI closed. Only one call is active per node.
+- The daemon owns `idle`, `ringing`, `in-call`, and `ended` states and receives
+  calls with the UI closed. Only one call is active per node.
 - Audio uses 48 kHz mono Opus with 20 ms frames over QUIC datagrams, a bounded
   jitter buffer, packet-loss concealment, and a playback ring. Microphones open
   only after call acceptance.
-- Ringtone path comes from `ringtone.path`; a bundled generated tone is the
-  fallback. DND suppresses ringing but still reports the call.
+- Incoming calls are shown in the UI and overlay without an audio ringtone.
+  DND suppresses notification sounds but still reports the call.
 - Microphone and output mute are daemon-owned; the UI and overlay reflect the
   same state. Mute shortcuts are configurable with `calls.mute_shortcut` and
   `calls.output_mute_shortcut`.
