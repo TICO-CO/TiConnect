@@ -113,6 +113,12 @@ pub fn validate_name(name: &str) -> Result<(), AttachmentError> {
     Ok(())
 }
 
+pub fn base_mime(mime: &str) -> &str {
+    mime.split_once(';')
+        .map_or(mime, |(essence, _parameters)| essence)
+        .trim()
+}
+
 pub fn validate_mime(mime: &str) -> Result<(), AttachmentError> {
     if mime.is_empty() || mime.len() > MAX_MIME_LEN || mime.bytes().any(|byte| !byte.is_ascii()) {
         return Err(AttachmentError::InvalidMime);
@@ -225,6 +231,14 @@ mod tests {
             assert!(validate_name(name).is_err(), "{name:?}");
         }
         assert!(validate_name("holiday photo.png").is_ok());
+    }
+
+    #[test]
+    fn base_mime_strips_parameters() {
+        assert_eq!(base_mime("audio/webm;codecs=opus"), "audio/webm");
+        assert_eq!(base_mime(" audio/webm ; codecs=opus"), "audio/webm");
+        assert_eq!(base_mime("audio/webm"), "audio/webm");
+        assert_eq!(base_mime(""), "");
     }
 
     #[test]

@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::time::Duration;
 
 use thiserror::Error;
-use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
+use ticonnect_core::attachment::{AttachmentHash, AttachmentRef, base_mime};
 use ticonnect_core::id::NodeId;
 use ticonnect_core::message::{MessageKind, MessageRecord};
 use ticonnect_net::transfer::{Chunk, DEFAULT_CHUNK_SIZE, ResumeError, ResumePlan, TransferFrame};
@@ -26,6 +26,10 @@ use transfer::InboundTransfer;
 pub const TRANSFER_TIMEOUT: Duration = Duration::from_secs(30);
 pub const MAX_CONCURRENT_TRANSFERS: usize = 8;
 pub const MAX_TRANSFERS_PER_USER: usize = 2;
+
+fn requested_mime(mime: Option<&str>) -> Option<&str> {
+    mime.map(base_mime).filter(|mime| !mime.is_empty())
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferPhase {
@@ -140,7 +144,7 @@ impl AttachmentService {
         mime: Option<&str>,
     ) -> Result<AttachmentRef, AttachmentsError> {
         let mut attachment = self.inner.store.put_file(path)?;
-        if let Some(mime) = mime.map(str::trim).filter(|mime| !mime.is_empty()) {
+        if let Some(mime) = requested_mime(mime) {
             attachment.mime = mime.to_owned();
             attachment
                 .validate(self.max_size())
@@ -814,6 +818,17 @@ pub enum AttachmentsError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn requested_mime_strips_parameters() {
+        assert_eq!(
+            requested_mime(Some("audio/webm;codecs=opus")),
+            Some("audio/webm")
+        );
+        assert_eq!(requested_mime(Some(" audio/webm ")), Some("audio/webm"));
+        assert_eq!(requested_mime(Some("")), None);
+        assert_eq!(requested_mime(None), None);
+    }
 
     #[test]
     fn ranges_round_trip() {

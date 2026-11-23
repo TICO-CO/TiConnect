@@ -17,6 +17,15 @@ function normalizeBaseUrl(value: string): string {
     return withScheme.replace(/\/+$/, '');
 }
 
+function baseMimeType(value: string): string {
+    return (value.split(';', 1)[0] ?? '').trim();
+}
+
+function uploadFailureDetail(body: string): string {
+    const detail = body.trim();
+    return detail === '' ? '' : `: ${detail.slice(0, 200)}`;
+}
+
 export function resolveBridge(pageLocation: URL): BridgeInfo {
     const queryParameters = new URLSearchParams(pageLocation.search);
     const bridgeOverride = queryParameters.get('bridge');
@@ -202,7 +211,8 @@ export class BridgeClient {
     }
 
     async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
-        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(file.type)}`;
+        const mime = baseMimeType(file.type);
+        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(mime)}`;
         const uploadResult = await this.upload(path, file);
         if (!uploadResult.ok) {
             return err(uploadResult.error);
@@ -288,7 +298,11 @@ export class BridgeClient {
         }
         const response = responseResult.value;
         if (!response.ok) {
-            return err(BridgeFailures.requestFailed('upload request failed'));
+            const bodyResult = await attemptAsync(() => response.text());
+            const detail = bodyResult.ok ? uploadFailureDetail(bodyResult.value) : '';
+            return err(
+                BridgeFailures.requestFailed(`upload request failed (${response.status})${detail}`),
+            );
         }
         const valueResult = await attemptAsync<unknown>(() => response.json());
         if (!valueResult.ok) {

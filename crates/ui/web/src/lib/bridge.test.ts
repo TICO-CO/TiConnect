@@ -49,6 +49,56 @@ describe('BridgeClient', () => {
     });
 });
 
+describe('BridgeClient uploads', () => {
+    it('strips media type parameters before uploading', async () => {
+        const client = new BridgeClient({
+            httpBaseUrl: 'http://127.0.0.1:41000',
+            webSocketUrl: 'ws://127.0.0.1:41000/ws',
+            token: null,
+            development: false,
+        });
+        const fetchMock = vi.fn(
+            async (_input: RequestInfo | URL) =>
+                new Response(JSON.stringify({ message_id: 'message-1' }), {
+                    status: 200,
+                }),
+        );
+        vi.stubGlobal('fetch', fetchMock);
+        const file = new File(['voice'], 'voice-1.webm', {
+            type: 'audio/webm;codecs=opus',
+        });
+
+        const result = await client.uploadAttachment('user-1', file);
+
+        expect(result.ok).toBe(true);
+        const [url] = fetchMock.mock.calls[0] ?? [];
+        expect(String(url)).toContain('mime=audio%2Fwebm');
+        expect(String(url)).not.toContain('codecs');
+    });
+
+    it('reports the upload status and response body', async () => {
+        const client = new BridgeClient({
+            httpBaseUrl: 'http://127.0.0.1:41000',
+            webSocketUrl: 'ws://127.0.0.1:41000/ws',
+            token: null,
+            development: false,
+        });
+        vi.stubGlobal(
+            'fetch',
+            vi.fn(async () => new Response('invalid mime', { status: 502 })),
+        );
+        const file = new File(['voice'], 'voice-1.webm', { type: 'audio/webm' });
+
+        const result = await client.uploadAttachment('user-1', file);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) {
+            return;
+        }
+        expect(result.error.message).toBe('upload request failed (502): invalid mime');
+    });
+});
+
 describe('BridgeClient downloads', () => {
     it('retries a transient failure with a fresh ticket', async () => {
         const client = new BridgeClient({
