@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppState } from './app-state.svelte';
 import { BridgeClient } from './bridge';
@@ -94,6 +94,10 @@ class FakeMediaRecorder {
 describe('AppState feature behavior', () => {
     beforeEach(() => {
         vi.stubGlobal('window', globalThis);
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     it('records WebM and uploads it as an attachment', async () => {
@@ -383,6 +387,69 @@ describe('AppState feature behavior', () => {
         expect(await app.attachmentUrl('hash-1')).toBe('blob:attachment');
         expect(client.downloadAttachment).toHaveBeenCalledTimes(1);
         expect(client.downloadAttachment).toHaveBeenCalledWith('hash-1');
+    });
+
+    it('auto-dismisses message toasts after the overlay timeout', () => {
+        vi.useFakeTimers();
+        const { app } = makeApp();
+        app.demo = true;
+        app.settings = { 'overlay.timeout_secs': '2' };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'message_received',
+            message: {
+                id: 'message-1',
+                conversation_id: 'conversation-1',
+                user_id: 'user-1',
+                sender_id: 'user-1',
+                local_sender: false,
+                seq: 1,
+                sent_at: 1_000,
+                received_at: 1_000,
+                body: 'hello',
+                attachment_hash: '',
+                attachment_name: '',
+                attachment_size: 0,
+                attachment_mime: '',
+                attachment_path: '',
+                state: 'read',
+                notify: true,
+            },
+        });
+
+        expect(app.toasts).toHaveLength(1);
+        vi.advanceTimersByTime(1_999);
+        expect(app.toasts).toHaveLength(1);
+        vi.advanceTimersByTime(1);
+        expect(app.toasts).toHaveLength(0);
+    });
+
+    it('auto-dismisses call ended toasts after the overlay timeout', () => {
+        vi.useFakeTimers();
+        const { app } = makeApp();
+        app.settings = { 'overlay.timeout_secs': '1' };
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'outgoing',
+            state: 'in_call',
+            started_at: 1_000,
+            connected_at: 2_000,
+            input_muted: false,
+            output_muted: false,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({ type: 'call_ended', call_id: 'call-1', reason: 'hangup' });
+
+        expect(app.toasts).toHaveLength(1);
+        vi.advanceTimersByTime(1_000);
+        expect(app.toasts).toHaveLength(0);
     });
 });
 

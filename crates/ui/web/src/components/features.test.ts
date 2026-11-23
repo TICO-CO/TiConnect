@@ -1,7 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Bootstrap, Message, StorageUsage, User, UserDetails, WatchParty } from '../lib';
+import type {
+    Bootstrap,
+    CallLog,
+    Message,
+    StorageUsage,
+    User,
+    UserDetails,
+    WatchParty,
+} from '../lib';
 import { AppState, dateLabel } from '../lib';
 import ChatView from './ChatView.svelte';
 import ProfileView from './ProfileView.svelte';
@@ -97,6 +105,27 @@ function makeApp(): AppState {
     app.storageUsage = STORAGE;
     app.route = { kind: 'chat', id: USER.id };
     return app;
+}
+
+function textMessage(id: string, body: string, sentAt: number): Message {
+    return {
+        id,
+        conversation_id: 'conversation-1',
+        user_id: USER.id,
+        sender_id: USER.id,
+        local_sender: false,
+        seq: 1,
+        sent_at: sentAt,
+        received_at: sentAt,
+        body,
+        attachment_hash: '',
+        attachment_name: '',
+        attachment_size: 0,
+        attachment_mime: '',
+        attachment_path: '',
+        state: 'read',
+        notify: true,
+    };
 }
 
 function audioMessage(): Message {
@@ -254,6 +283,55 @@ describe('feature surfaces', () => {
         await waitFor(() =>
             expect(document.querySelector('audio')?.getAttribute('src')).toBe('blob:voice'),
         );
+    });
+
+    it('interleaves call events with messages by time', async () => {
+        const app = makeApp();
+        app.messages = [
+            textMessage('message-before', 'Before the call', CREATED_AT),
+            textMessage('message-after', 'After the call', CREATED_AT + 7_200_000),
+        ];
+        const log: CallLog = {
+            id: 'call-1',
+            user_id: USER.id,
+            direction: 'outgoing',
+            started_at: CREATED_AT + 3_600_000,
+            connected_at: CREATED_AT + 3_600_000,
+            ended_at: CREATED_AT + 3_602_000,
+            duration_secs: 2,
+            reason: 'hangup',
+        };
+        app.callLogs = [log];
+        render(ChatView, { app });
+
+        const before = await screen.findByText('Before the call');
+        const call = await screen.findByText(/Call ended · 00:00:02/);
+        const after = await screen.findByText('After the call');
+        expect(call.textContent).toMatch(/Call ended · 00:00:02 · \d{2}:\d{2}/);
+        expect(
+            before.compareDocumentPosition(call) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(call.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('hides call events older than the loaded message window', async () => {
+        const app = makeApp();
+        app.messages = [textMessage('message-loaded', 'Loaded message', CREATED_AT + 3_600_000)];
+        const log: CallLog = {
+            id: 'call-old',
+            user_id: USER.id,
+            direction: 'outgoing',
+            started_at: CREATED_AT,
+            connected_at: CREATED_AT,
+            ended_at: CREATED_AT + 2_000,
+            duration_secs: 2,
+            reason: 'hangup',
+        };
+        app.callLogs = [log];
+        render(ChatView, { app });
+
+        await screen.findByText('Loaded message');
+        expect(screen.queryByText(/Call ended/)).toBeNull();
     });
 });
 

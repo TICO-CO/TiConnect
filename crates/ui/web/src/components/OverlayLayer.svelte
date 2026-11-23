@@ -1,4 +1,8 @@
 <script lang="ts">
+    import { flip } from 'svelte/animate';
+    import { cubicIn, cubicOut } from 'svelte/easing';
+    import { fly } from 'svelte/transition';
+
     import type { AppState } from '../lib';
     import { clock, playerUrl, shortName, YOUTUBE_ORIGIN } from '../lib';
     import Avatar from './Avatar.svelte';
@@ -13,6 +17,10 @@
     let muted = $state(false);
     let now = $state(Date.now());
     const playerOrigin = typeof window === 'undefined' ? '' : window.location.origin;
+    const reduceMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     $effect(() => {
         const timer = window.setInterval(() => {
@@ -293,6 +301,13 @@
             class="pointer-events-auto flex w-full items-center gap-2.5 rounded-lg border border-line-strong bg-surface-2 px-3.5 py-3 text-left text-ink shadow-soft"
             role="button"
             tabindex="0"
+            in:fly={{
+                y: reduceMotion ? 0 : 16,
+                duration: reduceMotion ? 0 : 180,
+                easing: cubicOut,
+            }}
+            out:fly={{ y: reduceMotion ? 0 : 8, duration: reduceMotion ? 0 : 140, easing: cubicIn }}
+            animate:flip={{ duration: reduceMotion ? 0 : 160, easing: cubicOut }}
             onclick={() => openToast(toast.userId, toast.id)}
             onkeydown={(event) => {
                 if (event.key === 'Enter') {

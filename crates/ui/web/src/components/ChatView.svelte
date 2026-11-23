@@ -1,7 +1,7 @@
 <script lang="ts">
     import { tick } from 'svelte';
 
-    import type { AppState } from '../lib';
+    import type { AppState, CallLog, Message } from '../lib';
     import { clock, dayLabel, fileSize, fingerprintLabel, sessionClock, shortName } from '../lib';
     import { firstVideoId } from '../lib';
     import Avatar from './Avatar.svelte';
@@ -10,6 +10,10 @@
     interface Props {
         app: AppState;
     }
+
+    type TimelineEntry =
+        | { kind: 'message'; at: number; id: string; message: Message }
+        | { kind: 'call'; at: number; id: string; log: CallLog };
 
     let { app }: Props = $props();
     let stream: HTMLDivElement | null = $state(null);
@@ -32,12 +36,49 @@
     const announcementVideo = $derived(
         app.player?.videoId ?? currentParty?.video_id ?? latestVideoId(),
     );
-    const callLogs = $derived(
-        app.callLogs
-            .filter((log) => log.user_id === app.selectedUserId)
-            .slice(0, 3)
-            .reverse(),
-    );
+    const timeline = $derived.by((): TimelineEntry[] => {
+        const oldestLoaded = app.messages.reduce<number | null>((earliest, message) => {
+            const at = messageTime(message);
+            return at > 0 && (earliest === null || at < earliest) ? at : earliest;
+        }, null);
+        const logs = app.callLogs.filter(
+            (log) =>
+                log.user_id === app.selectedUserId &&
+                (oldestLoaded === null || logTime(log) >= oldestLoaded),
+        );
+        const entries: TimelineEntry[] = [
+            ...app.messages.map((message) => ({
+                kind: 'message' as const,
+                at: messageTime(message),
+                id: `m:${message.id}`,
+                message,
+            })),
+            ...logs.map((log) => ({
+                kind: 'call' as const,
+                at: logTime(log),
+                id: `c:${log.id}`,
+                log,
+            })),
+        ];
+        entries.sort((left, right) => {
+            if (left.at !== right.at) {
+                return left.at - right.at;
+            }
+            if (left.kind === right.kind) {
+                return 0;
+            }
+            return left.kind === 'message' ? -1 : 1;
+        });
+        return entries;
+    });
+
+    function messageTime(message: Message): number {
+        return message.sent_at || message.received_at;
+    }
+
+    function logTime(log: CallLog): number {
+        return log.ended_at || log.started_at;
+    }
 
     function latestVideoId(): string {
         for (let index = app.messages.length - 1; index >= 0; index -= 1) {
@@ -193,7 +234,7 @@
     }
 
     $effect(() => {
-        if (app.messages.length > 0 && stream !== null && !prependingOlderMessages) {
+        if (timeline.length > 0 && stream !== null && !prependingOlderMessages) {
             stream.scrollTop = stream.scrollHeight;
         }
     });
@@ -298,229 +339,19 @@
                     Loading older messages…
                 </div>
             {/if}
-            {#each app.messages as message, index (message.id)}
-                {@const previous = app.messages[index - 1]}
+            {#each timeline as entry, index (entry.id)}
+                {@const previous = timeline[index - 1]}
                 {@const showDay =
-                    previous === undefined ||
-                    dayLabel(previous.sent_at) !== dayLabel(message.sent_at)}
+                    previous === undefined || dayLabel(previous.at) !== dayLabel(entry.at)}
                 {#if showDay}
                     <div class="flex items-center justify-center pt-2 pb-3.5">
                         <span
                             class="rounded-pill border border-line px-3 py-1 text-xs tracking-[0.06em] text-ink-3"
-                            >{dayLabel(message.sent_at)}</span
+                            >{dayLabel(entry.at)}</span
                         >
                     </div>
                 {/if}
-                {#if message.body === '' && message.attachment_hash === ''}
-                    <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
-                {:else}
-                    <article
-                        class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
-                        data-local={message.local_sender ? '' : undefined}
-                    >
-                        {#if message.body && !isOnlyVideoLink(message.body)}
-                            <p
-                                class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
-                            >
-                                {message.body}
-                            </p>
-                        {/if}
-                        {#if message.attachment_hash}
-                            {#if message.attachment_mime.startsWith('image/')}
-                                <button
-                                    class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
-                                    onclick={() =>
-                                        showImage(
-                                            message.id,
-                                            message.attachment_hash,
-                                            message.attachment_name || 'Image',
-                                        )}
-                                >
-                                    {#if imageUrls[message.id] !== undefined}
-                                        <img
-                                            class="max-h-[360px] w-full rounded-sm object-contain"
-                                            src={imageUrls[message.id]}
-                                            alt={message.attachment_name || 'Image attachment'}
-                                        />
-                                    {:else}
-                                        <div
-                                            class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
-                                        >
-                                            {imageStatus(message.id, message.attachment_hash)}
-                                        </div>
-                                    {/if}
-                                    <span class="px-2 py-1.5 text-xs text-ink-3"
-                                        >{message.attachment_name || 'Image'} · {fileSize(
-                                            message.attachment_size,
-                                        )}{transferLabel(message.attachment_hash)
-                                            ? ` · ${transferLabel(message.attachment_hash)}`
-                                            : ''}</span
-                                    >
-                                </button>
-                            {:else if message.attachment_mime.startsWith('audio/')}
-                                <div
-                                    class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
-                                >
-                                    <div class="flex items-center gap-3">
-                                        <span
-                                            class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                            ><Icon
-                                                name="mic"
-                                                size={18}
-                                                color="var(--color-ink-2)"
-                                            /></span
-                                        >
-                                        <span class="flex min-w-0 flex-col gap-0.5">
-                                            <strong class="truncate text-[14px]"
-                                                >{message.attachment_name ||
-                                                    'Voice message'}</strong
-                                            >
-                                            <span class="text-xs text-ink-3"
-                                                >{fileSize(message.attachment_size)}{transferLabel(
-                                                    message.attachment_hash,
-                                                )
-                                                    ? ` · ${transferLabel(message.attachment_hash)}`
-                                                    : ''}</span
-                                            >
-                                        </span>
-                                        {#if audioUrls[message.id] === undefined}
-                                            <button
-                                                class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
-                                                onclick={() =>
-                                                    void loadAudio(
-                                                        message.id,
-                                                        message.attachment_hash,
-                                                    )}
-                                                disabled={loadingAudio[message.id] === true}
-                                            >
-                                                {loadingAudio[message.id] === true
-                                                    ? 'Loading…'
-                                                    : 'Play'}
-                                            </button>
-                                        {/if}
-                                    </div>
-                                    {#if audioUrls[message.id] !== undefined}
-                                        <audio class="w-full" controls src={audioUrls[message.id]}
-                                        ></audio>
-                                    {/if}
-                                </div>
-                            {:else}
-                                <button
-                                    class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
-                                    onclick={() =>
-                                        void app.saveAttachment(
-                                            message.attachment_hash,
-                                            message.attachment_name || 'attachment',
-                                        )}
-                                >
-                                    <span
-                                        class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                        ><Icon
-                                            name="file"
-                                            size={18}
-                                            color="var(--color-ink-2)"
-                                        /></span
-                                    >
-                                    <span class="flex flex-col gap-0.5">
-                                        <strong class="text-[14px]"
-                                            >{message.attachment_name || 'Attachment'}</strong
-                                        >
-                                        <span class="text-xs text-ink-3"
-                                            >BLAKE3 {fingerprintLabel(message.attachment_hash)} · {fileSize(
-                                                message.attachment_size,
-                                            )}{transferLabel(message.attachment_hash)
-                                                ? ` · ${transferLabel(message.attachment_hash)}`
-                                                : ''}</span
-                                        >
-                                    </span>
-                                </button>
-                            {/if}
-                        {/if}
-                        {#if firstVideoId(message.body)}
-                            {@const videoId = firstVideoId(message.body) ?? ''}
-                            <div
-                                class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
-                            >
-                                <div
-                                    class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
-                                >
-                                    <img
-                                        class="h-full w-full object-cover opacity-[0.82]"
-                                        src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-                                        alt=""
-                                    />
-                                    <span class="absolute inset-0 flex items-center justify-center"
-                                        ><Icon
-                                            name="play"
-                                            size={18}
-                                            color="var(--color-base)"
-                                        /></span
-                                    >
-                                </div>
-                                <div class="flex min-w-0 flex-col items-start gap-1">
-                                    <strong class="text-[15px] leading-5"
-                                        >{videoTitle(videoId)}</strong
-                                    >
-                                    <span class="text-xs text-ink-3">TiConnect Labs · 18:42</span>
-                                    <span class="text-xs tracking-[0.05em] text-ink-2 uppercase"
-                                        >Playing in overlay · 2 in queue</span
-                                    >
-                                    <button
-                                        class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                                        onclick={() =>
-                                            void app.startParty(videoId, [selectedUser.id])}
-                                    >
-                                        Watch party
-                                        <Icon name="chevron-right" size={12} />
-                                    </button>
-                                </div>
-                            </div>
-                        {/if}
-                        <div
-                            class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
-                        >
-                            <span>{clock(message.sent_at || message.received_at)}</span>
-                            {#if message.local_sender}
-                                {#if message.state === 'read'}
-                                    <span class="inline-flex text-accent"
-                                        ><Icon
-                                            name="checks"
-                                            size={14}
-                                            color="var(--color-accent)"
-                                        /></span
-                                    >
-                                {:else if message.state === 'delivered'}
-                                    <span class="inline-flex"
-                                        ><Icon
-                                            name="checks"
-                                            size={14}
-                                            color="var(--color-ink-3)"
-                                        /></span
-                                    >
-                                {:else if message.state === 'failed'}
-                                    <span class="inline-flex text-error"
-                                        ><Icon
-                                            name="alert"
-                                            size={13}
-                                            color="var(--color-error)"
-                                        /></span
-                                    >
-                                {:else}
-                                    <span class="inline-flex"
-                                        ><Icon
-                                            name="check"
-                                            size={13}
-                                            color="var(--color-ink-3)"
-                                        /></span
-                                    >
-                                {/if}
-                            {/if}
-                        </div>
-                    </article>
-                {/if}
-            {/each}
-            {#if callLogs.length > 0}
-                {#each callLogs as log (log.id)}
+                {#if entry.kind === 'call'}
                     <div
                         class="flex w-[min(720px,100%)] items-center justify-center gap-3 self-center py-2"
                     >
@@ -529,15 +360,232 @@
                             class="flex items-center gap-1.5 text-xs tracking-[0.04em] text-ink-3"
                         >
                             <Icon name="call" size={12} color="var(--color-ink-3)" />
-                            {log.reason === 'timeout' ? 'Missed call' : 'Call ended'} · {sessionClock(
-                                log.duration_secs,
-                            )}
+                            {entry.log.reason === 'timeout' ? 'Missed call' : 'Call ended'} · {sessionClock(
+                                entry.log.duration_secs,
+                            )} · {clock(entry.log.ended_at)}
                         </span>
                         <span class="h-px flex-1 bg-line"></span>
                     </div>
-                {/each}
-            {/if}
-            {#if app.messages.length === 0}
+                {/if}
+                {#if entry.kind === 'message'}
+                    {@const message = entry.message}
+                    {#if message.body === '' && message.attachment_hash === ''}
+                        <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
+                    {:else}
+                        <article
+                            class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
+                            data-local={message.local_sender ? '' : undefined}
+                        >
+                            {#if message.body && !isOnlyVideoLink(message.body)}
+                                <p
+                                    class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
+                                >
+                                    {message.body}
+                                </p>
+                            {/if}
+                            {#if message.attachment_hash}
+                                {#if message.attachment_mime.startsWith('image/')}
+                                    <button
+                                        class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
+                                        onclick={() =>
+                                            showImage(
+                                                message.id,
+                                                message.attachment_hash,
+                                                message.attachment_name || 'Image',
+                                            )}
+                                    >
+                                        {#if imageUrls[message.id] !== undefined}
+                                            <img
+                                                class="max-h-[360px] w-full rounded-sm object-contain"
+                                                src={imageUrls[message.id]}
+                                                alt={message.attachment_name || 'Image attachment'}
+                                            />
+                                        {:else}
+                                            <div
+                                                class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
+                                            >
+                                                {imageStatus(message.id, message.attachment_hash)}
+                                            </div>
+                                        {/if}
+                                        <span class="px-2 py-1.5 text-xs text-ink-3"
+                                            >{message.attachment_name || 'Image'} · {fileSize(
+                                                message.attachment_size,
+                                            )}{transferLabel(message.attachment_hash)
+                                                ? ` · ${transferLabel(message.attachment_hash)}`
+                                                : ''}</span
+                                        >
+                                    </button>
+                                {:else if message.attachment_mime.startsWith('audio/')}
+                                    <div
+                                        class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
+                                    >
+                                        <div class="flex items-center gap-3">
+                                            <span
+                                                class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                                ><Icon
+                                                    name="mic"
+                                                    size={18}
+                                                    color="var(--color-ink-2)"
+                                                /></span
+                                            >
+                                            <span class="flex min-w-0 flex-col gap-0.5">
+                                                <strong class="truncate text-[14px]"
+                                                    >{message.attachment_name ||
+                                                        'Voice message'}</strong
+                                                >
+                                                <span class="text-xs text-ink-3"
+                                                    >{fileSize(
+                                                        message.attachment_size,
+                                                    )}{transferLabel(message.attachment_hash)
+                                                        ? ` · ${transferLabel(message.attachment_hash)}`
+                                                        : ''}</span
+                                                >
+                                            </span>
+                                            {#if audioUrls[message.id] === undefined}
+                                                <button
+                                                    class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
+                                                    onclick={() =>
+                                                        void loadAudio(
+                                                            message.id,
+                                                            message.attachment_hash,
+                                                        )}
+                                                    disabled={loadingAudio[message.id] === true}
+                                                >
+                                                    {loadingAudio[message.id] === true
+                                                        ? 'Loading…'
+                                                        : 'Play'}
+                                                </button>
+                                            {/if}
+                                        </div>
+                                        {#if audioUrls[message.id] !== undefined}
+                                            <audio
+                                                class="w-full"
+                                                controls
+                                                src={audioUrls[message.id]}
+                                            ></audio>
+                                        {/if}
+                                    </div>
+                                {:else}
+                                    <button
+                                        class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
+                                        onclick={() =>
+                                            void app.saveAttachment(
+                                                message.attachment_hash,
+                                                message.attachment_name || 'attachment',
+                                            )}
+                                    >
+                                        <span
+                                            class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                            ><Icon
+                                                name="file"
+                                                size={18}
+                                                color="var(--color-ink-2)"
+                                            /></span
+                                        >
+                                        <span class="flex flex-col gap-0.5">
+                                            <strong class="text-[14px]"
+                                                >{message.attachment_name || 'Attachment'}</strong
+                                            >
+                                            <span class="text-xs text-ink-3"
+                                                >BLAKE3 {fingerprintLabel(message.attachment_hash)} ·
+                                                {fileSize(message.attachment_size)}{transferLabel(
+                                                    message.attachment_hash,
+                                                )
+                                                    ? ` · ${transferLabel(message.attachment_hash)}`
+                                                    : ''}</span
+                                            >
+                                        </span>
+                                    </button>
+                                {/if}
+                            {/if}
+                            {#if firstVideoId(message.body)}
+                                {@const videoId = firstVideoId(message.body) ?? ''}
+                                <div
+                                    class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
+                                >
+                                    <div
+                                        class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
+                                    >
+                                        <img
+                                            class="h-full w-full object-cover opacity-[0.82]"
+                                            src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+                                            alt=""
+                                        />
+                                        <span
+                                            class="absolute inset-0 flex items-center justify-center"
+                                            ><Icon
+                                                name="play"
+                                                size={18}
+                                                color="var(--color-base)"
+                                            /></span
+                                        >
+                                    </div>
+                                    <div class="flex min-w-0 flex-col items-start gap-1">
+                                        <strong class="text-[15px] leading-5"
+                                            >{videoTitle(videoId)}</strong
+                                        >
+                                        <span class="text-xs text-ink-3"
+                                            >TiConnect Labs · 18:42</span
+                                        >
+                                        <span class="text-xs tracking-[0.05em] text-ink-2 uppercase"
+                                            >Playing in overlay · 2 in queue</span
+                                        >
+                                        <button
+                                            class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                                            onclick={() =>
+                                                void app.startParty(videoId, [selectedUser.id])}
+                                        >
+                                            Watch party
+                                            <Icon name="chevron-right" size={12} />
+                                        </button>
+                                    </div>
+                                </div>
+                            {/if}
+                            <div
+                                class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
+                            >
+                                <span>{clock(message.sent_at || message.received_at)}</span>
+                                {#if message.local_sender}
+                                    {#if message.state === 'read'}
+                                        <span class="inline-flex text-accent"
+                                            ><Icon
+                                                name="checks"
+                                                size={14}
+                                                color="var(--color-accent)"
+                                            /></span
+                                        >
+                                    {:else if message.state === 'delivered'}
+                                        <span class="inline-flex"
+                                            ><Icon
+                                                name="checks"
+                                                size={14}
+                                                color="var(--color-ink-3)"
+                                            /></span
+                                        >
+                                    {:else if message.state === 'failed'}
+                                        <span class="inline-flex text-error"
+                                            ><Icon
+                                                name="alert"
+                                                size={13}
+                                                color="var(--color-error)"
+                                            /></span
+                                        >
+                                    {:else}
+                                        <span class="inline-flex"
+                                            ><Icon
+                                                name="check"
+                                                size={13}
+                                                color="var(--color-ink-3)"
+                                            /></span
+                                        >
+                                    {/if}
+                                {/if}
+                            </div>
+                        </article>
+                    {/if}
+                {/if}
+            {/each}
+            {#if timeline.length === 0}
                 <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
                     <p
                         class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em] text-ink"

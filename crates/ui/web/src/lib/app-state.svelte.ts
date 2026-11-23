@@ -76,6 +76,8 @@ interface DemoSeed {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+const TOAST_LIMIT = 3;
+const DEFAULT_TOAST_TIMEOUT_SECS = 5;
 
 function nowSeconds(): number {
     return Math.floor(Date.now() / 1000);
@@ -149,6 +151,7 @@ export class AppState {
     private callLevelTimer: number | null = null;
     private callLevelPending = false;
     private typingTimer: number | null = null;
+    private toastTimers = new SvelteMap<string, number>();
     private messageOffset = 0;
     private readMessageIds = new SvelteSet<string>();
     private removeHashListener: (() => void) | null = null;
@@ -197,6 +200,10 @@ export class AppState {
         if (this.typingTimer !== null) {
             window.clearTimeout(this.typingTimer);
         }
+        for (const timer of this.toastTimers.values()) {
+            window.clearTimeout(timer);
+        }
+        this.toastTimers.clear();
         this.cancelRecording();
         this.client?.close();
         this.releaseAvatars();
@@ -1940,7 +1947,40 @@ export class AppState {
     }
 
     dismissToast(id: string): void {
+        this.clearToastTimer(id);
         this.toasts = this.toasts.filter((toast) => toast.id !== id);
+    }
+
+    private toastTimeoutMs(): number {
+        const configured = Number.parseInt(this.settings['overlay.timeout_secs'] ?? '', 10);
+        const seconds = Number.isFinite(configured) ? configured : DEFAULT_TOAST_TIMEOUT_SECS;
+        return Math.min(60, Math.max(1, seconds)) * 1_000;
+    }
+
+    private clearToastTimer(id: string): void {
+        const timer = this.toastTimers.get(id);
+        if (timer !== undefined) {
+            window.clearTimeout(timer);
+            this.toastTimers.delete(id);
+        }
+    }
+
+    private pushToast(toast: Toast): void {
+        this.clearToastTimer(toast.id);
+        const toasts = [...this.toasts.filter((item) => item.id !== toast.id), toast].slice(
+            -TOAST_LIMIT,
+        );
+        const kept = new SvelteSet(toasts.map((item) => item.id));
+        for (const id of [...this.toastTimers.keys()]) {
+            if (!kept.has(id)) {
+                this.clearToastTimer(id);
+            }
+        }
+        this.toasts = toasts;
+        this.toastTimers.set(
+            toast.id,
+            window.setTimeout(() => this.dismissToast(toast.id), this.toastTimeoutMs()),
+        );
     }
 
     dismissNotice(): void {
@@ -2136,16 +2176,13 @@ export class AppState {
                 this.scheduleRefresh();
                 return;
             }
-            this.toasts = [
-                ...this.toasts.filter((toast) => toast.id !== normalized.id),
-                {
-                    id: normalized.id,
-                    userId: normalized.user_id,
-                    name: this.userName(normalized.user_id),
-                    body: normalized.body,
-                    sentAt: normalized.sent_at || normalized.received_at,
-                },
-            ].slice(-3);
+            this.pushToast({
+                id: normalized.id,
+                userId: normalized.user_id,
+                name: this.userName(normalized.user_id),
+                body: normalized.body,
+                sentAt: normalized.sent_at || normalized.received_at,
+            });
         }
         this.scheduleRefresh();
     }
@@ -2176,16 +2213,13 @@ export class AppState {
             },
             ...this.callLogs,
         ];
-        this.toasts = [
-            ...this.toasts,
-            {
-                id: `call-${callId}`,
-                userId: finished.user_id,
-                name: this.userName(finished.user_id),
-                body: `Voice call ended · ${sessionClock(duration)}`,
-                sentAt: nowSeconds(),
-            },
-        ].slice(-3);
+        this.pushToast({
+            id: `call-${callId}`,
+            userId: finished.user_id,
+            name: this.userName(finished.user_id),
+            body: `Voice call ended · ${sessionClock(duration)}`,
+            sentAt: endedAt,
+        });
         void this.loadCallLogs();
     }
 

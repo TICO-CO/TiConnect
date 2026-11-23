@@ -221,7 +221,7 @@ impl Card {
             sender,
             preview: format!("Voice call ended · {}", clock_duration(duration_secs)),
             detail: None,
-            sent_at: now_seconds(),
+            sent_at: now_millis(),
             kind: CardKind::CallEnded,
             persistent: false,
             actions: Vec::new(),
@@ -628,7 +628,7 @@ fn time_label(sent_at: u64) -> String {
     if sent_at == 0 {
         return String::new();
     }
-    let Ok(seconds) = i64::try_from(sent_at) else {
+    let Ok(seconds) = i64::try_from(sent_at / 1_000) else {
         return String::new();
     };
     gtk::glib::DateTime::from_unix_local(seconds)
@@ -645,9 +645,9 @@ fn clock_duration(seconds: u64) -> String {
     format!("{hours:02}:{minutes:02}:{remaining:02}")
 }
 
-fn now_seconds() -> u64 {
+fn now_millis() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_secs())
+        .map(|duration| u64::try_from(duration.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or_default()
 }
