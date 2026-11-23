@@ -926,6 +926,10 @@ impl DaemonService {
                 ipc::CALL_BYTES_SENT.to_owned(),
                 OwnedVariant::from(metrics.bytes_sent),
             ),
+            (
+                ipc::CALL_OUTPUT_LEVEL.to_owned(),
+                OwnedVariant::from(u64::from(metrics.output_level)),
+            ),
         ])
     }
 

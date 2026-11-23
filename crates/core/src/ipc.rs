@@ -144,6 +144,7 @@ pub const CALL_FRAMES_SENT: &str = "frames_sent";
 pub const CALL_FRAMES_RECEIVED: &str = "frames_received";
 pub const CALL_PACKETS_LOST: &str = "packets_lost";
 pub const CALL_BYTES_SENT: &str = "bytes_sent";
+pub const CALL_OUTPUT_LEVEL: &str = "output_level";
 pub const AUDIO_DEVICE_ID: &str = "id";
 pub const AUDIO_DEVICE_NAME: &str = "name";
 pub const AUDIO_DEVICE_KIND: &str = "kind";

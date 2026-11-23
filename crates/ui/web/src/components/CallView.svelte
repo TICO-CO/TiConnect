@@ -4,6 +4,7 @@
     import type { AppState } from '../lib';
     import { initials, sessionClock, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
+    import CallWaveform from './CallWaveform.svelte';
     import Icon from './Icon.svelte';
 
     interface Props {
@@ -72,11 +73,13 @@
                 <span
                     class="absolute size-[300px] rounded-full border border-line-strong/80 group-data-[state=reconnecting]:border-warning/55"
                 ></span>
+                <CallWaveform
+                    level={app.callLevel}
+                    tone={reconnecting ? 'warning' : 'normal'}
+                    demo={app.demo}
+                />
                 <span
-                    class="absolute size-[238px] rounded-full border border-line-strong/80 group-data-[state=reconnecting]:border-warning/55"
-                ></span>
-                <span
-                    class="flex size-[176px] items-center justify-center rounded-full bg-surface text-[47px] text-ink-2"
+                    class="relative flex size-[176px] items-center justify-center rounded-full bg-surface text-[47px] text-ink-2"
                     >{initials(shortName(user))}</span
                 >
             </div>
@@ -135,7 +138,8 @@
                     <span>Output</span>
                 </button>
                 <button
-                    class="group flex min-w-16 flex-col items-center gap-1.5 border-0 bg-transparent text-xs text-error"
+                    class="group flex min-w-16 flex-col items-center gap-1.5 border-0 bg-transparent text-xs text-error disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={app.callActionPending}
                     onclick={() => void app.hangupCall()}
                 >
                     <span

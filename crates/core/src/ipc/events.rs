@@ -5,11 +5,12 @@ use thiserror::Error;
 use zbus::OwnedVariant;
 
 use super::{
-    AUDIO_DEVICE_ID, AUDIO_DEVICE_KIND, AUDIO_DEVICE_NAME, CALL_CONNECTED_AT, CALL_DIRECTION,
-    CALL_DURATION_SECS, CALL_ENDED_AT, CALL_ID, CALL_INPUT_MUTED, CALL_OUTPUT_MUTED, CALL_REASON,
-    CALL_STARTED_AT, CALL_STATE, CALL_USER_ID, CANDIDATE_ADDRESSES, CANDIDATE_AVATAR_HASH,
-    CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT, CANDIDATE_NODE_ID, CANDIDATE_SOURCE,
-    CONVERSATION_ID, CONVERSATION_LAST_BODY, CONVERSATION_LAST_MESSAGE_ID,
+    AUDIO_DEVICE_ID, AUDIO_DEVICE_KIND, AUDIO_DEVICE_NAME, CALL_BYTES_SENT, CALL_CONNECTED_AT,
+    CALL_DIRECTION, CALL_DURATION_SECS, CALL_ENDED_AT, CALL_FRAMES_RECEIVED, CALL_FRAMES_SENT,
+    CALL_ID, CALL_INPUT_MUTED, CALL_OUTPUT_LEVEL, CALL_OUTPUT_MUTED, CALL_PACKETS_LOST,
+    CALL_REASON, CALL_STARTED_AT, CALL_STATE, CALL_USER_ID, CANDIDATE_ADDRESSES,
+    CANDIDATE_AVATAR_HASH, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT, CANDIDATE_NODE_ID,
+    CANDIDATE_SOURCE, CONVERSATION_ID, CONVERSATION_LAST_BODY, CONVERSATION_LAST_MESSAGE_ID,
     CONVERSATION_LAST_SENDER_ID, CONVERSATION_LAST_SENT_AT, CONVERSATION_UNREAD_COUNT,
     CONVERSATION_USER_ID, IDENTITY_AVATAR_HASH, IDENTITY_CREATED_AT, IDENTITY_DISPLAY_NAME,
     IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME,
@@ -248,6 +249,15 @@ pub struct CallLog {
     pub ended_at: u64,
     pub duration_secs: u64,
     pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CallMetrics {
+    pub frames_sent: u64,
+    pub frames_received: u64,
+    pub packets_lost: u64,
+    pub bytes_sent: u64,
+    pub output_level: u16,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -612,6 +622,16 @@ pub fn parse_call_log(values: &HashMap<String, OwnedVariant>) -> Result<CallLog>
     })
 }
 
+pub fn parse_call_metrics(values: &HashMap<String, OwnedVariant>) -> Result<CallMetrics> {
+    Ok(CallMetrics {
+        frames_sent: optional_u64(values, CALL_FRAMES_SENT)?,
+        frames_received: optional_u64(values, CALL_FRAMES_RECEIVED)?,
+        packets_lost: optional_u64(values, CALL_PACKETS_LOST)?,
+        bytes_sent: optional_u64(values, CALL_BYTES_SENT)?,
+        output_level: optional_u16(values, CALL_OUTPUT_LEVEL)?,
+    })
+}
+
 pub fn parse_audio_device(values: &HashMap<String, OwnedVariant>) -> Result<AudioDevice> {
     Ok(AudioDevice {
         id: required_string(values, AUDIO_DEVICE_ID)?,
@@ -760,6 +780,23 @@ mod tests {
         let call = parse_call(&values).expect("call");
         assert_eq!(call.started_at, 123);
         assert_eq!(call.connected_at, 456);
+    }
+
+    #[test]
+    fn call_metrics_parse_levels_and_counters() {
+        let values = HashMap::from([
+            (CALL_FRAMES_SENT.to_owned(), OwnedVariant::from(12_u64)),
+            (CALL_FRAMES_RECEIVED.to_owned(), OwnedVariant::from(34_u64)),
+            (CALL_PACKETS_LOST.to_owned(), OwnedVariant::from(2_u64)),
+            (CALL_BYTES_SENT.to_owned(), OwnedVariant::from(960_u64)),
+            (CALL_OUTPUT_LEVEL.to_owned(), OwnedVariant::from(512_u16)),
+        ]);
+        let metrics = parse_call_metrics(&values).expect("call metrics");
+        assert_eq!(metrics.frames_sent, 12);
+        assert_eq!(metrics.frames_received, 34);
+        assert_eq!(metrics.packets_lost, 2);
+        assert_eq!(metrics.bytes_sent, 960);
+        assert_eq!(metrics.output_level, 512);
     }
 
     #[test]

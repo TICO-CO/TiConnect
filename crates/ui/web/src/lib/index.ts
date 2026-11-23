@@ -31,6 +31,7 @@ export type {
     Bootstrap,
     Call,
     CallLog,
+    CallMetrics,
     Connection,
     ConversationSummary,
     Identity,
@@ -51,6 +52,20 @@ export type {
     YoutubeStream,
 } from './types';
 export { BridgeMessages } from './types';
+export type { WaveBar } from './waveform';
+export {
+    interpolatedSample,
+    pushWaveSample,
+    WAVE_BAR_COUNT,
+    WAVE_BAR_LENGTH,
+    WAVE_BAR_WIDTH,
+    WAVE_HISTORY_SIZE,
+    WAVE_INNER_RADIUS,
+    WAVE_MIN_LENGTH,
+    WAVE_SIZE,
+    WAVE_STEP_MS,
+    waveBars,
+} from './waveform';
 export { firstVideoId, parseVideoId } from './youtube';
 export {
     formatPlayerTime,

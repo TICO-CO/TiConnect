@@ -17,6 +17,7 @@ import type {
     Bootstrap,
     Call,
     CallLog,
+    CallMetrics,
     Connection,
     ConversationSummary,
     Message,
@@ -133,6 +134,8 @@ export class AppState {
     });
     recording = $state(false);
     recordingSeconds = $state(0);
+    callLevel = $state(0);
+    callActionPending = $state(false);
     demo = false;
     private client: BridgeClient | null = null;
     private videoPreviews = new SvelteMap<string, YoutubePreview>();
@@ -143,6 +146,8 @@ export class AppState {
     private reconnectTimer: number | null = null;
     private reconnectDelay = 1_000;
     private refreshTimer: number | null = null;
+    private callLevelTimer: number | null = null;
+    private callLevelPending = false;
     private typingTimer: number | null = null;
     private messageOffset = 0;
     private readMessageIds = new SvelteSet<string>();
@@ -187,6 +192,8 @@ export class AppState {
         if (this.refreshTimer !== null) {
             window.clearTimeout(this.refreshTimer);
         }
+        this.stopCallLevelPolling();
+        this.callLevel = 0;
         if (this.typingTimer !== null) {
             window.clearTimeout(this.typingTimer);
         }
@@ -818,10 +825,65 @@ export class AppState {
 
     private async loadCall(): Promise<void> {
         if (this.client === null) {
+            this.syncCallLevelPolling();
             return;
         }
         const callResult = await this.client.request<Call | null>('call_state');
         this.call = callResult.ok ? callResult.value : null;
+        this.syncCallLevelPolling();
+    }
+
+    private syncCallLevelPolling(): void {
+        if (this.demo || this.client === null) {
+            this.stopCallLevelPolling();
+            this.callLevel = 0;
+            return;
+        }
+        if (this.call === null || this.call.state !== 'in_call') {
+            this.stopCallLevelPolling();
+            this.callLevel = 0;
+            return;
+        }
+        if (this.callLevelTimer !== null) {
+            return;
+        }
+        this.callLevelTimer = window.setInterval(() => {
+            void this.pollCallLevel();
+        }, 50);
+    }
+
+    private stopCallLevelPolling(): void {
+        if (this.callLevelTimer === null) {
+            return;
+        }
+        window.clearInterval(this.callLevelTimer);
+        this.callLevelTimer = null;
+        this.callLevelPending = false;
+    }
+
+    private async pollCallLevel(): Promise<void> {
+        if (this.client === null || this.callLevelPending) {
+            return;
+        }
+        this.callLevelPending = true;
+        const callId = this.call?.id ?? '';
+        const metricsResult = await this.client.request<CallMetrics>('call_metrics');
+        this.callLevelPending = false;
+        if (this.call === null || this.call.state !== 'in_call' || this.call.id !== callId) {
+            this.stopCallLevelPolling();
+            this.callLevel = 0;
+            return;
+        }
+        if (!metricsResult.ok) {
+            this.callLevel = 0;
+            return;
+        }
+        if (this.call.output_muted) {
+            this.callLevel = 0;
+            return;
+        }
+        const permille = metricsResult.value?.output_level ?? 0;
+        this.callLevel = Math.min(1, Math.max(0, permille / 1000));
     }
 
     async loadCallLogs(): Promise<void> {
@@ -1379,6 +1441,7 @@ export class AppState {
                 output_muted: false,
             };
             this.navigate({ kind: 'call', id: userId });
+            this.syncCallLevelPolling();
             return;
         }
         const callResult = await this.client.request<string>('start_call', { user_id: userId });
@@ -1392,46 +1455,81 @@ export class AppState {
     }
 
     async acceptCall(): Promise<void> {
-        if (this.client === null || this.call === null) {
+        if (this.client === null || this.call === null || this.callActionPending) {
             return;
         }
-        const acceptResult = await this.client.request('accept_call', { call_id: this.call.id });
+        const callId = this.call.id;
+        this.callActionPending = true;
+        const acceptResult = await this.client.request('accept_call', { call_id: callId });
+        this.callActionPending = false;
         if (!acceptResult.ok) {
+            await this.loadCall();
+            if (this.call?.id !== callId) {
+                this.notice = 'This call is no longer available.';
+                return;
+            }
             this.notice = acceptResult.error.message;
             return;
         }
         await this.loadCall();
-        this.navigate({ kind: 'call', id: this.call.user_id });
+        const activeCall = this.call;
+        if (activeCall === null || activeCall.id !== callId) {
+            this.notice = 'This call is no longer available.';
+            return;
+        }
+        this.navigate({ kind: 'call', id: activeCall.user_id });
     }
 
     async declineCall(): Promise<void> {
         if (this.client === null || this.call === null) {
             this.call = null;
+            this.syncCallLevelPolling();
             return;
         }
-        const declineResult = await this.client.request('decline_call', {
-            call_id: this.call.id,
-        });
+        if (this.callActionPending) {
+            return;
+        }
+        const callId = this.call.id;
+        this.callActionPending = true;
+        const declineResult = await this.client.request('decline_call', { call_id: callId });
+        this.callActionPending = false;
         if (!declineResult.ok) {
-            this.notice = declineResult.error.message;
+            await this.loadCall();
+            if (this.call !== null) {
+                this.notice = declineResult.error.message;
+            }
             return;
         }
-        this.call = null;
+        if (this.call?.id === callId) {
+            this.call = null;
+            this.syncCallLevelPolling();
+        }
     }
 
     async hangupCall(): Promise<void> {
         if (this.client === null || this.call === null) {
             this.call = null;
+            this.syncCallLevelPolling();
             return;
         }
-        const hangupResult = await this.client.request('hangup_call', {
-            call_id: this.call.id,
-        });
+        if (this.callActionPending) {
+            return;
+        }
+        const callId = this.call.id;
+        this.callActionPending = true;
+        const hangupResult = await this.client.request('hangup_call', { call_id: callId });
+        this.callActionPending = false;
         if (!hangupResult.ok) {
-            this.notice = hangupResult.error.message;
+            await this.loadCall();
+            if (this.call !== null) {
+                this.notice = hangupResult.error.message;
+            }
             return;
         }
-        this.call = null;
+        if (this.call?.id === callId) {
+            this.call = null;
+            this.syncCallLevelPolling();
+        }
     }
 
     async toggleInputMute(): Promise<void> {
@@ -1883,9 +1981,12 @@ export class AppState {
                 this.connection = 'online';
                 this.errorMessage = '';
                 void this.refresh();
+                this.syncCallLevelPolling();
                 break;
             case 'disconnected':
                 this.connection = 'offline';
+                this.stopCallLevelPolling();
+                this.callLevel = 0;
                 this.scheduleReconnect();
                 break;
             case 'activate': {
@@ -1933,11 +2034,13 @@ export class AppState {
                 break;
             case 'incoming_call':
                 this.call = event.call as Call;
+                this.syncCallLevelPolling();
                 break;
             case 'call_state_changed':
                 if (this.call !== null && this.call.id === String(event.call_id ?? '')) {
                     this.call = { ...this.call, state: String(event.state ?? this.call.state) };
                 }
+                this.syncCallLevelPolling();
                 break;
             case 'call_mute_changed':
                 if (this.call !== null && this.call.id === String(event.call_id ?? '')) {
@@ -2050,6 +2153,7 @@ export class AppState {
     private finishCall(callId: string, reason: string): void {
         const finished = this.call;
         this.call = null;
+        this.syncCallLevelPolling();
         if (finished === null) {
             void this.loadCallLogs();
             return;

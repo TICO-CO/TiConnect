@@ -274,6 +274,7 @@ async fn dispatch_inner(
             Ok(Value::Null)
         }
         "call_state" => Ok(json!(link.call_state().await?)),
+        "call_metrics" => Ok(json!(link.call_metrics().await?)),
         "list_call_logs" => {
             let input: ListCallLogs = params(value)?;
             Ok(json!(

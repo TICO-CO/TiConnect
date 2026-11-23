@@ -2,9 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppState } from './app-state.svelte';
 import { BridgeClient } from './bridge';
-import type { BridgeFailure } from './bridge-failures';
-import type { Result } from './result';
-import { ok } from './result';
+import { type BridgeFailure, BridgeFailures } from './bridge-failures';
+import { err, ok, type Result } from './result';
 import type { CallLog, StorageUsage, WatchParty, YoutubeStream } from './types';
 
 const USAGE: StorageUsage = {
@@ -211,6 +210,108 @@ describe('AppState feature behavior', () => {
             output_muted: false,
         });
         expect(app.call?.input_muted).toBe(true);
+    });
+
+    it('accepts a ringing call only once while the request is pending', async () => {
+        const { app, client } = makeApp();
+        const ringingCall = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'incoming',
+            state: 'ringing',
+            started_at: 1,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        app.call = ringingCall;
+        let releaseAccept: (value: Result<unknown, BridgeFailure>) => void = () => undefined;
+        const pendingAccept = new Promise<Result<unknown, BridgeFailure>>((resolve) => {
+            releaseAccept = resolve;
+        });
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'accept_call') {
+                return pendingAccept;
+            }
+            if (method === 'call_state') {
+                return ok({ ...ringingCall, state: 'in_call' });
+            }
+            return ok(null);
+        });
+
+        const first = app.acceptCall();
+        const second = app.acceptCall();
+        expect(
+            client.request.mock.calls.filter(([method]) => method === 'accept_call'),
+        ).toHaveLength(1);
+
+        releaseAccept(ok(null));
+        await first;
+        await second;
+        expect(app.call?.state).toBe('in_call');
+    });
+
+    it('maps call metrics to the waveform level', async () => {
+        const { app, client } = makeApp();
+        const activeCall = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'incoming',
+            state: 'in_call',
+            started_at: 1,
+            connected_at: 2,
+            input_muted: false,
+            output_muted: false,
+        };
+        app.call = activeCall;
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'call_metrics') {
+                return ok({ output_level: 640 });
+            }
+            return ok(null);
+        });
+        const poll = (app as unknown as { pollCallLevel: () => Promise<void> }).pollCallLevel.bind(
+            app,
+        );
+
+        await poll();
+        expect(app.callLevel).toBeCloseTo(0.64);
+
+        app.call = { ...activeCall, output_muted: true };
+        await poll();
+        expect(app.callLevel).toBe(0);
+    });
+
+    it('clears the waveform level when metrics fail or the call is gone', async () => {
+        const { app, client } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'incoming',
+            state: 'in_call',
+            started_at: 1,
+            connected_at: 2,
+            input_muted: false,
+            output_muted: false,
+        };
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'call_metrics') {
+                return err(BridgeFailures.notConnected());
+            }
+            return ok(null);
+        });
+        const poll = (app as unknown as { pollCallLevel: () => Promise<void> }).pollCallLevel.bind(
+            app,
+        );
+
+        app.callLevel = 0.8;
+        await poll();
+        expect(app.callLevel).toBe(0);
+
+        app.call = null;
+        app.callLevel = 0.5;
+        await poll();
+        expect(app.callLevel).toBe(0);
     });
 
     it('applies saved discovery and appearance settings', async () => {

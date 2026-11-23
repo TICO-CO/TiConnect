@@ -4,8 +4,8 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, AudioDevice, Call, CallLog, Candidate, ConversationSummary, Message, MessageState,
-    RemoteSession, StorageUsage, User, UserPolicy, WatchParty,
+    self, AudioDevice, Call, CallLog, CallMetrics, Candidate, ConversationSummary, Message,
+    MessageState, RemoteSession, StorageUsage, User, UserPolicy, WatchParty,
 };
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
@@ -132,6 +132,7 @@ enum Command {
         reply: Reply<()>,
     },
     GetCallState(Reply<Option<Call>>),
+    GetCallMetrics(Reply<CallMetrics>),
     ListCallLogs {
         user_id: String,
         limit: u32,
@@ -423,6 +424,10 @@ impl LinkHandle {
 
     pub async fn call_state(&self) -> Result<Option<Call>> {
         self.request(Command::GetCallState).await
+    }
+
+    pub async fn call_metrics(&self) -> Result<CallMetrics> {
+        self.request(Command::GetCallMetrics).await
     }
 
     pub async fn list_call_logs(&self, user_id: String, limit: u32) -> Result<Vec<CallLog>> {
@@ -1396,6 +1401,13 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = match proxy.get_call_state().await {
                 Ok(values) if values.is_empty() => Ok(None),
                 Ok(values) => events::parse_call(&values).map(Some).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::GetCallMetrics(reply) => {
+            let result = match proxy.get_call_metrics().await {
+                Ok(values) => events::parse_call_metrics(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);

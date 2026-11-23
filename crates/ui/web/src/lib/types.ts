@@ -150,6 +150,14 @@ export interface Call {
     output_muted: boolean;
 }
 
+export interface CallMetrics {
+    frames_sent: number;
+    frames_received: number;
+    packets_lost: number;
+    bytes_sent: number;
+    output_level: number;
+}
+
 export interface CallLog {
     id: string;
     user_id: string;

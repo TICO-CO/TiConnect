@@ -138,6 +138,23 @@ impl CallRegistry {
         Ok(CallTransition::InCall(call.clone()))
     }
 
+    pub fn accept_or_current(
+        &mut self,
+        id: CallId,
+        now: i64,
+    ) -> Result<(ActiveCall, bool), CallStateError> {
+        let call = self.active_mut(id)?;
+        if call.state == CallState::InCall {
+            return Ok((call.clone(), false));
+        }
+        if call.state != CallState::Ringing {
+            return Err(CallStateError::InvalidTransition);
+        }
+        call.state = CallState::InCall;
+        call.connected_at = Some(now);
+        Ok((call.clone(), true))
+    }
+
     pub fn set_muted(
         &mut self,
         id: CallId,
@@ -290,6 +307,23 @@ mod tests {
             Ok(CallTransition::Ended(_, EndReason::Hangup))
         ));
         assert!(registry.active().is_none());
+    }
+
+    #[test]
+    fn repeated_accept_is_idempotent() {
+        let mut registry = CallRegistry::default();
+        let CallTransition::Ringing(call) = registry.incoming("user", 1).expect("incoming") else {
+            panic!("expected ringing");
+        };
+        let (accepted, started) = registry.accept_or_current(call.id, 2).expect("accept");
+        assert!(started);
+        assert_eq!(accepted.state, CallState::InCall);
+        let (current, started) = registry
+            .accept_or_current(call.id, 3)
+            .expect("repeat accept");
+        assert!(!started);
+        assert_eq!(current.state, CallState::InCall);
+        assert_eq!(current.connected_at, Some(2));
     }
 
     #[test]

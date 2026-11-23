@@ -8,6 +8,7 @@ use std::time::Duration;
 use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId, CallSignalFrame, CallState};
 use ticonnect_core::id::NodeId;
+use ticonnect_media::audio::LevelMeter;
 use ticonnect_media::jitter::{JitterBuffer, JitterFrame};
 use ticonnect_net::transport::{Session, Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
@@ -39,6 +40,7 @@ pub struct CallMetrics {
     pub frames_received: u64,
     pub packets_lost: u64,
     pub bytes_sent: u64,
+    pub output_level: u16,
 }
 
 #[derive(Debug, Default)]
@@ -47,6 +49,7 @@ pub struct CallMetricsHandle {
     frames_received: AtomicU64,
     packets_lost: AtomicU64,
     bytes_sent: AtomicU64,
+    output_level: LevelMeter,
 }
 
 impl CallMetricsHandle {
@@ -56,6 +59,7 @@ impl CallMetricsHandle {
             frames_received: self.frames_received.load(Ordering::Relaxed),
             packets_lost: self.packets_lost.load(Ordering::Relaxed),
             bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
+            output_level: self.output_level.permille(),
         }
     }
 
@@ -71,6 +75,10 @@ impl CallMetricsHandle {
 
     pub fn note_lost(&self) {
         self.packets_lost.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn note_output_samples(&self, samples: &[f32]) {
+        self.output_level.observe(samples);
     }
 }
 
@@ -209,17 +217,17 @@ impl CallService {
     }
 
     pub async fn accept_call(&self, call_id: CallId) -> Result<CallInfo, CallError> {
-        let transition = {
+        let (call, started) = {
             let mut registry = self
                 .inner
                 .registry
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
-            registry.accept(call_id, now_unix_ms())?
+            registry.accept_or_current(call_id, now_unix_ms())?
         };
-        let CallTransition::InCall(call) = transition else {
-            return Err(CallError::InvalidState);
-        };
+        if !started {
+            return Ok(call.info());
+        }
         tracing::info!(call_id = %call.id, user_id = %call.user_id, "call accepted");
         if let Err(error) = self
             .send_signal_for_user(&call.user_id, CallSignalFrame::Accept(call.id))
@@ -351,17 +359,17 @@ impl CallService {
                 Ok(())
             }
             CallSignalFrame::Accept(call_id) => {
-                let transition = {
+                let (call, started) = {
                     let mut registry = self
                         .inner
                         .registry
                         .lock()
                         .unwrap_or_else(PoisonError::into_inner);
-                    registry.accept(call_id, now_unix_ms())
-                };
-                let CallTransition::InCall(call) = transition? else {
-                    return Err(CallError::InvalidState);
-                };
+                    registry.accept_or_current(call_id, now_unix_ms())
+                }?;
+                if !started {
+                    return Ok(());
+                }
                 if let Err(error) = self.start_media(&call) {
                     let _ = self
                         .send_signal_frame(
@@ -459,6 +467,7 @@ impl CallService {
                         }
                     }
                 };
+                self.inner.metrics.note_output_samples(&samples);
                 if let Some(media) = self
                     .inner
                     .media
@@ -822,4 +831,31 @@ pub enum CallError {
 
     #[error("call protocol error: {0}")]
     Protocol(String),
+}
+
+#[cfg(test)]
+mod metrics_tests {
+    use super::*;
+    use ticonnect_media::audio::OPUS_FRAME_SAMPLES;
+    use ticonnect_media::opus_codec::{OpusDecoder, OpusEncoder};
+
+    #[test]
+    fn output_level_tracks_decoded_audio() {
+        let mut encoder = OpusEncoder::default_voip().expect("encoder");
+        let samples = (0..OPUS_FRAME_SAMPLES)
+            .map(|index| {
+                let phase = index as f32 * std::f32::consts::TAU * 440.0 / 48_000.0;
+                phase.sin() * 0.6
+            })
+            .collect::<Vec<_>>();
+        let packets = encoder.push_samples(&samples).expect("encode");
+        let payload = packets.first().expect("packet");
+        let mut decoder = OpusDecoder::default_voip().expect("decoder");
+        let decoded = decoder.decode(payload).expect("decode");
+
+        let metrics = CallMetricsHandle::default();
+        assert_eq!(metrics.snapshot().output_level, 0);
+        metrics.note_output_samples(&decoded);
+        assert!(metrics.snapshot().output_level > 0);
+    }
 }

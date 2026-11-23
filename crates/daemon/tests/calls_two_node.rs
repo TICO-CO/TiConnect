@@ -33,6 +33,13 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
 
     let accepted = second.calls.accept_call(call.id).await.expect("accept");
     assert_eq!(accepted.state, CallState::InCall);
+    let repeated = second
+        .calls
+        .accept_call(call.id)
+        .await
+        .expect("repeat accept");
+    assert_eq!(repeated.state, CallState::InCall);
+    assert_eq!(repeated.connected_at, accepted.connected_at);
     assert_eq!(
         second.calls.state().expect("callee state").state,
         CallState::InCall

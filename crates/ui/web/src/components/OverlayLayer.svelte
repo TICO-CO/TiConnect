@@ -111,12 +111,17 @@
             <p class="mt-0.5 mb-0 text-[13px] text-ink-2">Voice call · LAN</p>
             <div class="mt-3 flex justify-end gap-2">
                 <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-error/12"
-                    onclick={() => void app.declineCall()}>Decline</button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-error/12 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={app.callActionPending}
+                    onclick={() => void app.declineCall()}
+                    >{app.callActionPending ? 'Declining…' : 'Decline'}</button
                 >
                 <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-3.5 text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
-                    onclick={() => void app.acceptCall()}>Accept</button
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-3.5 text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-60"
+                    aria-busy={app.callActionPending}
+                    disabled={app.callActionPending}
+                    onclick={() => void app.acceptCall()}
+                    >{app.callActionPending ? 'Accepting…' : 'Accept'}</button
                 >
             </div>
         </article>
@@ -226,7 +231,8 @@
                     <Icon name="mute" size={12} /></button
                 >
                 <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-error/12"
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-3.5 text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-error/12 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={app.callActionPending}
                     onclick={() => void app.hangupCall()}>End</button
                 >
             </div>

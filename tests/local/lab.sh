@@ -167,16 +167,31 @@ start_dev_server() {
         exec bun run dev
     ) >"$WORK/vite.log" 2>&1 &
     PIDS+=("$!")
-    for _ in $(seq 1 150); do
-        curl -fsS "$DEV_URL/" >/dev/null 2>&1 && break
+    local ready=0 i
+    for i in $(seq 1 900); do
+        if curl --noproxy '*' --max-time 1 -fsS "$DEV_URL/" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
         if ! kill -0 "${PIDS[-1]}" 2>/dev/null; then
-            tail -n 40 "$WORK/vite.log" >&2 || true
+            tail -n 80 "$WORK/vite.log" >&2 || true
             fail "Vite dev server exited"
+        fi
+        if [ $((i % 100)) -eq 0 ]; then
+            printf 'lab: still waiting for Vite dev server (%ss)\n' "$((i / 10))" >&2
         fi
         sleep 0.1
     done
-    curl -fsS "$DEV_URL/" >/dev/null 2>&1 ||
+    if [ "$ready" = "0" ]; then
+        printf 'lab: Vite did not answer %s within 90s\n' "$DEV_URL" >&2
+        printf 'lab: recent vite log (%s):\n' "$WORK/vite.log" >&2
+        tail -n 80 "$WORK/vite.log" >&2 || true
+        if command -v ss >/dev/null 2>&1; then
+            printf 'lab: port 5173 listeners:\n' >&2
+            ss -ltnpH 'sport = :5173' >&2 2>/dev/null || true
+        fi
         fail "Vite dev server did not become ready; log: $WORK/vite.log"
+    fi
     printf 'lab: UI hot reload at %s (log: %s)\n' "$DEV_URL" "$WORK/vite.log"
 }
 
