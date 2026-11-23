@@ -17,6 +17,33 @@
         pkgs.gst_all_1.gst-libav
         pkgs.pipewire
       ];
+      buildInputsFor = pkgs: [
+        pkgs.alsa-lib
+        pkgs.gdk-pixbuf
+        pkgs.glib-networking
+        pkgs.gtk4
+        pkgs.gtk4-layer-shell
+        pkgs.libsoup_3
+        pkgs.sqlite
+        pkgs.wayland
+        pkgs.webkitgtk_6_0
+      ];
+      nativeBuildInputsFor = pkgs: [
+        pkgs.cmake
+        pkgs.nasm
+        pkgs.pkg-config
+        pkgs.perl
+      ];
+      runtimeInputsFor = pkgs: [
+        pkgs.yt-dlp
+        pkgs.gst_all_1.gst-libav
+        pkgs.gst_all_1.gst-plugins-bad
+        pkgs.gst_all_1.gst-plugins-base
+        pkgs.gst_all_1.gst-plugins-good
+        pkgs.gst_all_1.gst-plugins-ugly
+        pkgs.gst_all_1.gstreamer
+        pkgs.pipewire
+      ];
     in
     {
       packages = forAllSystems (pkgs: let gstPluginPath = gstPluginPathFor pkgs; in {
@@ -33,35 +60,17 @@
             "ticonnect"
           ];
 
-          nativeBuildInputs = [
-            pkgs.cmake
-            pkgs.pkg-config
+          nativeBuildInputs = nativeBuildInputsFor pkgs ++ [
             pkgs.wrapGAppsHook4
           ];
 
-          buildInputs = [
-            pkgs.alsa-lib
-            pkgs.gdk-pixbuf
-            pkgs.glib-networking
-            pkgs.yt-dlp
-            pkgs.gst_all_1.gst-libav
-            pkgs.gst_all_1.gst-plugins-bad
-            pkgs.gst_all_1.gst-plugins-base
-            pkgs.gst_all_1.gst-plugins-good
-            pkgs.gst_all_1.gst-plugins-ugly
-            pkgs.gst_all_1.gstreamer
-            pkgs.gtk4
-            pkgs.gtk4-layer-shell
-            pkgs.pipewire
-            pkgs.sqlite
-            pkgs.wayland
-            pkgs.webkitgtk_6_0
-          ];
+          buildInputs = buildInputsFor pkgs ++ runtimeInputsFor pkgs;
 
           doCheck = false;
 
           preFixup = ''
             gappsWrapperArgs+=(--prefix GST_PLUGIN_SYSTEM_PATH_1_0 : "${gstPluginPath}")
+            gappsWrapperArgs+=(--prefix GST_PLUGIN_SYSTEM_PATH : "${gstPluginPath}")
             gappsWrapperArgs+=(--prefix GIO_EXTRA_MODULES : "${pkgs.glib-networking}/lib/gio/modules")
             gappsWrapperArgs+=(--set TICONNECT_YTDLP "${pkgs.yt-dlp}/bin/yt-dlp")
           '';
@@ -87,30 +96,11 @@
 
       devShells = forAllSystems (pkgs: let gstPluginPath = gstPluginPathFor pkgs; in {
         default = pkgs.mkShell {
-          nativeBuildInputs = [
-            pkgs.cmake
-            pkgs.pkg-config
-          ];
+          nativeBuildInputs = nativeBuildInputsFor pkgs;
 
-          buildInputs = [
-            pkgs.alsa-lib
-            pkgs.gdk-pixbuf
-            pkgs.glib-networking
-            pkgs.yt-dlp
-            pkgs.gst_all_1.gst-libav
-            pkgs.gst_all_1.gst-plugins-bad
-            pkgs.gst_all_1.gst-plugins-base
-            pkgs.gst_all_1.gst-plugins-good
-            pkgs.gst_all_1.gst-plugins-ugly
-            pkgs.gst_all_1.gstreamer
-            pkgs.gtk4
-            pkgs.gtk4-layer-shell
+          buildInputs = buildInputsFor pkgs ++ runtimeInputsFor pkgs ++ [
             pkgs.bun
             pkgs.nodejs
-            pkgs.pipewire
-            pkgs.sqlite
-            pkgs.wayland
-            pkgs.webkitgtk_6_0
           ];
 
           shellHook = ''
