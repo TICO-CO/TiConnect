@@ -11,9 +11,13 @@ import type {
     WatchParty,
 } from '../lib';
 import { AppState, dateLabel } from '../lib';
+import AppLifecycleView from './AppLifecycleView.svelte';
+import CallView from './CallView.svelte';
 import ChatView from './ChatView.svelte';
 import ProfileView from './ProfileView.svelte';
+import RemoteView from './RemoteView.svelte';
 import SettingsView from './SettingsView.svelte';
+import UsersRail from './UsersRail.svelte';
 import WatchPartyView from './WatchPartyView.svelte';
 
 const CREATED_AT = new Date(2025, 0, 2, 12, 0, 0).getTime();
@@ -124,6 +128,8 @@ function textMessage(id: string, body: string, sentAt: number): Message {
         attachment_mime: '',
         attachment_path: '',
         state: 'read',
+        edited_at: 0,
+        deleted_at: 0,
         notify: true,
     };
 }
@@ -145,6 +151,8 @@ function audioMessage(): Message {
         attachment_mime: 'audio/webm',
         attachment_path: '',
         state: 'read',
+        edited_at: 0,
+        deleted_at: 0,
         notify: true,
     };
 }
@@ -222,11 +230,11 @@ describe('feature surfaces', () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'storage' };
         const clear = vi.spyOn(app, 'clearHistory').mockResolvedValue(undefined);
-        const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
         render(SettingsView, { app });
 
         await fireEvent.click(screen.getByRole('button', { name: 'Clear local history' }));
-        expect(confirm).toHaveBeenCalled();
+        expect(screen.getByRole('alertdialog')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         expect(clear).toHaveBeenCalledWith('');
     });
 
@@ -234,10 +242,10 @@ describe('feature surfaces', () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'storage' };
         const clear = vi.spyOn(app, 'clearHistory').mockResolvedValue(undefined);
-        vi.spyOn(window, 'confirm').mockReturnValue(false);
         render(SettingsView, { app });
 
         await fireEvent.click(screen.getByRole('button', { name: 'Clear local history' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
         expect(clear).not.toHaveBeenCalled();
     });
 
@@ -246,11 +254,230 @@ describe('feature surfaces', () => {
         app.route = { kind: 'profile', id: USER.id };
         app.details = DETAILS;
         const clear = vi.spyOn(app, 'clearHistory').mockResolvedValue(undefined);
-        vi.spyOn(window, 'confirm').mockReturnValue(true);
         render(ProfileView, { app });
 
         await fireEvent.click(screen.getByRole('button', { name: 'Clear local history' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         expect(clear).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('tracks dirty and saved settings state', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'about' };
+        const save = vi.spyOn(app, 'saveSettings');
+        render(SettingsView, { app });
+
+        expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty(
+            'disabled',
+            true,
+        );
+        await fireEvent.click(screen.getByRole('button', { name: 'Discovery' }));
+        expect(screen.getByText('Unsaved changes')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty(
+            'disabled',
+            false,
+        );
+        await fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+        expect(save).toHaveBeenCalledTimes(1);
+        await waitFor(() => expect(screen.getByText('All changes saved')).toBeTruthy());
+    });
+
+    it('shows loading, empty, and error states in the user rail', async () => {
+        const app = makeApp();
+        app.usersLoad = 'loading';
+        const loading = render(UsersRail, { app });
+        expect(screen.getByRole('status', { name: 'Loading people' })).toBeTruthy();
+        loading.unmount();
+
+        app.usersLoad = 'empty';
+        app.users = [];
+        render(UsersRail, { app });
+        expect(screen.getByText('No one here yet')).toBeTruthy();
+    });
+
+    it('shows a retry banner when the user list fails', async () => {
+        const app = makeApp();
+        app.usersLoad = 'error';
+        app.usersError = 'daemon unavailable';
+        const retry = vi.spyOn(app, 'retryRefresh').mockResolvedValue(undefined);
+        render(UsersRail, { app });
+
+        expect(screen.getByText('People did not load')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows message timeline loading and failure states', async () => {
+        const app = makeApp();
+        app.messagesLoad = 'loading';
+        const loading = render(ChatView, { app });
+        expect(screen.getByRole('status', { name: 'Loading messages' })).toBeTruthy();
+        loading.unmount();
+
+        app.messagesLoad = 'error';
+        app.messagesError = 'conversation unavailable';
+        const retry = vi.spyOn(app, 'loadMessages').mockResolvedValue(undefined);
+        render(ChatView, { app });
+        expect(screen.getByText('Messages did not load')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(retry).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('shows the connecting call state before the remote rings', () => {
+        const app = makeApp();
+        app.route = { kind: 'call', id: USER.id };
+        app.call = {
+            id: 'call-1',
+            user_id: USER.id,
+            direction: 'outgoing',
+            state: 'connecting',
+            started_at: CREATED_AT,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        render(CallView, { app });
+
+        expect(screen.getByText('Connecting — waiting for answer')).toBeTruthy();
+        expect(screen.getByText(/Voice call · Connecting/)).toBeTruthy();
+    });
+
+    it('shows remote session outcomes and allows another request', async () => {
+        const app = makeApp();
+        app.route = { kind: 'remote', id: USER.id };
+        app.remoteOutcome = {
+            userId: USER.id,
+            role: 'viewer',
+            reason: 'denied',
+            endedAt: CREATED_AT,
+        };
+        const request = vi.spyOn(app, 'requestRemote').mockResolvedValue(undefined);
+        render(RemoteView, { app });
+
+        expect(screen.getByText('Request declined')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Request again' }));
+        expect(request).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('updates remote input policy from the host controls', async () => {
+        const app = makeApp();
+        app.route = { kind: 'remote', id: USER.id };
+        app.remote = {
+            session_id: 'session-1',
+            user_id: USER.id,
+            fingerprint: USER.fingerprint,
+            role: 'host',
+            state: 'active',
+            indicator: true,
+            input_allowed: true,
+            expires_at: CREATED_AT + 300_000,
+        };
+        const setInput = vi.spyOn(app, 'setRemoteInput').mockResolvedValue(undefined);
+        render(RemoteView, { app });
+
+        const toggle = screen.getByRole('button', { name: 'Allow pointer and keyboard' });
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        await fireEvent.click(toggle);
+        expect(setInput).toHaveBeenCalledWith(false);
+    });
+
+    it('shows the offline lifecycle screen with retry', async () => {
+        const retry = vi.fn();
+        render(AppLifecycleView, {
+            mode: 'offline',
+            errorMessage: 'daemon unavailable',
+            reconnectAttempt: 2,
+            onretry: retry,
+        });
+
+        expect(screen.getByText('Cannot reach TiConnect')).toBeTruthy();
+        expect(screen.getByText('Retry attempt 2')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Retry connection' }));
+        expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks sending when offline, blocked, or over the body limit', () => {
+        const app = makeApp();
+        app.connection = 'offline';
+        const offline = render(ChatView, { app });
+        expect(screen.getByText('Daemon offline — messages cannot be sent.')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty(
+            'disabled',
+            true,
+        );
+        offline.unmount();
+
+        app.connection = 'online';
+        app.users = [{ ...USER, policy: 'ignore' }];
+        const blocked = render(ChatView, { app });
+        expect(
+            screen.getByText(
+                'This user is blocked. Unblock them from their profile to send messages.',
+            ),
+        ).toBeTruthy();
+        blocked.unmount();
+
+        app.users = [USER];
+        app.draft = 'a'.repeat(32_769);
+        render(ChatView, { app });
+        expect(screen.getByText('Message is too long')).toBeTruthy();
+        expect(screen.getByText('32769 / 32768')).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty(
+            'disabled',
+            true,
+        );
+    });
+
+    it('edits and deletes local text messages', async () => {
+        const app = makeApp();
+        const message = { ...textMessage('message-edit', 'original', CREATED_AT) };
+        message.local_sender = true;
+        message.state = 'sent';
+        app.messages = [message];
+        app.messagesLoad = 'ready';
+        const edit = vi.spyOn(app, 'editMessage').mockResolvedValue(true);
+        const remove = vi.spyOn(app, 'deleteMessage').mockResolvedValue(true);
+        render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        const field = screen.getByLabelText('Message text');
+        await fireEvent.input(field, { target: { value: 'updated text' } });
+        await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(edit).toHaveBeenCalledWith('message-edit', 'updated text');
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+        expect(screen.getByRole('alertdialog')).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Delete message' }));
+        expect(remove).toHaveBeenCalledWith('message-edit');
+    });
+
+    it('renders edited markers and deleted tombstones', () => {
+        const app = makeApp();
+        const edited = { ...textMessage('message-edited', 'updated', CREATED_AT) };
+        edited.edited_at = CREATED_AT;
+        const deleted = { ...textMessage('message-deleted', 'hidden body', CREATED_AT) };
+        deleted.deleted_at = CREATED_AT;
+        app.messages = [edited, deleted];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        expect(screen.getByText('· edited')).toBeTruthy();
+        expect(screen.getByText('Message deleted')).toBeTruthy();
+        expect(screen.queryByText('hidden body')).toBeNull();
+    });
+
+    it('offers retry for failed local messages', async () => {
+        const app = makeApp();
+        const failed = { ...textMessage('message-failed', 'try again', CREATED_AT) };
+        failed.local_sender = true;
+        failed.state = 'failed';
+        app.messages = [failed];
+        app.messagesLoad = 'ready';
+        const retry = vi.spyOn(app, 'retryMessage').mockResolvedValue(undefined);
+        render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(retry).toHaveBeenCalledWith('message-failed');
     });
 
     it('starts, stops, and cancels voice recording from chat', async () => {

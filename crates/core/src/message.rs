@@ -26,6 +26,8 @@ pub enum MessageKind {
     Audio = 3,
     File = 4,
     Ack = 5,
+    Edit = 6,
+    Delete = 7,
 }
 
 impl MessageKind {
@@ -40,6 +42,8 @@ impl MessageKind {
             3 => Some(Self::Audio),
             4 => Some(Self::File),
             5 => Some(Self::Ack),
+            6 => Some(Self::Edit),
+            7 => Some(Self::Delete),
             _ => None,
         }
     }
@@ -51,6 +55,8 @@ impl MessageKind {
             Self::Audio => "audio",
             Self::File => "file",
             Self::Ack => "ack",
+            Self::Edit => "edit",
+            Self::Delete => "delete",
         }
     }
 }
@@ -65,6 +71,8 @@ impl FromStr for MessageKind {
             "audio" => Ok(Self::Audio),
             "file" => Ok(Self::File),
             "ack" => Ok(Self::Ack),
+            "edit" => Ok(Self::Edit),
+            "delete" => Ok(Self::Delete),
             other => Err(MessageError::UnknownKind(other.to_owned())),
         }
     }
@@ -325,14 +333,36 @@ impl MessageRecord {
             (Some(_), Some(_), Some(_), Some(_)) => {}
             _ => return Err(MessageError::InvalidAttachment),
         }
-        if self.kind == MessageKind::Ack {
-            if self.target_id.is_none() {
-                return Err(MessageError::InvalidAck);
+        match self.kind {
+            MessageKind::Ack => {
+                if self.target_id.is_none() {
+                    return Err(MessageError::InvalidAck);
+                }
+                match self.body.as_deref() {
+                    Some("delivered" | "read") => {}
+                    _ => return Err(MessageError::InvalidAck),
+                }
             }
-            match self.body.as_deref() {
-                Some("delivered" | "read") => {}
-                _ => return Err(MessageError::InvalidAck),
+            MessageKind::Edit => {
+                if self.target_id.is_none() {
+                    return Err(MessageError::InvalidTarget);
+                }
+                if self.body.as_deref().is_none_or(str::is_empty) {
+                    return Err(MessageError::EmptyBody);
+                }
+                if self.attachment_hash.is_some() {
+                    return Err(MessageError::InvalidAttachment);
+                }
             }
+            MessageKind::Delete => {
+                if self.target_id.is_none() {
+                    return Err(MessageError::InvalidTarget);
+                }
+                if self.body.is_some() || self.attachment_hash.is_some() {
+                    return Err(MessageError::InvalidDelete);
+                }
+            }
+            MessageKind::Text | MessageKind::Image | MessageKind::Audio | MessageKind::File => {}
         }
         Ok(())
     }
@@ -417,6 +447,9 @@ pub enum MessageError {
     #[error("message body exceeds {MAX_MESSAGE_BODY} bytes")]
     BodyTooLarge,
 
+    #[error("message body is empty")]
+    EmptyBody,
+
     #[error("attachment hash is invalid")]
     InvalidAttachmentHash,
 
@@ -428,6 +461,9 @@ pub enum MessageError {
 
     #[error("ack record is invalid")]
     InvalidAck,
+
+    #[error("delete record is invalid")]
+    InvalidDelete,
 
     #[error("optional message field is invalid")]
     InvalidOptional,

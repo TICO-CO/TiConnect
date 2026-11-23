@@ -37,6 +37,16 @@ pub enum WsEvent {
         message_id: String,
         state: MessageState,
     },
+    MessageEdited {
+        message_id: String,
+        user_id: String,
+        body: String,
+        edited_at: u64,
+    },
+    MessageDeleted {
+        message_id: String,
+        user_id: String,
+    },
     ConversationChanged {
         user_id: String,
     },
@@ -107,6 +117,10 @@ pub enum WsEvent {
         session_id: String,
         visible: bool,
     },
+    RemoteInputChanged {
+        session_id: String,
+        allowed: bool,
+    },
     WatchPartyRequested {
         party: WatchParty,
     },
@@ -145,6 +159,24 @@ impl WsEvent {
             DaemonEvent::MessageStateChanged { message_id, state } => Self::MessageStateChanged {
                 message_id: message_id.clone(),
                 state: *state,
+            },
+            DaemonEvent::MessageEdited {
+                message_id,
+                user_id,
+                body,
+                edited_at,
+            } => Self::MessageEdited {
+                message_id: message_id.clone(),
+                user_id: user_id.clone(),
+                body: body.clone(),
+                edited_at: *edited_at,
+            },
+            DaemonEvent::MessageDeleted {
+                message_id,
+                user_id,
+            } => Self::MessageDeleted {
+                message_id: message_id.clone(),
+                user_id: user_id.clone(),
             },
             DaemonEvent::ConversationChanged { user_id } => Self::ConversationChanged {
                 user_id: user_id.clone(),
@@ -194,7 +226,7 @@ impl WsEvent {
             },
             DaemonEvent::CallEnded { call_id, reason } => Self::CallEnded {
                 call_id: call_id.clone(),
-                reason: reason.clone(),
+                reason: reason.as_str().to_owned(),
             },
             DaemonEvent::RemoteSessionRequested(session) => Self::RemoteSessionRequested {
                 session: session.clone(),
@@ -204,7 +236,7 @@ impl WsEvent {
             },
             DaemonEvent::RemoteSessionEnded { session_id, reason } => Self::RemoteSessionEnded {
                 session_id: session_id.clone(),
-                reason: reason.clone(),
+                reason: reason.as_str().to_owned(),
             },
             DaemonEvent::RemoteIndicatorChanged {
                 session_id,
@@ -212,6 +244,13 @@ impl WsEvent {
             } => Self::RemoteIndicatorChanged {
                 session_id: session_id.clone(),
                 visible: *visible,
+            },
+            DaemonEvent::RemoteInputChanged {
+                session_id,
+                allowed,
+            } => Self::RemoteInputChanged {
+                session_id: session_id.clone(),
+                allowed: *allowed,
             },
             DaemonEvent::WatchPartyRequested(party) => Self::WatchPartyRequested {
                 party: party.clone(),
@@ -221,7 +260,7 @@ impl WsEvent {
             },
             DaemonEvent::WatchPartyEnded { party_id, reason } => Self::WatchPartyEnded {
                 party_id: party_id.clone(),
-                reason: reason.clone(),
+                reason: reason.as_str().to_owned(),
             },
         }
     }

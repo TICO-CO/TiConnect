@@ -2,6 +2,7 @@
     import { onMount } from 'svelte';
 
     import {
+        AppLifecycleView,
         CallView,
         ChatView,
         Icon,
@@ -16,6 +17,9 @@
 
     const app = new AppState();
     const showRail = $derived(app.route.kind !== 'settings' && app.route.kind !== 'watch-party');
+    const showLifecycle = $derived(
+        app.lifecycle === 'booting' || (app.lifecycle === 'offline' && app.bootstrap === null),
+    );
 
     onMount(() => {
         void app.start();
@@ -67,67 +71,78 @@
 
 <svelte:window onkeydown={onKeydown} />
 
-<div class="flex h-full w-full min-w-0 overflow-hidden bg-base text-ink">
-    {#if showRail}
-        <UsersRail {app} />
-    {/if}
-    <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
-        {#if app.connection !== 'online'}
-            <div
-                class="absolute top-3 left-1/2 z-40 flex max-w-[680px] -translate-x-1/2 items-center gap-2.5 rounded-pill border border-warning bg-surface px-3.5 py-2 text-xs text-warning data-offline:border-error data-offline:text-error"
-                data-offline={app.connection === 'offline' ? '' : undefined}
-            >
-                <span>
-                    {app.connection === 'connecting'
-                        ? 'Connecting to the daemon…'
-                        : 'Daemon unavailable — retrying'}
-                </span>
-                {#if app.errorMessage}
-                    <span class="truncate text-ink-3">{app.errorMessage}</span>
-                {/if}
-            </div>
+{#if showLifecycle}
+    <div class="flex h-full w-full min-w-0 overflow-hidden bg-base text-ink">
+        <AppLifecycleView
+            mode={app.lifecycle === 'offline' ? 'offline' : 'booting'}
+            errorMessage={app.errorMessage}
+            reconnectAttempt={app.reconnectAttempt}
+            onretry={() => void app.retryConnection()}
+        />
+    </div>
+{:else}
+    <div class="flex h-full w-full min-w-0 overflow-hidden bg-base text-ink">
+        {#if showRail}
+            <UsersRail {app} />
         {/if}
-        {#if app.connection === 'online' && app.networkWarning !== ''}
-            <div
-                class="absolute top-16 left-1/2 z-40 flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-warning bg-surface px-4 py-2 text-xs text-warning"
-                role="status"
-            >
-                <span>{app.networkWarning}</span>
-                <button
-                    class="rounded-pill border border-warning px-3 py-1 text-xs font-bold text-warning hover:bg-warning/12"
-                    onclick={() => app.navigate({ kind: 'settings', section: 'about' })}
-                    >Details</button
+        <main class="relative flex h-full min-w-0 flex-1 overflow-hidden">
+            {#if app.connection !== 'online'}
+                <div
+                    class="absolute top-3 left-1/2 z-40 flex max-w-[680px] -translate-x-1/2 items-center gap-2.5 rounded-pill border border-warning bg-surface px-3.5 py-2 text-xs text-warning data-offline:border-error data-offline:text-error"
+                    data-offline={app.connection === 'offline' ? '' : undefined}
                 >
-            </div>
-        {/if}
-        {#if app.notice}
-            <div
-                class="absolute top-4 left-1/2 z-[35] flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-line-strong bg-surface-2 py-2 pr-2.5 pl-4 text-[13px] text-ink shadow-soft"
-                role="status"
-            >
-                <span>{app.notice}</span>
-                <button
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
-                    onclick={() => app.dismissNotice()}
-                    aria-label="Dismiss notice"
+                    <span>
+                        {app.connection === 'connecting'
+                            ? 'Connecting to the daemon…'
+                            : 'Daemon unavailable — retrying'}
+                    </span>
+                    {#if app.errorMessage}
+                        <span class="truncate text-ink-3">{app.errorMessage}</span>
+                    {/if}
+                </div>
+            {/if}
+            {#if app.connection === 'online' && app.networkWarning !== ''}
+                <div
+                    class="absolute top-16 left-1/2 z-40 flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-warning bg-surface px-4 py-2 text-xs text-warning"
+                    role="status"
                 >
-                    <Icon name="close" size={13} />
-                </button>
-            </div>
-        {/if}
-        {#if app.route.kind === 'settings'}
-            <SettingsView {app} />
-        {:else if app.route.kind === 'watch-party'}
-            <WatchPartyView {app} />
-        {:else if app.route.kind === 'profile'}
-            <ProfileView {app} />
-        {:else if app.route.kind === 'call'}
-            <CallView {app} />
-        {:else if app.route.kind === 'remote'}
-            <RemoteView {app} />
-        {:else}
-            <ChatView {app} />
-        {/if}
-    </main>
-    <OverlayLayer {app} />
-</div>
+                    <span>{app.networkWarning}</span>
+                    <button
+                        class="rounded-pill border border-warning px-3 py-1 text-xs font-bold text-warning hover:bg-warning/12"
+                        onclick={() => app.navigate({ kind: 'settings', section: 'about' })}
+                        >Details</button
+                    >
+                </div>
+            {/if}
+            {#if app.notice}
+                <div
+                    class="absolute top-4 left-1/2 z-[35] flex max-w-[720px] -translate-x-1/2 items-center gap-3 rounded-pill border border-line-strong bg-surface-2 py-2 pr-2.5 pl-4 text-[13px] text-ink shadow-soft"
+                    role="status"
+                >
+                    <span>{app.notice}</span>
+                    <button
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+                        onclick={() => app.dismissNotice()}
+                        aria-label="Dismiss notice"
+                    >
+                        <Icon name="close" size={13} />
+                    </button>
+                </div>
+            {/if}
+            {#if app.route.kind === 'settings'}
+                <SettingsView {app} />
+            {:else if app.route.kind === 'watch-party'}
+                <WatchPartyView {app} />
+            {:else if app.route.kind === 'profile'}
+                <ProfileView {app} />
+            {:else if app.route.kind === 'call'}
+                <CallView {app} />
+            {:else if app.route.kind === 'remote'}
+                <RemoteView {app} />
+            {:else}
+                <ChatView {app} />
+            {/if}
+        </main>
+        <OverlayLayer {app} />
+    </div>
+{/if}

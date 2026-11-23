@@ -52,6 +52,7 @@ export type {
     YoutubeStream,
 } from './types';
 export { BridgeMessages } from './types';
+export type { ConfirmRequest, LifecycleState, LoadState, SaveState, StateTone } from './ui-state';
 export type { WaveBar } from './waveform';
 export {
     interpolatedSample,

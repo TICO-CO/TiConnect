@@ -6,6 +6,7 @@
     import { firstVideoId, formatPlayerTime, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
     import Icon from './Icon.svelte';
+    import StateBanner from './StateBanner.svelte';
     import YoutubePlayer from './YoutubePlayer.svelte';
 
     interface Props {
@@ -224,6 +225,37 @@
             void app.leaveParty();
         }
     }
+
+    function partyOutcomeTitle(reason: string): string {
+        switch (reason) {
+            case 'declined':
+                return 'Watch party declined';
+            case 'left':
+                return 'You left the watch party';
+            case 'host ended':
+                return 'Host ended the watch party';
+            case 'host disconnected':
+                return 'Host disconnected';
+            default:
+                return 'Watch party ended';
+        }
+    }
+
+    function partyOutcomeBody(reason: string, hostId: string): string {
+        const hostName = app.userName(hostId);
+        switch (reason) {
+            case 'declined':
+                return `${hostName} declined the invitation. No one joined the party.`;
+            case 'left':
+                return 'Playback and sync have stopped on this device.';
+            case 'host ended':
+                return `${hostName} ended the party for everyone.`;
+            case 'host disconnected':
+                return `${hostName} disconnected, so the party closed.`;
+            default:
+                return 'Playback and sync have stopped on this device.';
+        }
+    }
 </script>
 
 <section class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-base">
@@ -235,6 +267,18 @@
         >
             <Icon name="back" size={16} />
         </button>
+
+        {#if party === null && app.partyOutcome}
+            <div class="mt-3">
+                <StateBanner
+                    tone="warning"
+                    title={partyOutcomeTitle(app.partyOutcome.reason)}
+                    body={partyOutcomeBody(app.partyOutcome.reason, app.partyOutcome.hostId)}
+                    dismissLabel="Dismiss party result"
+                    ondismiss={() => (app.partyOutcome = null)}
+                />
+            </div>
+        {/if}
 
         <div class="mt-[18px] flex min-h-0 flex-1 gap-5">
             {#if party === null}

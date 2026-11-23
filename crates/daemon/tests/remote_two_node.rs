@@ -171,6 +171,106 @@ async fn deny_path_and_expiry_leave_no_session() {
 }
 
 #[tokio::test]
+async fn host_can_disable_remote_input() {
+    let first = TestNode::start("remote-input-policy-first").await;
+    let second = TestNode::start("remote-input-policy-second").await;
+    connect_pair(&first, &second).await;
+    let mut first_events = first.remote.subscribe();
+    let mut second_events = second.remote.subscribe();
+
+    let viewer = first
+        .remote
+        .request_session(&second.node_id().to_string())
+        .await
+        .expect("request");
+    wait_true(Duration::from_secs(5), || async {
+        second.remote.snapshot().is_some()
+    })
+    .await
+    .expect("host request");
+    second
+        .remote
+        .accept_session(&viewer.session_id)
+        .await
+        .expect("consent");
+    wait_true(Duration::from_secs(5), || async {
+        let host = second
+            .remote
+            .snapshot()
+            .is_some_and(|session| session.state == "active");
+        let viewer = first
+            .remote
+            .snapshot()
+            .is_some_and(|session| session.state == "active");
+        host && viewer
+    })
+    .await
+    .expect("active sessions");
+    assert!(second.remote.snapshot().expect("host").input_allowed);
+
+    second
+        .remote
+        .set_input_allowed(&viewer.session_id, false)
+        .await
+        .expect("disable input");
+    recv_event(&mut second_events, |event| match event {
+        RemoteEventMessage::InputChanged {
+            session_id,
+            allowed: false,
+        } if session_id == viewer.session_id => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("host input event");
+    recv_event(&mut first_events, |event| match event {
+        RemoteEventMessage::InputChanged {
+            session_id,
+            allowed: false,
+        } if session_id == viewer.session_id => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("viewer input event");
+    assert!(!first.remote.snapshot().expect("viewer").input_allowed);
+
+    let user = second
+        .transport
+        .session_by_node_id(first.node_id())
+        .expect("session")
+        .user()
+        .clone();
+    let session_id: ticonnect_daemon::remote::state::RemoteSessionId =
+        viewer.session_id.parse().expect("session id");
+    let packet = InputPacket {
+        session_id: session_id.as_bytes(),
+        kind: InputKind::Motion,
+        x: 10,
+        y: 20,
+        pressed: false,
+    };
+    assert!(matches!(
+        second.remote.inject_input(user.clone(), packet),
+        Err(ticonnect_daemon::remote::RemoteError::InputDenied)
+    ));
+
+    second
+        .remote
+        .set_input_allowed(&viewer.session_id, true)
+        .await
+        .expect("enable input");
+    recv_event(&mut first_events, |event| match event {
+        RemoteEventMessage::InputChanged { allowed: true, .. } => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("viewer input enabled");
+    assert!(second.remote.inject_input(user, packet).is_ok());
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
 async fn input_is_rejected_without_active_session() {
     let first = TestNode::start("remote-input-first").await;
     let second = TestNode::start("remote-input-second").await;

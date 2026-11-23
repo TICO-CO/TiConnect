@@ -5,7 +5,11 @@
     import { clock, dayLabel, fileSize, fingerprintLabel, sessionClock, shortName } from '../lib';
     import { firstVideoId } from '../lib';
     import Avatar from './Avatar.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
+    import EditMessageDialog from './EditMessageDialog.svelte';
     import Icon from './Icon.svelte';
+    import SkeletonBlock from './SkeletonBlock.svelte';
+    import StateBanner from './StateBanner.svelte';
 
     interface Props {
         app: AppState;
@@ -21,13 +25,29 @@
     let composer: HTMLTextAreaElement | null = $state(null);
     let audioUrls = $state<Record<string, string>>({});
     let loadingAudio = $state<Record<string, boolean>>({});
+    let audioErrors = $state<Record<string, string>>({});
     let imageUrls = $state<Record<string, string>>({});
     let imageLoading = $state<Record<string, boolean>>({});
     let imageErrors = $state<Record<string, string>>({});
     let preview = $state<{ url: string; name: string } | null>(null);
+    let editingMessage = $state<Message | null>(null);
+    let editingBody = $state('');
+    let editError = $state('');
+    let deleteTarget = $state<Message | null>(null);
+    let deleteError = $state('');
     let prependingOlderMessages = false;
+    const loadingTimelineRows = [0, 1, 2, 3, 4];
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
+    const draftBytes = $derived(new TextEncoder().encode(app.draft).length);
+    const overLimit = $derived(draftBytes > 32 * 1024);
+    const composerBlocked = $derived(
+        app.connection !== 'online'
+            ? 'Daemon offline — messages cannot be sent.'
+            : selectedUser?.policy === 'ignore'
+              ? 'This user is blocked. Unblock them from their profile to send messages.'
+              : '',
+    );
     const currentParty = $derived(
         app.party !== null && app.party.participants.includes(app.selectedUserId)
             ? app.party
@@ -106,8 +126,20 @@
         return `YouTube video ${videoId}`;
     }
 
+    function canSend(): boolean {
+        return (
+            composerBlocked === '' &&
+            !overLimit &&
+            app.draft.trim() !== '' &&
+            app.connection === 'online'
+        );
+    }
+
     function send(event: SubmitEvent) {
         event.preventDefault();
+        if (!canSend()) {
+            return;
+        }
         void app.sendMessage();
     }
 
@@ -116,7 +148,9 @@
             return;
         }
         event.preventDefault();
-        void app.sendMessage();
+        if (canSend()) {
+            void app.sendMessage();
+        }
     }
 
     function attach(event: Event) {
@@ -128,16 +162,70 @@
         input.value = '';
     }
 
+    function openEdit(message: Message): void {
+        editingMessage = message;
+        editingBody = message.body;
+        editError = '';
+    }
+
+    async function saveEdit(body: string): Promise<void> {
+        if (editingMessage === null) {
+            return;
+        }
+        const saved = await app.editMessage(editingMessage.id, body);
+        if (!saved) {
+            editError = 'Message could not be saved.';
+            return;
+        }
+        editingMessage = null;
+        editingBody = '';
+        editError = '';
+    }
+
+    function closeEdit(): void {
+        if (app.messageActionPending !== '') {
+            return;
+        }
+        editingMessage = null;
+        editError = '';
+    }
+
+    function closeDelete(): void {
+        if (app.messageActionPending !== '') {
+            return;
+        }
+        deleteTarget = null;
+        deleteError = '';
+    }
+
+    async function confirmDelete(): Promise<void> {
+        if (deleteTarget === null) {
+            return;
+        }
+        const deleted = await app.deleteMessage(deleteTarget.id);
+        if (!deleted) {
+            deleteError = 'Message could not be deleted.';
+            return;
+        }
+        deleteTarget = null;
+        deleteError = '';
+    }
+
     async function loadAudio(messageId: string, hash: string): Promise<void> {
         if (audioUrls[messageId] !== undefined || loadingAudio[messageId]) {
             return;
         }
         loadingAudio = { ...loadingAudio, [messageId]: true };
+        const errors = { ...audioErrors };
+        delete errors[messageId];
+        audioErrors = errors;
         const url = await app.attachmentUrl(hash);
         loadingAudio = { ...loadingAudio, [messageId]: false };
         if (url !== '') {
             audioUrls = { ...audioUrls, [messageId]: url };
+            return;
         }
+        audioErrors = { ...audioErrors, [messageId]: 'Voice message unavailable.' };
     }
 
     async function loadImage(messageId: string, hash: string): Promise<void> {
@@ -331,271 +419,374 @@
             bind:this={stream}
             onscroll={handleStreamScroll}
         >
-            {#if app.loadingOlderMessages}
+            {#if app.messagesLoad === 'loading'}
                 <div
-                    class="flex shrink-0 justify-center py-2 text-step-xs text-ink-3"
+                    class="flex min-h-full flex-col justify-end gap-4 py-4"
                     role="status"
+                    aria-label="Loading messages"
                 >
-                    Loading older messages…
+                    {#each loadingTimelineRows as rowIndex (rowIndex)}
+                        <div
+                            class="flex max-w-[min(560px,70%)] flex-col gap-2 {rowIndex % 2 === 0
+                                ? 'self-start'
+                                : 'self-end'}"
+                        >
+                            <SkeletonBlock width={rowIndex % 3 === 0 ? '82%' : '64%'} height={20} />
+                            <SkeletonBlock width="42%" height={12} />
+                        </div>
+                    {/each}
                 </div>
-            {/if}
-            {#each timeline as entry, index (entry.id)}
-                {@const previous = timeline[index - 1]}
-                {@const showDay =
-                    previous === undefined || dayLabel(previous.at) !== dayLabel(entry.at)}
-                {#if showDay}
-                    <div class="flex items-center justify-center pt-2 pb-3.5">
-                        <span
-                            class="rounded-pill border border-line px-3 py-1 text-xs tracking-[0.06em] text-ink-3"
-                            >{dayLabel(entry.at)}</span
-                        >
+            {:else if app.messagesLoad === 'error'}
+                <div class="flex min-h-full items-center justify-center px-4 py-8">
+                    <div class="w-full max-w-[420px]">
+                        <StateBanner
+                            tone="error"
+                            title="Messages did not load"
+                            body={app.messagesError ||
+                                'The daemon did not return this conversation.'}
+                            actionLabel="Retry"
+                            onaction={() => void app.loadMessages(app.selectedUserId)}
+                        />
                     </div>
-                {/if}
-                {#if entry.kind === 'call'}
+                </div>
+            {:else}
+                {#if app.loadingOlderMessages}
                     <div
-                        class="flex w-[min(720px,100%)] items-center justify-center gap-3 self-center py-2"
+                        class="flex shrink-0 justify-center py-2 text-step-xs text-ink-3"
+                        role="status"
                     >
-                        <span class="h-px flex-1 bg-line"></span>
-                        <span
-                            class="flex items-center gap-1.5 text-xs tracking-[0.04em] text-ink-3"
-                        >
-                            <Icon name="call" size={12} color="var(--color-ink-3)" />
-                            {entry.log.reason === 'timeout' ? 'Missed call' : 'Call ended'} · {sessionClock(
-                                entry.log.duration_secs,
-                            )} · {clock(entry.log.ended_at)}
-                        </span>
-                        <span class="h-px flex-1 bg-line"></span>
+                        Loading older messages…
                     </div>
                 {/if}
-                {#if entry.kind === 'message'}
-                    {@const message = entry.message}
-                    {#if message.body === '' && message.attachment_hash === ''}
-                        <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
-                    {:else}
-                        <article
-                            class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
-                            data-local={message.local_sender ? '' : undefined}
+                {#if app.olderMessagesError}
+                    <div class="shrink-0 pb-2">
+                        <StateBanner
+                            tone="error"
+                            title="Older messages did not load"
+                            body={app.olderMessagesError}
+                            actionLabel="Retry"
+                            onaction={() => void app.loadOlderMessages()}
+                        />
+                    </div>
+                {/if}
+                {#each timeline as entry, index (entry.id)}
+                    {@const previous = timeline[index - 1]}
+                    {@const showDay =
+                        previous === undefined || dayLabel(previous.at) !== dayLabel(entry.at)}
+                    {#if showDay}
+                        <div class="flex items-center justify-center pt-2 pb-3.5">
+                            <span
+                                class="rounded-pill border border-line px-3 py-1 text-xs tracking-[0.06em] text-ink-3"
+                                >{dayLabel(entry.at)}</span
+                            >
+                        </div>
+                    {/if}
+                    {#if entry.kind === 'call'}
+                        <div
+                            class="flex w-[min(720px,100%)] items-center justify-center gap-3 self-center py-2"
                         >
-                            {#if message.body && !isOnlyVideoLink(message.body)}
-                                <p
-                                    class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
-                                >
-                                    {message.body}
-                                </p>
-                            {/if}
-                            {#if message.attachment_hash}
-                                {#if message.attachment_mime.startsWith('image/')}
-                                    <button
-                                        class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
-                                        onclick={() =>
-                                            showImage(
-                                                message.id,
-                                                message.attachment_hash,
-                                                message.attachment_name || 'Image',
-                                            )}
-                                    >
-                                        {#if imageUrls[message.id] !== undefined}
-                                            <img
-                                                class="max-h-[360px] w-full rounded-sm object-contain"
-                                                src={imageUrls[message.id]}
-                                                alt={message.attachment_name || 'Image attachment'}
-                                            />
-                                        {:else}
-                                            <div
-                                                class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
-                                            >
-                                                {imageStatus(message.id, message.attachment_hash)}
-                                            </div>
-                                        {/if}
-                                        <span class="px-2 py-1.5 text-xs text-ink-3"
-                                            >{message.attachment_name || 'Image'} · {fileSize(
-                                                message.attachment_size,
-                                            )}{transferLabel(message.attachment_hash)
-                                                ? ` · ${transferLabel(message.attachment_hash)}`
-                                                : ''}</span
+                            <span class="h-px flex-1 bg-line"></span>
+                            <span
+                                class="flex items-center gap-1.5 text-xs tracking-[0.04em] text-ink-3"
+                            >
+                                <Icon name="call" size={12} color="var(--color-ink-3)" />
+                                {entry.log.reason === 'timeout' ? 'Missed call' : 'Call ended'} · {sessionClock(
+                                    entry.log.duration_secs,
+                                )} · {clock(entry.log.ended_at)}
+                            </span>
+                            <span class="h-px flex-1 bg-line"></span>
+                        </div>
+                    {/if}
+                    {#if entry.kind === 'message'}
+                        {@const message = entry.message}
+                        {#if message.deleted_at === 0 && message.body === '' && message.attachment_hash === ''}
+                            <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
+                        {:else}
+                            <article
+                                class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
+                                data-local={message.local_sender ? '' : undefined}
+                            >
+                                {#if message.deleted_at > 0}
+                                    <p class="m-0 text-step-xs leading-[1.5] text-ink-3 italic">
+                                        Message deleted
+                                    </p>
+                                {:else}
+                                    {#if message.body && !isOnlyVideoLink(message.body)}
+                                        <p
+                                            class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
                                         >
-                                    </button>
-                                {:else if message.attachment_mime.startsWith('audio/')}
-                                    <div
-                                        class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
-                                    >
-                                        <div class="flex items-center gap-3">
-                                            <span
-                                                class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                                ><Icon
-                                                    name="mic"
-                                                    size={18}
-                                                    color="var(--color-ink-2)"
-                                                /></span
+                                            {message.body}
+                                        </p>
+                                    {/if}
+                                    {#if message.attachment_hash}
+                                        {#if message.attachment_mime.startsWith('image/')}
+                                            <button
+                                                class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
+                                                onclick={() =>
+                                                    showImage(
+                                                        message.id,
+                                                        message.attachment_hash,
+                                                        message.attachment_name || 'Image',
+                                                    )}
                                             >
-                                            <span class="flex min-w-0 flex-col gap-0.5">
-                                                <strong class="truncate text-[14px]"
-                                                    >{message.attachment_name ||
-                                                        'Voice message'}</strong
-                                                >
-                                                <span class="text-xs text-ink-3"
-                                                    >{fileSize(
+                                                {#if imageUrls[message.id] !== undefined}
+                                                    <img
+                                                        class="max-h-[360px] w-full rounded-sm object-contain"
+                                                        src={imageUrls[message.id]}
+                                                        alt={message.attachment_name ||
+                                                            'Image attachment'}
+                                                    />
+                                                {:else}
+                                                    <div
+                                                        class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
+                                                    >
+                                                        {imageStatus(
+                                                            message.id,
+                                                            message.attachment_hash,
+                                                        )}
+                                                    </div>
+                                                {/if}
+                                                <span class="px-2 py-1.5 text-xs text-ink-3"
+                                                    >{message.attachment_name || 'Image'} · {fileSize(
                                                         message.attachment_size,
                                                     )}{transferLabel(message.attachment_hash)
                                                         ? ` · ${transferLabel(message.attachment_hash)}`
                                                         : ''}</span
                                                 >
-                                            </span>
-                                            {#if audioUrls[message.id] === undefined}
-                                                <button
-                                                    class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
-                                                    onclick={() =>
-                                                        void loadAudio(
-                                                            message.id,
-                                                            message.attachment_hash,
-                                                        )}
-                                                    disabled={loadingAudio[message.id] === true}
+                                            </button>
+                                        {:else if message.attachment_mime.startsWith('audio/')}
+                                            <div
+                                                class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
+                                            >
+                                                <div class="flex items-center gap-3">
+                                                    <span
+                                                        class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                                        ><Icon
+                                                            name="mic"
+                                                            size={18}
+                                                            color="var(--color-ink-2)"
+                                                        /></span
+                                                    >
+                                                    <span class="flex min-w-0 flex-col gap-0.5">
+                                                        <strong class="truncate text-[14px]"
+                                                            >{message.attachment_name ||
+                                                                'Voice message'}</strong
+                                                        >
+                                                        <span class="text-xs text-ink-3"
+                                                            >{fileSize(
+                                                                message.attachment_size,
+                                                            )}{transferLabel(
+                                                                message.attachment_hash,
+                                                            )
+                                                                ? ` · ${transferLabel(message.attachment_hash)}`
+                                                                : ''}</span
+                                                        >
+                                                    </span>
+                                                    {#if audioErrors[message.id]}
+                                                        <span class="text-xs text-error"
+                                                            >{audioErrors[message.id]}</span
+                                                        >
+                                                    {/if}
+                                                    {#if audioUrls[message.id] === undefined}
+                                                        <button
+                                                            class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
+                                                            onclick={() =>
+                                                                void loadAudio(
+                                                                    message.id,
+                                                                    message.attachment_hash,
+                                                                )}
+                                                            disabled={loadingAudio[message.id] ===
+                                                                true}
+                                                        >
+                                                            {loadingAudio[message.id] === true
+                                                                ? 'Loading…'
+                                                                : audioErrors[message.id]
+                                                                  ? 'Retry'
+                                                                  : 'Play'}
+                                                        </button>
+                                                    {/if}
+                                                </div>
+                                                {#if audioUrls[message.id] !== undefined}
+                                                    <audio
+                                                        class="w-full"
+                                                        controls
+                                                        src={audioUrls[message.id]}
+                                                    ></audio>
+                                                {/if}
+                                            </div>
+                                        {:else}
+                                            <button
+                                                class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
+                                                onclick={() =>
+                                                    void app.saveAttachment(
+                                                        message.attachment_hash,
+                                                        message.attachment_name || 'attachment',
+                                                    )}
+                                            >
+                                                <span
+                                                    class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                                    ><Icon
+                                                        name="file"
+                                                        size={18}
+                                                        color="var(--color-ink-2)"
+                                                    /></span
                                                 >
-                                                    {loadingAudio[message.id] === true
-                                                        ? 'Loading…'
-                                                        : 'Play'}
-                                                </button>
-                                            {/if}
-                                        </div>
-                                        {#if audioUrls[message.id] !== undefined}
-                                            <audio
-                                                class="w-full"
-                                                controls
-                                                src={audioUrls[message.id]}
-                                            ></audio>
+                                                <span class="flex flex-col gap-0.5">
+                                                    <strong class="text-[14px]"
+                                                        >{message.attachment_name ||
+                                                            'Attachment'}</strong
+                                                    >
+                                                    <span class="text-xs text-ink-3"
+                                                        >BLAKE3 {fingerprintLabel(
+                                                            message.attachment_hash,
+                                                        )} ·
+                                                        {fileSize(
+                                                            message.attachment_size,
+                                                        )}{transferLabel(message.attachment_hash)
+                                                            ? ` · ${transferLabel(message.attachment_hash)}`
+                                                            : ''}</span
+                                                    >
+                                                </span>
+                                            </button>
                                         {/if}
-                                    </div>
-                                {:else}
-                                    <button
-                                        class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
-                                        onclick={() =>
-                                            void app.saveAttachment(
-                                                message.attachment_hash,
-                                                message.attachment_name || 'attachment',
-                                            )}
-                                    >
-                                        <span
-                                            class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                            ><Icon
-                                                name="file"
-                                                size={18}
-                                                color="var(--color-ink-2)"
-                                            /></span
+                                    {/if}
+                                    {#if firstVideoId(message.body)}
+                                        {@const videoId = firstVideoId(message.body) ?? ''}
+                                        <div
+                                            class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
                                         >
-                                        <span class="flex flex-col gap-0.5">
-                                            <strong class="text-[14px]"
-                                                >{message.attachment_name || 'Attachment'}</strong
+                                            <div
+                                                class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
                                             >
-                                            <span class="text-xs text-ink-3"
-                                                >BLAKE3 {fingerprintLabel(message.attachment_hash)} ·
-                                                {fileSize(message.attachment_size)}{transferLabel(
-                                                    message.attachment_hash,
-                                                )
-                                                    ? ` · ${transferLabel(message.attachment_hash)}`
-                                                    : ''}</span
-                                            >
-                                        </span>
-                                    </button>
-                                {/if}
-                            {/if}
-                            {#if firstVideoId(message.body)}
-                                {@const videoId = firstVideoId(message.body) ?? ''}
-                                <div
-                                    class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
-                                >
-                                    <div
-                                        class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
-                                    >
-                                        <img
-                                            class="h-full w-full object-cover opacity-[0.82]"
-                                            src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-                                            alt=""
-                                        />
-                                        <span
-                                            class="absolute inset-0 flex items-center justify-center"
-                                            ><Icon
-                                                name="play"
-                                                size={18}
-                                                color="var(--color-base)"
-                                            /></span
-                                        >
-                                    </div>
-                                    <div class="flex min-w-0 flex-col items-start gap-1">
-                                        <strong class="text-[15px] leading-5"
-                                            >{videoTitle(videoId)}</strong
-                                        >
-                                        <span class="text-xs text-ink-3"
-                                            >TiConnect Labs · 18:42</span
-                                        >
-                                        <span class="text-xs tracking-[0.05em] text-ink-2 uppercase"
-                                            >Playing in overlay · 2 in queue</span
-                                        >
-                                        <button
-                                            class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                                            onclick={() =>
-                                                void app.startParty(videoId, [selectedUser.id])}
-                                        >
-                                            Watch party
-                                            <Icon name="chevron-right" size={12} />
-                                        </button>
-                                    </div>
-                                </div>
-                            {/if}
-                            <div
-                                class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
-                            >
-                                <span>{clock(message.sent_at || message.received_at)}</span>
-                                {#if message.local_sender}
-                                    {#if message.state === 'read'}
-                                        <span class="inline-flex text-accent"
-                                            ><Icon
-                                                name="checks"
-                                                size={14}
-                                                color="var(--color-accent)"
-                                            /></span
-                                        >
-                                    {:else if message.state === 'delivered'}
-                                        <span class="inline-flex"
-                                            ><Icon
-                                                name="checks"
-                                                size={14}
-                                                color="var(--color-ink-3)"
-                                            /></span
-                                        >
-                                    {:else if message.state === 'failed'}
-                                        <span class="inline-flex text-error"
-                                            ><Icon
-                                                name="alert"
-                                                size={13}
-                                                color="var(--color-error)"
-                                            /></span
-                                        >
-                                    {:else}
-                                        <span class="inline-flex"
-                                            ><Icon
-                                                name="check"
-                                                size={13}
-                                                color="var(--color-ink-3)"
-                                            /></span
-                                        >
+                                                <img
+                                                    class="h-full w-full object-cover opacity-[0.82]"
+                                                    src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+                                                    alt=""
+                                                />
+                                                <span
+                                                    class="absolute inset-0 flex items-center justify-center"
+                                                    ><Icon
+                                                        name="play"
+                                                        size={18}
+                                                        color="var(--color-base)"
+                                                    /></span
+                                                >
+                                            </div>
+                                            <div class="flex min-w-0 flex-col items-start gap-1">
+                                                <strong class="text-[15px] leading-5"
+                                                    >{videoTitle(videoId)}</strong
+                                                >
+                                                <span class="text-xs text-ink-3"
+                                                    >TiConnect Labs · 18:42</span
+                                                >
+                                                <span
+                                                    class="text-xs tracking-[0.05em] text-ink-2 uppercase"
+                                                    >Playing in overlay · 2 in queue</span
+                                                >
+                                                <button
+                                                    class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                                                    onclick={() =>
+                                                        void app.startParty(videoId, [
+                                                            selectedUser.id,
+                                                        ])}
+                                                >
+                                                    Watch party
+                                                    <Icon name="chevron-right" size={12} />
+                                                </button>
+                                            </div>
+                                        </div>
                                     {/if}
                                 {/if}
-                            </div>
-                        </article>
+                                <div
+                                    class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
+                                >
+                                    <span>{clock(message.sent_at || message.received_at)}</span>
+                                    {#if message.edited_at > 0}
+                                        <span>· edited</span>
+                                    {/if}
+                                    {#if message.local_sender}
+                                        {#if message.state === 'read'}
+                                            <span class="inline-flex text-accent"
+                                                ><Icon
+                                                    name="checks"
+                                                    size={14}
+                                                    color="var(--color-accent)"
+                                                /></span
+                                            >
+                                        {:else if message.state === 'delivered'}
+                                            <span class="inline-flex"
+                                                ><Icon
+                                                    name="checks"
+                                                    size={14}
+                                                    color="var(--color-ink-3)"
+                                                /></span
+                                            >
+                                        {:else if message.state === 'failed' || message.state === 'expired'}
+                                            <span class="inline-flex text-error"
+                                                ><Icon
+                                                    name="alert"
+                                                    size={13}
+                                                    color="var(--color-error)"
+                                                /></span
+                                            >
+                                        {:else}
+                                            <span class="inline-flex"
+                                                ><Icon
+                                                    name="check"
+                                                    size={13}
+                                                    color="var(--color-ink-3)"
+                                                /></span
+                                            >
+                                        {/if}
+                                    {/if}
+                                </div>
+                                {#if message.local_sender && message.deleted_at === 0}
+                                    <div
+                                        class="flex justify-start gap-1.5 group-data-local:justify-end"
+                                    >
+                                        {#if message.state === 'failed' || message.state === 'expired'}
+                                            <button
+                                                class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-ink-2 transition-colors duration-150 ease-soft hover:border-line-strong hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+                                                disabled={app.messageRetryPending === message.id}
+                                                onclick={() => void app.retryMessage(message.id)}
+                                            >
+                                                {app.messageRetryPending === message.id
+                                                    ? 'Retrying…'
+                                                    : 'Retry'}
+                                            </button>
+                                        {:else if message.body !== '' && message.attachment_hash === ''}
+                                            <button
+                                                class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-ink-2 transition-colors duration-150 ease-soft hover:border-line-strong hover:bg-surface hover:text-ink"
+                                                onclick={() => openEdit(message)}>Edit</button
+                                            >
+                                        {/if}
+                                        <button
+                                            class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-error transition-colors duration-150 ease-soft hover:border-error hover:bg-error/10"
+                                            onclick={() => {
+                                                deleteTarget = message;
+                                                deleteError = '';
+                                            }}>Delete</button
+                                        >
+                                    </div>
+                                {/if}
+                            </article>
+                        {/if}
                     {/if}
-                {/if}
-            {/each}
-            {#if timeline.length === 0}
-                <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
-                    <p
-                        class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em] text-ink"
+                {/each}
+                {#if timeline.length === 0}
+                    <div
+                        class="flex min-h-full flex-col items-center justify-center gap-2 text-center"
                     >
-                        A quiet line is still open.
-                    </p>
-                    <p class="m-0 text-step-xs text-ink-3">
-                        Say hello — messages stay on this network.
-                    </p>
-                </div>
+                        <p
+                            class="m-0 font-display text-step-3 leading-[1.15] font-normal tracking-[-0.01em] text-ink"
+                        >
+                            A quiet line is still open.
+                        </p>
+                        <p class="m-0 text-step-xs text-ink-3">
+                            Say hello — messages stay on this network.
+                        </p>
+                    </div>
+                {/if}
             {/if}
         </div>
         <div class="h-[18px] shrink-0 px-7 text-xs leading-4 text-ink-3" aria-live="polite">
@@ -603,6 +794,17 @@
                 <span>{shortName(selectedUser)} is typing…</span>
             {/if}
         </div>
+        {#if composerBlocked !== '' || overLimit}
+            <div class="mx-5 mb-2">
+                <StateBanner
+                    tone={overLimit ? 'error' : 'warning'}
+                    title={overLimit ? 'Message is too long' : composerBlocked}
+                    body={overLimit
+                        ? `${draftBytes} of 32768 bytes. Shorten the message before sending.`
+                        : 'Your draft is kept until you can send again.'}
+                />
+            </div>
+        {/if}
         <form
             class="mx-5 mb-5 flex shrink-0 flex-col rounded-md border border-line bg-surface px-4 pt-3.5 pb-2.5"
             onsubmit={send}
@@ -613,16 +815,18 @@
                 class="max-h-[120px] min-h-9 w-full resize-none border-0 bg-transparent text-step-0 leading-[1.45] text-ink outline-none placeholder:text-ink-3"
                 bind:this={composer}
                 value={app.draft}
+                disabled={composerBlocked !== ''}
                 oninput={(event) =>
                     app.updateDraft((event.currentTarget as HTMLTextAreaElement).value)}
                 onkeydown={onComposerKey}
-                placeholder="Write a message"
+                placeholder={composerBlocked === '' ? 'Write a message' : composerBlocked}
                 rows="1"></textarea>
             <div class="flex items-center gap-1.5">
                 <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
                 <button
                     type="button"
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={composerBlocked !== ''}
                     onclick={() => fileInput?.click()}
                     aria-label="Attach file"
                 >
@@ -655,17 +859,24 @@
                 {:else}
                     <button
                         type="button"
-                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
+                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={composerBlocked !== ''}
                         onclick={() => void app.startRecording()}
                         aria-label="Record voice message"
                     >
                         <Icon name="mic" size={16} color="var(--color-ink-2)" />
                     </button>
                 {/if}
+                <span
+                    class="ml-auto text-xs tabular-nums {overLimit ? 'text-error' : 'text-ink-3'}"
+                >
+                    {app.draft === '' ? '' : `${draftBytes} / 32768`}
+                </span>
                 <button
                     type="submit"
-                    class="ml-auto flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent"
+                    class="flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Send message"
+                    disabled={!canSend()}
                 >
                     <Icon name="send" size={18} color="var(--color-base)" />
                 </button>
@@ -709,4 +920,24 @@
             />
         </div>
     {/if}
+    <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete message"
+        body="Delete this message for you? This cannot be undone."
+        confirmLabel="Delete message"
+        cancelLabel="Cancel"
+        tone="error"
+        pending={app.messageActionPending !== ''}
+        error={deleteError}
+        onconfirm={() => void confirmDelete()}
+        oncancel={closeDelete}
+    />
+    <EditMessageDialog
+        open={editingMessage !== null}
+        initial={editingBody}
+        pending={app.messageActionPending !== ''}
+        error={editError}
+        onsave={(body) => void saveEdit(body)}
+        oncancel={closeEdit}
+    />
 </section>

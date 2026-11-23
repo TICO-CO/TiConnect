@@ -27,6 +27,7 @@ pub struct RemoteSnapshot {
     pub role: String,
     pub state: String,
     pub indicator: bool,
+    pub input_allowed: bool,
     pub expires_at: i64,
 }
 
@@ -36,6 +37,7 @@ pub enum RemoteEventMessage {
     Started(RemoteSnapshot),
     Ended { session_id: String, reason: String },
     Indicator { session_id: String, visible: bool },
+    InputChanged { session_id: String, allowed: bool },
 }
 
 #[derive(Debug)]
@@ -274,6 +276,7 @@ impl RemoteService {
             expires_at: now
                 .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
             indicator_visible: false,
+            input_allowed: true,
         };
         session.transition(RemoteEvent::Request)?;
         let frame = RemoteSignalFrame::Request {
@@ -409,6 +412,44 @@ impl RemoteService {
         Ok(())
     }
 
+    pub async fn set_input_allowed(
+        &self,
+        session_id: &str,
+        allowed: bool,
+    ) -> Result<RemoteSnapshot, RemoteError> {
+        let id: RemoteSessionId = session_id.parse()?;
+        let snapshot = {
+            let mut guard = self
+                .inner
+                .session
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let session = guard
+                .as_mut()
+                .filter(|session| session.id == id)
+                .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
+            if session.role != RemoteRole::Host || session.state != RemoteState::Active {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
+            }
+            session.input_allowed = allowed;
+            snapshot(session)
+        };
+        let _ = self
+            .send_signal(
+                &snapshot.fingerprint,
+                &RemoteSignalFrame::InputPolicy {
+                    session_id: id_bytes(id),
+                    allowed,
+                },
+            )
+            .await;
+        self.emit(RemoteEventMessage::InputChanged {
+            session_id: snapshot.session_id.clone(),
+            allowed,
+        });
+        Ok(snapshot)
+    }
+
     pub async fn end_session(&self, session_id: &str) -> Result<(), RemoteError> {
         let id: RemoteSessionId = session_id.parse()?;
         let snapshot = {
@@ -489,6 +530,7 @@ impl RemoteService {
                     expires_at: (self.inner.clock)()
                         .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
                     indicator_visible: false,
+                    input_allowed: true,
                 };
                 session.transition(RemoteEvent::Request)?;
                 let snapshot = snapshot(&session);
@@ -538,6 +580,31 @@ impl RemoteService {
                 Ok(())
             }
             RemoteSignalFrame::KeyframeRequest { .. } => Ok(()),
+            RemoteSignalFrame::InputPolicy { allowed, .. } => {
+                let changed = {
+                    let mut guard = self
+                        .inner
+                        .session
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    let session = guard
+                        .as_mut()
+                        .filter(|session| {
+                            session.id == id
+                                && session.user_id == user_id
+                                && session.fingerprint == fingerprint
+                                && session.role == RemoteRole::Viewer
+                        })
+                        .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
+                    session.input_allowed = allowed;
+                    snapshot(session)
+                };
+                self.emit(RemoteEventMessage::InputChanged {
+                    session_id: changed.session_id,
+                    allowed,
+                });
+                Ok(())
+            }
         }
     }
 
@@ -558,6 +625,9 @@ impl RemoteService {
             .ok_or(RemoteError::Inactive)?;
         if packet.session_id != id_bytes(session.id) {
             return Err(RemoteError::Inactive);
+        }
+        if !session.input_allowed {
+            return Err(RemoteError::InputDenied);
         }
         let event = match packet.kind {
             InputKind::Motion => InputEvent::PointerMotion {
@@ -784,6 +854,7 @@ fn snapshot(session: &RemoteSession) -> RemoteSnapshot {
         .to_owned(),
         state: session.state.as_str().to_owned(),
         indicator: session.indicator_visible,
+        input_allowed: session.input_allowed,
         expires_at: session.expires_at,
     }
 }
@@ -825,6 +896,9 @@ pub enum RemoteError {
 
     #[error("remote host failed: {0}")]
     Host(String),
+
+    #[error("input is not allowed for this session")]
+    InputDenied,
 
     #[error("input failed: {0}")]
     Input(String),

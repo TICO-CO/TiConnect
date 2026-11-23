@@ -114,6 +114,7 @@ export const DEMO_SUMMARIES: ConversationSummary[] = [
         last_message_id: 'm6',
         last_sender_id: DEMO_USERS[0]?.id ?? '',
         last_body: 'Benchmark finished — check the log',
+        last_deleted: false,
         last_sent_at: now - minute * 2,
         unread_count: 2,
     },
@@ -123,6 +124,7 @@ export const DEMO_SUMMARIES: ConversationSummary[] = [
         last_message_id: 'm7',
         last_sender_id: DEMO_USERS[1]?.id ?? '',
         last_body: 'In a call · 04:12',
+        last_deleted: false,
         last_sent_at: now - minute * 6,
         unread_count: 0,
     },
@@ -132,6 +134,7 @@ export const DEMO_SUMMARIES: ConversationSummary[] = [
         last_message_id: 'm8',
         last_sender_id: DEMO_USERS[2]?.id ?? '',
         last_body: 'Address changed · 3 photos',
+        last_deleted: false,
         last_sent_at: now - minute * 13,
         unread_count: 1,
     },
@@ -141,6 +144,7 @@ export const DEMO_SUMMARIES: ConversationSummary[] = [
         last_message_id: 'm9',
         last_sender_id: DEMO_USERS[3]?.id ?? '',
         last_body: 'Muted · 12 messages',
+        last_deleted: false,
         last_sent_at: now - minute * 46,
         unread_count: 12,
     },
@@ -150,6 +154,7 @@ export const DEMO_SUMMARIES: ConversationSummary[] = [
         last_message_id: 'm10',
         last_sender_id: DEMO_USERS[4]?.id ?? '',
         last_body: 'Offline since 14 Nov',
+        last_deleted: false,
         last_sent_at: now - 3 * 86_400_000,
         unread_count: 0,
     },
@@ -180,6 +185,8 @@ function demoMessage(
         attachment_mime: '',
         attachment_path: '',
         state,
+        edited_at: 0,
+        deleted_at: 0,
         notify: true,
     };
 }
@@ -262,6 +269,7 @@ export const DEMO_REMOTE: RemoteSession = {
     role: 'host',
     state: 'active',
     indicator: true,
+    input_allowed: true,
     expires_at: now + 300_000,
 };
 

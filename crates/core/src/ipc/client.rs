@@ -28,6 +28,9 @@ pub trait Daemon {
     fn list_blocked_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn unblock_user(&self, fingerprint: &str) -> zbus::Result<bool>;
     fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
+    fn retry_message(&self, message_id: &str) -> zbus::Result<bool>;
+    fn edit_message(&self, message_id: &str, body: &str) -> zbus::Result<()>;
+    fn delete_message(&self, message_id: &str) -> zbus::Result<()>;
     fn list_messages(
         &self,
         conversation_id: &str,
@@ -93,6 +96,7 @@ pub trait Daemon {
     fn accept_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn set_remote_input(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
     fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
@@ -113,6 +117,18 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn message_state_changed(&self, message_id: &str, state: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_edited(
+        &self,
+        message_id: &str,
+        user_id: &str,
+        body: &str,
+        edited_at: u64,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_deleted(&self, message_id: &str, user_id: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn conversation_changed(&self, user_id: &str) -> zbus::Result<()>;
@@ -172,6 +188,9 @@ pub trait Daemon {
 
     #[zbus(signal)]
     fn remote_indicator_changed(&self, session_id: &str, visible: bool) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_input_changed(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
 
     #[zbus(signal)]
     fn transfer_progress(&self, hash: &str, bytes: u64, total: u64) -> zbus::Result<()>;

@@ -134,3 +134,11 @@ window.ticonnect-player {
   font-size: 12px;
   color: #A9A78A;
 }
+
+.ticonnect-card-warning {
+  border-color: #D9B26A;
+}
+
+.ticonnect-card-warning .ticonnect-card-kind {
+  color: #D9B26A;
+}

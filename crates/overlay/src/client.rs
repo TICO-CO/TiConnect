@@ -3,7 +3,10 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
-use ticonnect_core::ipc::events::{self, Call, Message, RemoteSession, User, WatchParty};
+use ticonnect_core::ipc::events::{
+    self, Call, CallEndReason, Message, RemoteEndReason, RemoteSession, User, WatchParty,
+    WatchPartyEndReason,
+};
 use ticonnect_settings::Settings;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
@@ -32,7 +35,10 @@ pub enum Command {
 
 #[derive(Debug, Clone)]
 pub enum Event {
-    Settings { enabled: bool, timeout_secs: u64 },
+    Settings {
+        enabled: bool,
+        timeout_secs: u64,
+    },
     Users(Vec<User>),
     User(User),
     Message(Message),
@@ -40,11 +46,20 @@ pub enum Event {
     CallState(Option<Call>),
     RemoteSessionRequested(RemoteSession),
     RemoteState(Option<RemoteSession>),
-    CallEnded(String),
-    RemoteSessionEnded(String),
+    CallEnded {
+        call_id: String,
+        reason: CallEndReason,
+    },
+    RemoteSessionEnded {
+        session_id: String,
+        reason: RemoteEndReason,
+    },
     WatchPartyRequested(WatchParty),
     WatchPartyChanged(WatchParty),
-    WatchPartyEnded(String),
+    WatchPartyEnded {
+        party_id: String,
+        reason: WatchPartyEndReason,
+    },
     Disconnected(String),
 }
 
@@ -333,7 +348,10 @@ async fn listen(
                     tracing::warn!("failed to read daemon signal arguments");
                     continue;
                 };
-                let _ = events.send(Event::WatchPartyEnded(args.party_id.to_owned()));
+                let _ = events.send(Event::WatchPartyEnded {
+                    party_id: args.party_id.to_owned(),
+                    reason: WatchPartyEndReason::parse(args.reason),
+                });
             }
             signal = call_ended.next() => {
                 let Some(signal) = signal else { break };
@@ -341,7 +359,10 @@ async fn listen(
                     tracing::warn!("failed to read daemon signal arguments");
                     continue;
                 };
-                let _ = events.send(Event::CallEnded(args.call_id.to_owned()));
+                let _ = events.send(Event::CallEnded {
+                    call_id: args.call_id.to_owned(),
+                    reason: CallEndReason::parse(args.reason),
+                });
             }
             signal = remote_ended.next() => {
                 let Some(signal) = signal else { break };
@@ -349,7 +370,10 @@ async fn listen(
                     tracing::warn!("failed to read daemon signal arguments");
                     continue;
                 };
-                let _ = events.send(Event::RemoteSessionEnded(args.session_id.to_owned()));
+                let _ = events.send(Event::RemoteSessionEnded {
+                    session_id: args.session_id.to_owned(),
+                    reason: RemoteEndReason::parse(args.reason),
+                });
             }
             signal = settings_changed.next() => {
                 let Some(signal) = signal else { break };

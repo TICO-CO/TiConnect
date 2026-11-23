@@ -42,6 +42,7 @@ pub struct CallInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CallTransition {
+    Connecting(ActiveCall),
     Ringing(ActiveCall),
     InCall(ActiveCall),
     Ended(ActiveCall, EndReason),
@@ -114,18 +115,45 @@ impl CallRegistry {
         if self.active.is_some() {
             return Err(CallStateError::Busy);
         }
+        let state = match direction {
+            CallDirection::Outgoing => CallState::Connecting,
+            CallDirection::Incoming => CallState::Ringing,
+        };
         let call = ActiveCall {
             id,
             user_id: user_id.to_owned(),
             direction,
-            state: CallState::Ringing,
+            state,
             created_at: now,
             connected_at: None,
             input_muted: false,
             output_muted: false,
         };
         self.active = Some(call.clone());
-        Ok(CallTransition::Ringing(call))
+        let transition = match direction {
+            CallDirection::Outgoing => CallTransition::Connecting(call),
+            CallDirection::Incoming => CallTransition::Ringing(call),
+        };
+        Ok(transition)
+    }
+
+    pub fn mark_ringing(
+        &mut self,
+        id: CallId,
+        user_id: &str,
+    ) -> Result<Option<CallTransition>, CallStateError> {
+        let call = self.active_mut(id)?;
+        if call.user_id != user_id {
+            return Err(CallStateError::InvalidTransition);
+        }
+        if call.state == CallState::Ringing {
+            return Ok(None);
+        }
+        if call.state != CallState::Connecting {
+            return Err(CallStateError::InvalidTransition);
+        }
+        call.state = CallState::Ringing;
+        Ok(Some(CallTransition::Ringing(call.clone())))
     }
 
     pub fn accept(&mut self, id: CallId, now: i64) -> Result<CallTransition, CallStateError> {
@@ -207,7 +235,7 @@ impl CallRegistry {
         ringing_only: bool,
     ) -> Result<CallTransition, CallStateError> {
         let call = self.active_mut(id)?;
-        if ringing_only && call.state != CallState::Ringing {
+        if ringing_only && !matches!(call.state, CallState::Connecting | CallState::Ringing) {
             return Err(CallStateError::InvalidTransition);
         }
         if call.state == CallState::Ended {
@@ -245,14 +273,22 @@ mod tests {
     #[test]
     fn follows_the_documented_state_machine() {
         let mut registry = CallRegistry::default();
-        let CallTransition::Ringing(call) = registry.start("user", 1).expect("start") else {
-            panic!("expected ringing");
+        let CallTransition::Connecting(call) = registry.start("user", 1).expect("start") else {
+            panic!("expected connecting");
         };
-        assert_eq!(call.state, CallState::Ringing);
+        assert_eq!(call.state, CallState::Connecting);
         assert!(matches!(
             registry.start("user", 2),
             Err(CallStateError::Busy)
         ));
+
+        let Some(CallTransition::Ringing(call)) = registry
+            .mark_ringing(call.id, "user")
+            .expect("mark ringing")
+        else {
+            panic!("expected ringing");
+        };
+        assert_eq!(call.state, CallState::Ringing);
 
         let CallTransition::InCall(call) = registry.accept(call.id, 2).expect("accept") else {
             panic!("expected in call");
@@ -299,8 +335,8 @@ mod tests {
     #[test]
     fn hangup_cancels_ringing_calls() {
         let mut registry = CallRegistry::default();
-        let CallTransition::Ringing(call) = registry.start("user", 1).expect("start") else {
-            panic!("expected ringing");
+        let CallTransition::Connecting(call) = registry.start("user", 1).expect("start") else {
+            panic!("expected connecting");
         };
         assert!(matches!(
             registry.hangup(call.id),

@@ -8,26 +8,35 @@
 ```mermaid
 stateDiagram-v2
   state "idle: No call." as s_idle
+  state "connecting: Outgoing offer sent, waiting for ring." as s_connecting
   state "ringing: Incoming or outgoing ring." as s_ringing
   state "in_call: Audio connected." as s_in_call
   state "ended: Terminal call state." as s_ended
-  s_idle --> s_ringing: start [user trusted and policy allows]
+  s_idle --> s_connecting: start [user trusted and policy allows]
+  s_connecting --> s_ringing: ring
   s_idle --> s_ringing: incoming [user trusted and policy allows]
   s_ringing --> s_in_call: accept / start audio devices
   s_ringing --> s_ended: decline
+  s_connecting --> s_ended: timeout
   s_ringing --> s_ended: timeout
+  s_connecting --> s_ended: hangup
   s_in_call --> s_ended: hangup
+  s_connecting --> s_ended: error
   s_in_call --> s_ended: error
   s_ringing --> s_ended: error
 ```
 
 | From | Event | To | Guard | Action |
 |---|---|---|---|---|
-| `idle` | start | `ringing` | user trusted and policy allows |  |
+| `idle` | start | `connecting` | user trusted and policy allows |  |
+| `connecting` | ring | `ringing` |  |  |
 | `idle` | incoming | `ringing` | user trusted and policy allows |  |
 | `ringing` | accept | `in_call` |  | start audio devices |
 | `ringing` | decline | `ended` |  |  |
+| `connecting` | timeout | `ended` |  |  |
 | `ringing` | timeout | `ended` |  |  |
+| `connecting` | hangup | `ended` |  |  |
 | `in_call` | hangup | `ended` |  |  |
+| `connecting` | error | `ended` |  |  |
 | `in_call` | error | `ended` |  |  |
 | `ringing` | error | `ended` |  |  |

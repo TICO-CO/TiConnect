@@ -179,6 +179,218 @@ async fn inbound_insert_advances_user_state_and_outbox_expires() {
 }
 
 #[tokio::test]
+async fn lifecycle_records_update_targets_and_stay_hidden() {
+    use ticonnect_core::message::MessageKind;
+
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let user = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([85_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "fingerprint".to_owned(),
+            public_key: Some(identity.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("user");
+    let conversation = conversation_id(local, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("conversation");
+
+    let target = MessageRecord::text(&conversation, local.to_string(), 1, 10, "original");
+    let target_envelope = target.signed(&identity).expect("sign target");
+    database
+        .insert_message(
+            target.clone(),
+            10,
+            target_envelope.signature().to_vec(),
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("target message");
+
+    let edit = MessageRecord::new(
+        &conversation,
+        local.to_string(),
+        2,
+        20,
+        MessageKind::Edit,
+        Some("edited".to_owned()),
+    );
+    let edit = MessageRecord {
+        target_id: Some(target.message_id.to_string()),
+        ..edit
+    };
+    let edit_envelope = edit.signed(&identity).expect("sign edit");
+    database
+        .insert_message(
+            edit,
+            20,
+            edit_envelope.signature().to_vec(),
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("edit record");
+    database
+        .apply_lifecycle(MessageRecord {
+            target_id: Some(target.message_id.to_string()),
+            ..MessageRecord::new(
+                &conversation,
+                local.to_string(),
+                2,
+                20,
+                MessageKind::Edit,
+                Some("edited".to_owned()),
+            )
+        })
+        .await
+        .expect("apply edit");
+
+    let updated = database
+        .get_message(&target.message_id.to_string())
+        .await
+        .expect("get target")
+        .expect("target");
+    assert_eq!(updated.record.body.as_deref(), Some("edited"));
+    assert_eq!(updated.edited_at, Some(20));
+    assert_eq!(
+        database.count_history(&conversation).await.expect("count"),
+        1
+    );
+    let history = database
+        .list_history(&conversation, 10, 0)
+        .await
+        .expect("history");
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].record.message_id, target.message_id);
+
+    let delete = MessageRecord {
+        target_id: Some(target.message_id.to_string()),
+        ..MessageRecord::new(
+            &conversation,
+            local.to_string(),
+            3,
+            30,
+            MessageKind::Delete,
+            None,
+        )
+    };
+    database
+        .apply_lifecycle(delete)
+        .await
+        .expect("apply delete");
+    let deleted = database
+        .get_message(&target.message_id.to_string())
+        .await
+        .expect("get target")
+        .expect("target");
+    assert_eq!(deleted.deleted_at, Some(30));
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn failed_outgoing_messages_can_be_requeued() {
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let user = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "fingerprint".to_owned(),
+            public_key: Some(identity.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("user");
+    let conversation = conversation_id(local, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("conversation");
+
+    let outgoing = MessageRecord::text(&conversation, local.to_string(), 1, 10, "retry me");
+    let envelope = outgoing.signed(&identity).expect("sign outgoing");
+    database
+        .insert_message(
+            outgoing.clone(),
+            10,
+            envelope.signature().to_vec(),
+            Some(MessageState::Failed),
+        )
+        .await
+        .expect("outgoing message");
+    let requeued = database
+        .requeue_outbox(
+            &outgoing.message_id.to_string(),
+            &local.to_string(),
+            20,
+            100,
+        )
+        .await
+        .expect("requeue");
+    assert_eq!(requeued, Some(user.to_string()));
+    assert_eq!(
+        database
+            .message_state(&outgoing.message_id.to_string())
+            .await
+            .expect("state"),
+        Some(MessageState::Queued)
+    );
+    let due = database
+        .due_outbox(&user.to_string(), 20)
+        .await
+        .expect("due");
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].message_id, outgoing.message_id.to_string());
+
+    let incoming = MessageRecord::text(&conversation, user.to_string(), 2, 11, "incoming");
+    let incoming_envelope = incoming.signed(&identity).expect("sign incoming");
+    database
+        .insert_inbound(
+            incoming.clone(),
+            11,
+            incoming_envelope.signature().to_vec(),
+            &user.to_string(),
+        )
+        .await
+        .expect("incoming message");
+    assert!(
+        database
+            .requeue_outbox(
+                &incoming.message_id.to_string(),
+                &local.to_string(),
+                20,
+                100,
+            )
+            .await
+            .expect("requeue incoming")
+            .is_none()
+    );
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn records_between_filters_by_sender() {
     let dir = temp_dir();
     let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))

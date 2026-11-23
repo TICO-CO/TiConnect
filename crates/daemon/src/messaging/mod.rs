@@ -48,6 +48,16 @@ pub enum MessagingEvent {
         message_id: String,
         state: MessageState,
     },
+    MessageEdited {
+        user_id: String,
+        message_id: String,
+        body: String,
+        edited_at: i64,
+    },
+    MessageDeleted {
+        user_id: String,
+        message_id: String,
+    },
     SyncCompleted {
         user_id: String,
         count: u32,
@@ -294,6 +304,156 @@ impl MessagingService {
         });
         outbox::flush_user(self, user_id).await;
         Ok(record.message_id)
+    }
+
+    pub async fn retry_message(&self, message_id: &str) -> Result<(), MessagingError> {
+        let now = now_unix_ms();
+        let ttl_days = u64::from(self.settings().outbox_ttl_days());
+        let expires_at =
+            now.saturating_add(i64::try_from(ttl_days * 86_400_000).unwrap_or(i64::MAX));
+        let local = self.inner.local.to_string();
+        let user_id = self
+            .inner
+            .database
+            .requeue_outbox(message_id, &local, now, expires_at)
+            .await?
+            .ok_or_else(|| MessagingError::MessageNotRetryable(message_id.to_owned()))?;
+        self.emit(MessagingEvent::MessageStateChanged {
+            message_id: message_id.to_owned(),
+            state: MessageState::Queued,
+        });
+        outbox::flush_user(self, &user_id).await;
+        Ok(())
+    }
+
+    pub async fn edit_message(&self, message_id: &str, body: String) -> Result<(), MessagingError> {
+        if body.trim().is_empty() {
+            return Err(MessagingError::EmptyBody);
+        }
+        let (record, user_id) = self
+            .lifecycle_record(message_id, MessageKind::Edit, Some(body))
+            .await?;
+        let now = record.sent_at;
+        let target = record.target_id.clone().unwrap_or_default();
+        let envelope = record.signed(&self.inner.identity)?;
+        self.inner
+            .database
+            .insert_message(
+                record.clone(),
+                now,
+                envelope.signature().to_vec(),
+                Some(MessageState::Queued),
+            )
+            .await?;
+        self.inner.database.apply_lifecycle(record.clone()).await?;
+        let ttl_days = u64::from(self.settings().outbox_ttl_days());
+        let expires_at =
+            now.saturating_add(i64::try_from(ttl_days * 86_400_000).unwrap_or(i64::MAX));
+        self.inner
+            .database
+            .enqueue_outbox(&record.message_id.to_string(), now, expires_at)
+            .await?;
+        self.emit(MessagingEvent::MessageEdited {
+            user_id: user_id.clone(),
+            message_id: target,
+            body: record.body.clone().unwrap_or_default(),
+            edited_at: now,
+        });
+        outbox::flush_user(self, &user_id).await;
+        Ok(())
+    }
+
+    pub async fn delete_message(&self, message_id: &str) -> Result<(), MessagingError> {
+        let stored = self
+            .inner
+            .database
+            .get_message(message_id)
+            .await?
+            .ok_or_else(|| MessagingError::UnknownMessage(message_id.to_owned()))?;
+        if stored.deleted_at.is_some() {
+            return Ok(());
+        }
+        let (record, user_id) = self
+            .lifecycle_record(message_id, MessageKind::Delete, None)
+            .await?;
+        let now = record.sent_at;
+        let envelope = record.signed(&self.inner.identity)?;
+        self.inner
+            .database
+            .insert_message(
+                record.clone(),
+                now,
+                envelope.signature().to_vec(),
+                Some(MessageState::Queued),
+            )
+            .await?;
+        self.inner.database.apply_lifecycle(record.clone()).await?;
+        let ttl_days = u64::from(self.settings().outbox_ttl_days());
+        let expires_at =
+            now.saturating_add(i64::try_from(ttl_days * 86_400_000).unwrap_or(i64::MAX));
+        self.inner
+            .database
+            .enqueue_outbox(&record.message_id.to_string(), now, expires_at)
+            .await?;
+        self.emit(MessagingEvent::MessageDeleted {
+            user_id: user_id.clone(),
+            message_id: message_id.to_owned(),
+        });
+        outbox::flush_user(self, &user_id).await;
+        Ok(())
+    }
+
+    async fn lifecycle_record(
+        &self,
+        message_id: &str,
+        kind: MessageKind,
+        body: Option<String>,
+    ) -> Result<(MessageRecord, String), MessagingError> {
+        let stored = self
+            .inner
+            .database
+            .get_message(message_id)
+            .await?
+            .ok_or_else(|| MessagingError::UnknownMessage(message_id.to_owned()))?;
+        if stored.record.sender_id != self.inner.local.to_string() {
+            return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+        }
+        if stored.deleted_at.is_some() {
+            return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+        }
+        if kind == MessageKind::Edit && stored.record.kind != MessageKind::Text {
+            return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+        }
+        if stored.record.kind == MessageKind::Ack
+            || stored.record.kind == MessageKind::Edit
+            || stored.record.kind == MessageKind::Delete
+        {
+            return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+        }
+        let user_id = self
+            .inner
+            .database
+            .conversation_by_id(&stored.record.conversation_id)
+            .await?
+            .map_or_else(String::new, |conversation| conversation.user_id);
+        if user_id.is_empty() {
+            return Err(MessagingError::UnknownConversation(
+                stored.record.conversation_id,
+            ));
+        }
+        let now = now_unix_ms();
+        let seq = self.inner.database.allocate_seq(&user_id).await?;
+        let mut record = MessageRecord::new(
+            stored.record.conversation_id,
+            self.inner.local.to_string(),
+            seq,
+            now,
+            kind,
+            body,
+        );
+        record.target_id = Some(message_id.to_owned());
+        record.validate()?;
+        Ok((record, user_id))
     }
 
     pub async fn send_attachment(
@@ -738,6 +898,10 @@ impl MessagingService {
                 self.ingest_ack(&user, record, signature).await?;
                 Ok(true)
             }
+            MessageKind::Edit | MessageKind::Delete => {
+                self.ingest_lifecycle(&user, record, signature).await?;
+                Ok(true)
+            }
             MessageKind::Text | MessageKind::Image | MessageKind::Audio | MessageKind::File => {
                 if record.kind != MessageKind::Text {
                     record
@@ -795,6 +959,49 @@ impl MessagingService {
         }
         if delivered_receipt {
             self.queue_receipt(&user.id, record.message_id, AckKind::Delivered);
+        }
+        Ok(())
+    }
+
+    async fn ingest_lifecycle(
+        &self,
+        user: &User,
+        record: MessageRecord,
+        signature: Vec<u8>,
+    ) -> Result<(), MessagingError> {
+        let target = record
+            .target_id
+            .clone()
+            .ok_or_else(|| MessagingError::InvalidMessageId(String::new()))?;
+        let kind = record.kind;
+        let body = record.body.clone().unwrap_or_default();
+        let edited_at = record.sent_at;
+        let received_at = now_unix_ms();
+        let outcome = self
+            .inner
+            .database
+            .apply_lifecycle_inbound(record, received_at, signature, &user.id)
+            .await?;
+        if outcome == InsertOutcome::Inserted
+            && self.inner.database.get_message(&target).await?.is_some()
+        {
+            match kind {
+                MessageKind::Edit => {
+                    self.emit(MessagingEvent::MessageEdited {
+                        user_id: user.id.clone(),
+                        message_id: target,
+                        body,
+                        edited_at,
+                    });
+                }
+                MessageKind::Delete => {
+                    self.emit(MessagingEvent::MessageDeleted {
+                        user_id: user.id.clone(),
+                        message_id: target,
+                    });
+                }
+                _ => {}
+            }
         }
         Ok(())
     }
@@ -1134,6 +1341,12 @@ pub enum MessagingError {
 
     #[error("message kind {0} is not supported in this stage")]
     UnsupportedKind(String),
+
+    #[error("message is not retryable: {0}")]
+    MessageNotRetryable(String),
+
+    #[error("message cannot be edited or deleted: {0}")]
+    MessageNotEditable(String),
 
     #[error("attachment is invalid: {0}")]
     InvalidAttachment(String),

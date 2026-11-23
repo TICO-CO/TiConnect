@@ -53,6 +53,8 @@ pub struct StoredMessage {
     pub received_at: i64,
     pub signature: Vec<u8>,
     pub state: Option<MessageState>,
+    pub edited_at: Option<i64>,
+    pub deleted_at: Option<i64>,
 }
 
 impl StoredMessage {
@@ -83,6 +85,7 @@ pub struct ConversationSummary {
     pub last_message_id: Option<String>,
     pub last_sender_id: Option<String>,
     pub last_body: Option<String>,
+    pub last_deleted: bool,
     pub last_sent_at: Option<i64>,
     pub unread_count: u32,
 }
@@ -185,7 +188,7 @@ pub fn clear_history(
 
 pub fn storage_usage(connection: &Connection) -> Result<StorageStats, StorageError> {
     let message_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM messages WHERE kind != 'ack'",
+        "SELECT COUNT(*) FROM messages WHERE kind NOT IN ('ack', 'edit', 'delete')",
         [],
         |row| row.get(0),
     )?;
@@ -227,9 +230,12 @@ pub fn conversation_summaries(
         let (conversation_id, user_id) = row?;
         let last = connection
             .query_row(
-                "SELECT id, sender_id, body, sent_at
+                "SELECT id, sender_id,
+                        CASE WHEN deleted_at IS NOT NULL THEN NULL ELSE body END,
+                        sent_at,
+                        deleted_at IS NOT NULL
                  FROM messages
-                 WHERE conversation_id = ?1 AND kind != 'ack'
+                 WHERE conversation_id = ?1 AND kind NOT IN ('ack', 'edit', 'delete')
                  ORDER BY CASE WHEN sent_at > received_at THEN received_at ELSE sent_at END DESC,
                           received_at DESC, id DESC
                  LIMIT 1",
@@ -240,13 +246,14 @@ pub fn conversation_summaries(
                         row.get::<_, String>(1)?,
                         row.get::<_, Option<String>>(2)?,
                         row.get::<_, i64>(3)?,
+                        row.get::<_, bool>(4)?,
                     ))
                 },
             )
             .optional()?;
         let unread: i64 = connection.query_row(
             "SELECT COUNT(*) FROM messages
-             WHERE conversation_id = ?1 AND sender_id != ?2 AND kind != 'ack'
+             WHERE conversation_id = ?1 AND sender_id != ?2 AND kind NOT IN ('ack', 'edit', 'delete')
                AND read_at IS NULL",
             params![conversation_id, local_node_id],
             |row| row.get(0),
@@ -260,6 +267,7 @@ pub fn conversation_summaries(
             last_message_id: last.as_ref().map(|item| item.0.clone()),
             last_sender_id: last.as_ref().map(|item| item.1.clone()),
             last_body: last.as_ref().and_then(|item| item.2.clone()),
+            last_deleted: last.as_ref().is_some_and(|item| item.4),
             last_sent_at: last.as_ref().map(|item| item.3),
             unread_count,
         });
@@ -306,7 +314,7 @@ pub fn mark_conversation_read(
 ) -> Result<Vec<String>, StorageError> {
     let mut statement = connection.prepare(
         "SELECT id FROM messages
-         WHERE conversation_id = ?1 AND sender_id != ?2 AND kind != 'ack'
+         WHERE conversation_id = ?1 AND sender_id != ?2 AND kind NOT IN ('ack', 'edit', 'delete')
            AND read_at IS NULL",
     )?;
     let unread = statement
@@ -316,7 +324,7 @@ pub fn mark_conversation_read(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     connection.execute(
         "UPDATE messages SET read_at = ?1
-         WHERE conversation_id = ?2 AND sender_id != ?3 AND kind != 'ack'
+         WHERE conversation_id = ?2 AND sender_id != ?3 AND kind NOT IN ('ack', 'edit', 'delete')
            AND read_at IS NULL",
         params![read_at, conversation_id, local_sender_id],
     )?;
@@ -420,7 +428,7 @@ pub fn get(connection: &Connection, id: &str) -> Result<Option<StoredMessage>, S
         .query_row(
             "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
                     body, attachment_hash, attachment_name, attachment_size, attachment_mime,
-                    signature, state
+                    signature, state, edited_at, deleted_at
              FROM messages WHERE id = ?1",
             params![id],
             row_to_message,
@@ -429,9 +437,67 @@ pub fn get(connection: &Connection, id: &str) -> Result<Option<StoredMessage>, S
         .map_err(Into::into)
 }
 
+pub fn apply_lifecycle(
+    connection: &Connection,
+    record: &MessageRecord,
+    received_at: i64,
+    signature: &[u8],
+    user_id: &str,
+) -> Result<InsertOutcome, StorageError> {
+    let transaction = connection.unchecked_transaction()?;
+    let outcome = insert(&transaction, record, received_at, signature, None)?;
+    if outcome == InsertOutcome::Inserted {
+        super::user_state::advance_recv(&transaction, user_id, record.seq)?;
+        apply_lifecycle_update(&transaction, record)?;
+    }
+    transaction.commit()?;
+    Ok(outcome)
+}
+
+pub fn apply_lifecycle_update(
+    connection: &Connection,
+    record: &MessageRecord,
+) -> Result<(), StorageError> {
+    let target = record
+        .target_id
+        .clone()
+        .ok_or_else(|| StorageError::InvalidData("lifecycle record has no target".to_owned()))?;
+    match record.kind {
+        MessageKind::Edit => {
+            connection.execute(
+                "UPDATE messages SET body = ?3, edited_at = ?4
+                 WHERE id = ?1 AND conversation_id = ?2 AND sender_id = ?5
+                   AND kind IN ('text', 'image', 'audio', 'file') AND deleted_at IS NULL",
+                params![
+                    target,
+                    record.conversation_id,
+                    record.body,
+                    record.sent_at,
+                    record.sender_id
+                ],
+            )?;
+        }
+        MessageKind::Delete => {
+            connection.execute(
+                "UPDATE messages SET deleted_at = ?3
+                 WHERE id = ?1 AND conversation_id = ?2 AND sender_id = ?4
+                   AND kind IN ('text', 'image', 'audio', 'file')",
+                params![
+                    target,
+                    record.conversation_id,
+                    record.sent_at,
+                    record.sender_id
+                ],
+            )?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 pub fn count(connection: &Connection, conversation_id: &str) -> Result<u32, StorageError> {
     let count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1 AND kind != 'ack'",
+        "SELECT COUNT(*) FROM messages WHERE conversation_id = ?1 AND kind NOT IN ('ack', 'edit', 'delete')",
         params![conversation_id],
         |row| row.get(0),
     )?;
@@ -447,9 +513,9 @@ pub fn history(
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
                 body, attachment_hash, attachment_name, attachment_size, attachment_mime,
-                signature, state
+                signature, state, edited_at, deleted_at
          FROM messages
-         WHERE conversation_id = ?1 AND kind != 'ack'
+         WHERE conversation_id = ?1 AND kind NOT IN ('ack', 'edit', 'delete')
          ORDER BY CASE WHEN sent_at > received_at THEN received_at ELSE sent_at END,
                   received_at, id
          LIMIT ?2 OFFSET ?3",
@@ -476,7 +542,7 @@ pub fn records_between(
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
                 body, attachment_hash, attachment_name, attachment_size, attachment_mime,
-                signature, state
+                signature, state, edited_at, deleted_at
          FROM messages
          WHERE conversation_id = ?1 AND sender_id = ?2 AND seq >= ?3 AND seq <= ?4
            AND (state IS NULL OR state NOT IN ('expired', 'failed'))
@@ -567,6 +633,8 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         received_at: row.get(5)?,
         signature: row.get(13)?,
         state,
+        edited_at: row.get(15)?,
+        deleted_at: row.get(16)?,
     })
 }
 

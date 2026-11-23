@@ -135,6 +135,46 @@ async fn two_nodes_exchange_messages_and_receipts() {
     .await
     .expect("read receipt");
 
+    first
+        .messaging
+        .edit_message(&message_id.to_string(), "edited".to_owned())
+        .await
+        .expect("edit message");
+    wait_for(Duration::from_secs(10), || async {
+        second
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages.first().is_some_and(|message| {
+                    message.record.body.as_deref() == Some("edited") && message.edited_at.is_some()
+                })
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("edit received");
+
+    first
+        .messaging
+        .delete_message(&message_id.to_string())
+        .await
+        .expect("delete message");
+    wait_for(Duration::from_secs(10), || async {
+        second
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages
+                    .first()
+                    .is_some_and(|message| message.deleted_at.is_some())
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("delete received");
+
     second
         .messaging
         .set_user_policy(&first.node_id.to_string(), UserPolicy::Ignore)

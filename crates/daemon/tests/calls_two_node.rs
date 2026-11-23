@@ -19,7 +19,7 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
         .start_call(&second.node_id().to_string())
         .await
         .expect("start call");
-    assert_eq!(call.state, CallState::Ringing);
+    assert_eq!(call.state, CallState::Connecting);
     assert_eq!(first.calls.state().expect("outgoing state").id, call.id);
 
     let incoming = recv_event(&mut second_events, |event| match event {
@@ -30,6 +30,18 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     .expect("incoming call");
     assert_eq!(incoming.user_id, first.node_id().to_string());
     assert_eq!(incoming.state, CallState::Ringing);
+    recv_event(&mut first_events, |event| match event {
+        CallEvent::StateChanged(info) if info.id == call.id && info.state == CallState::Ringing => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await
+    .expect("caller ringing");
+    assert_eq!(
+        first.calls.state().expect("caller ringing state").state,
+        CallState::Ringing
+    );
 
     let accepted = second.calls.accept_call(call.id).await.expect("accept");
     assert_eq!(accepted.state, CallState::InCall);

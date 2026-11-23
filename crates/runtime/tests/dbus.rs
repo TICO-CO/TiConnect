@@ -34,6 +34,9 @@ trait Daemon {
     fn run_lan_check(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
     fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
+    fn retry_message(&self, message_id: &str) -> zbus::Result<bool>;
+    fn edit_message(&self, message_id: &str, body: &str) -> zbus::Result<()>;
+    fn delete_message(&self, message_id: &str) -> zbus::Result<()>;
     fn list_messages(
         &self,
         conversation_id: &str,
@@ -59,6 +62,7 @@ trait Daemon {
     fn accept_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn set_remote_input(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
     fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
@@ -81,6 +85,18 @@ trait Daemon {
     fn incoming_call(&self, call: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    fn message_edited(
+        &self,
+        message_id: &str,
+        user_id: &str,
+        body: &str,
+        edited_at: u64,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_deleted(&self, message_id: &str, user_id: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
     fn call_state_changed(&self, call_id: &str, state: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -97,6 +113,9 @@ trait Daemon {
 
     #[zbus(signal)]
     fn remote_indicator_changed(&self, session_id: &str, visible: bool) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_input_changed(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
 }
 
 #[tokio::test]

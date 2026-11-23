@@ -77,6 +77,8 @@ pub fn run() -> anyhow::Result<()> {
             watch_party: None,
             active_call: None,
             active_remote: None,
+            remote_request: None,
+            pending_party: None,
             router: CardRouter::new(5_000),
             enabled: true,
             timeout_ms: 5_000,
@@ -101,6 +103,8 @@ struct State {
     watch_party: Option<ticonnect_core::ipc::events::WatchParty>,
     active_call: Option<ticonnect_core::ipc::events::Call>,
     active_remote: Option<ticonnect_core::ipc::events::RemoteSession>,
+    remote_request: Option<ticonnect_core::ipc::events::RemoteSession>,
+    pending_party: Option<ticonnect_core::ipc::events::WatchParty>,
     router: CardRouter,
     enabled: bool,
     timeout_ms: u64,
@@ -154,13 +158,19 @@ impl State {
             Event::CallState(call) => self.apply_call_state(call),
             Event::RemoteSessionRequested(session) => self.show_remote_request(session),
             Event::RemoteState(session) => self.apply_remote_state(session),
-            Event::CallEnded(call_id) => self.finish_call(&call_id),
-            Event::RemoteSessionEnded(session_id) => self.finish_remote(&session_id),
+            Event::CallEnded { call_id, reason } => self.finish_call(&call_id, reason),
+            Event::RemoteSessionEnded { session_id, reason } => {
+                self.finish_remote(&session_id, reason);
+            }
             Event::WatchPartyRequested(party) => self.show_watch_party(party),
             Event::WatchPartyChanged(party) => self.apply_watch_party(party),
-            Event::WatchPartyEnded(party_id) => self.end_watch_party(&party_id),
+            Event::WatchPartyEnded { party_id, reason } => {
+                self.end_watch_party(&party_id, reason);
+            }
             Event::Disconnected(reason) => {
                 tracing::warn!(%reason, "overlay lost the daemon connection");
+                let card = Card::from_daemon_offline(reason);
+                self.show_card(card);
             }
         }
     }
@@ -229,6 +239,7 @@ impl State {
         }
         let sender = self.user_name(&party.host_id);
         let card = Card::from_watch_party(&party, sender);
+        self.pending_party = Some(party);
         self.show_card(card);
     }
 
@@ -237,6 +248,7 @@ impl State {
             return;
         }
         self.remove(&format!("party:{}", party.party_id));
+        self.pending_party = None;
         self.player
             .show(&party.video_id, party.position_ms, party.playing);
         self.player_visible = true;
@@ -248,16 +260,31 @@ impl State {
         self.watch_party = Some(party);
     }
 
-    fn end_watch_party(&mut self, party_id: &str) {
-        if self
+    fn end_watch_party(
+        &mut self,
+        party_id: &str,
+        reason: ticonnect_core::ipc::events::WatchPartyEndReason,
+    ) {
+        let ended = if self
             .watch_party
             .as_ref()
             .is_some_and(|party| party.party_id == party_id)
         {
-            self.watch_party = None;
-            self.player.hide();
-            self.player_visible = false;
-            self.update_toast_offset();
+            self.watch_party.take()
+        } else {
+            self.pending_party
+                .take()
+                .filter(|party| party.party_id == party_id)
+        };
+        if let Some(party) = ended {
+            if self.watch_party.is_none() {
+                self.player.hide();
+                self.player_visible = false;
+                self.update_toast_offset();
+            }
+            let sender = self.user_name(&party.host_id);
+            let card = Card::from_party_ended(sender, party.host_id, party.party_id, reason);
+            self.show_card(card);
         }
         self.remove(&format!("party:{party_id}"));
         self.remove(&format!("party-pill:{party_id}"));
@@ -278,6 +305,7 @@ impl State {
         }
         let sender = self.user_name(&session.user_id);
         let card = Card::from_remote_request(&session, sender);
+        self.remote_request = Some(session);
         self.show_card(card);
     }
 
@@ -288,7 +316,7 @@ impl State {
         let Some(call) = call else {
             return;
         };
-        if call.state != "in_call" {
+        if call.state != "in_call" && call.state != "connecting" {
             return;
         }
         self.remove(&format!("call:{}", call.id));
@@ -298,7 +326,7 @@ impl State {
         self.active_call = Some(call);
     }
 
-    fn finish_call(&mut self, call_id: &str) {
+    fn finish_call(&mut self, call_id: &str, reason: ticonnect_core::ipc::events::CallEndReason) {
         self.remove(&format!("call:{call_id}"));
         self.remove(&format!("active-call:{call_id}"));
         let finished = self.active_call.take();
@@ -307,7 +335,7 @@ impl State {
         };
         let duration = crate::now_seconds().saturating_sub(call.started_at);
         let sender = self.user_name(&call.user_id);
-        let card = Card::from_call_ended(sender, call.user_id, duration);
+        let card = Card::from_call_ended(sender, call.user_id, call.id, duration, reason);
         self.show_card(card);
     }
 
@@ -320,6 +348,7 @@ impl State {
         };
         if session.state == "active" {
             self.remove(&format!("remote:{}", session.session_id));
+            self.remote_request = None;
             let sender = self.user_name(&session.user_id);
             let card = Card::from_sharing(&session, sender);
             self.show_card(card);
@@ -327,15 +356,29 @@ impl State {
         }
     }
 
-    fn finish_remote(&mut self, session_id: &str) {
+    fn finish_remote(
+        &mut self,
+        session_id: &str,
+        reason: ticonnect_core::ipc::events::RemoteEndReason,
+    ) {
         self.remove(&format!("remote:{session_id}"));
         self.remove(&format!("sharing:{session_id}"));
-        if self
+        let ended = if self
             .active_remote
             .as_ref()
             .is_some_and(|session| session.session_id == session_id)
         {
-            self.active_remote = None;
+            self.active_remote.take()
+        } else {
+            self.remote_request
+                .take()
+                .filter(|session| session.session_id == session_id)
+        };
+        if let Some(session) = ended {
+            let sender = self.user_name(&session.user_id);
+            let card =
+                Card::from_remote_ended(sender, session.user_id, session_id.to_owned(), reason);
+            self.show_card(card);
         }
     }
 

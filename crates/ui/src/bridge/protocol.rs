@@ -194,6 +194,20 @@ async fn dispatch_inner(
             let input: SendMessage = params(value)?;
             Ok(json!(link.send_message(input.user_id, input.body).await?))
         }
+        "retry_message" => {
+            let input: MessageId = params(value)?;
+            Ok(json!(link.retry_message(input.message_id).await?))
+        }
+        "edit_message" => {
+            let input: EditMessage = params(value)?;
+            link.edit_message(input.message_id, input.body).await?;
+            Ok(Value::Null)
+        }
+        "delete_message" => {
+            let input: MessageId = params(value)?;
+            link.delete_message(input.message_id).await?;
+            Ok(Value::Null)
+        }
         "send_attachment" => Err(RpcError::new(
             "use_http",
             "attachments are uploaded by POST /attachment?user_id=...",
@@ -359,6 +373,12 @@ async fn dispatch_inner(
             link.end_remote_session(input.session_id).await?;
             Ok(Value::Null)
         }
+        "set_remote_input" => {
+            let input: SetRemoteInput = params(value)?;
+            link.set_remote_input(input.session_id, input.allowed)
+                .await?;
+            Ok(Value::Null)
+        }
         "remote_session" => Ok(json!(link.remote_session().await?)),
         other => Err(RpcError::unknown_method(other)),
     }
@@ -425,6 +445,12 @@ struct SendMessage {
 }
 
 #[derive(Deserialize)]
+struct EditMessage {
+    message_id: String,
+    body: String,
+}
+
+#[derive(Deserialize)]
 struct MarkRead {
     conversation_id: String,
     message_ids: Vec<String>,
@@ -464,6 +490,12 @@ struct ListCallLogs {
 
 fn default_call_log_limit() -> u32 {
     100
+}
+
+#[derive(Deserialize)]
+struct SetRemoteInput {
+    session_id: String,
+    allowed: bool,
 }
 
 #[derive(Deserialize)]

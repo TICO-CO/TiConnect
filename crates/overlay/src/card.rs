@@ -4,7 +4,9 @@ use std::rc::Rc;
 use gtk::prelude::*;
 use gtk4 as gtk;
 use ticonnect_core::fingerprint::Fingerprint;
-use ticonnect_core::ipc::events::{Call, Message, RemoteSession, WatchParty};
+use ticonnect_core::ipc::events::{
+    Call, CallEndReason, Message, RemoteEndReason, RemoteSession, WatchParty, WatchPartyEndReason,
+};
 
 pub const MAX_VISIBLE: usize = 3;
 pub const DEDUP_CAPACITY: usize = 256;
@@ -23,19 +25,28 @@ pub enum CardKind {
     RemoteRequest,
     WatchPartyInvite,
     ActiveCall,
+    CallConnecting,
     Sharing,
     PartyPill,
     CallEnded,
+    RemoteEnded,
+    PartyEnded,
+    DaemonOffline,
 }
 
 impl CardKind {
     fn surface(self) -> CardSurface {
         match self {
-            Self::Message | Self::CallEnded => CardSurface::Toast,
+            Self::Message
+            | Self::CallEnded
+            | Self::RemoteEnded
+            | Self::PartyEnded
+            | Self::DaemonOffline => CardSurface::Toast,
             Self::IncomingCall
             | Self::RemoteRequest
             | Self::WatchPartyInvite
             | Self::ActiveCall
+            | Self::CallConnecting
             | Self::Sharing
             | Self::PartyPill => CardSurface::Request,
         }
@@ -48,14 +59,28 @@ impl CardKind {
             Self::RemoteRequest => "Remote desktop",
             Self::WatchPartyInvite => "Watch party invite",
             Self::ActiveCall => "In call",
+            Self::CallConnecting => "Calling",
             Self::Sharing => "Sharing screen",
             Self::PartyPill => "Watch party",
             Self::CallEnded => "Voice call ended",
+            Self::RemoteEnded => "Remote session ended",
+            Self::PartyEnded => "Watch party ended",
+            Self::DaemonOffline => "TiConnect offline",
         }
     }
 
     fn is_active(self) -> bool {
-        matches!(self, Self::ActiveCall | Self::Sharing | Self::PartyPill)
+        matches!(
+            self,
+            Self::ActiveCall | Self::CallConnecting | Self::Sharing | Self::PartyPill
+        )
+    }
+
+    fn is_warning(self) -> bool {
+        matches!(
+            self,
+            Self::CallEnded | Self::RemoteEnded | Self::PartyEnded | Self::DaemonOffline
+        )
     }
 }
 
@@ -173,14 +198,27 @@ impl Card {
     }
 
     pub fn from_active_call(call: &Call, sender: String) -> Self {
+        let connecting = call.state == "connecting";
         Self {
             id: format!("active-call:{}", call.id),
             user_id: call.user_id.clone(),
             sender,
-            preview: "Encrypted · Opus · LAN".to_owned(),
+            preview: if connecting {
+                "Connecting — waiting for answer".to_owned()
+            } else {
+                "Encrypted · Opus · LAN".to_owned()
+            },
             detail: None,
-            sent_at: call.connected_at,
-            kind: CardKind::ActiveCall,
+            sent_at: if connecting {
+                call.started_at
+            } else {
+                call.connected_at
+            },
+            kind: if connecting {
+                CardKind::CallConnecting
+            } else {
+                CardKind::ActiveCall
+            },
             persistent: true,
             actions: vec![CardAction::HangupCall],
         }
@@ -214,15 +252,73 @@ impl Card {
         }
     }
 
-    pub fn from_call_ended(sender: String, user_id: String, duration_secs: u64) -> Self {
+    pub fn from_call_ended(
+        sender: String,
+        user_id: String,
+        call_id: String,
+        duration_secs: u64,
+        reason: CallEndReason,
+    ) -> Self {
         Self {
-            id: format!("call-ended:{user_id}:{duration_secs}"),
+            id: format!("call-ended:{call_id}"),
             user_id,
             sender,
-            preview: format!("Voice call ended · {}", clock_duration(duration_secs)),
+            preview: call_end_preview(reason, duration_secs),
             detail: None,
             sent_at: now_millis(),
             kind: CardKind::CallEnded,
+            persistent: false,
+            actions: Vec::new(),
+        }
+    }
+
+    pub fn from_remote_ended(
+        sender: String,
+        user_id: String,
+        session_id: String,
+        reason: RemoteEndReason,
+    ) -> Self {
+        Self {
+            id: format!("remote-ended:{session_id}"),
+            user_id,
+            sender,
+            preview: remote_end_preview(reason),
+            detail: None,
+            sent_at: now_millis(),
+            kind: CardKind::RemoteEnded,
+            persistent: false,
+            actions: Vec::new(),
+        }
+    }
+
+    pub fn from_party_ended(
+        sender: String,
+        host_id: String,
+        party_id: String,
+        reason: WatchPartyEndReason,
+    ) -> Self {
+        Self {
+            id: format!("party-ended:{party_id}"),
+            user_id: host_id,
+            sender,
+            preview: party_end_preview(reason),
+            detail: None,
+            sent_at: now_millis(),
+            kind: CardKind::PartyEnded,
+            persistent: false,
+            actions: Vec::new(),
+        }
+    }
+
+    pub fn from_daemon_offline(reason: String) -> Self {
+        Self {
+            id: "daemon-offline".to_owned(),
+            user_id: String::new(),
+            sender: "TiConnect".to_owned(),
+            preview: "Daemon unavailable — overlay is reconnecting.".to_owned(),
+            detail: (!reason.trim().is_empty()).then_some(reason),
+            sent_at: now_millis(),
+            kind: CardKind::DaemonOffline,
             persistent: false,
             actions: Vec::new(),
         }
@@ -420,6 +516,43 @@ impl CardRouter {
     }
 }
 
+fn call_end_preview(reason: CallEndReason, duration_secs: u64) -> String {
+    let duration = clock_duration(duration_secs);
+    match reason {
+        CallEndReason::Declined => "Call declined · no audio connected".to_owned(),
+        CallEndReason::Timeout => "No answer · missed call".to_owned(),
+        CallEndReason::Error => "Call failed".to_owned(),
+        CallEndReason::Disconnected => format!("Connection lost · {duration}"),
+        CallEndReason::Hangup | CallEndReason::Unknown => {
+            format!("Voice call ended · {duration}")
+        }
+    }
+}
+
+fn remote_end_preview(reason: RemoteEndReason) -> String {
+    match reason {
+        RemoteEndReason::Denied => "Request declined · no screen data shared".to_owned(),
+        RemoteEndReason::Expired => "Request expired before consent".to_owned(),
+        RemoteEndReason::StartFailed => "Session failed to start".to_owned(),
+        RemoteEndReason::Unreachable => "Device unreachable on this network".to_owned(),
+        RemoteEndReason::KillSwitch => "Remote desktop stopped locally".to_owned(),
+        RemoteEndReason::Disconnected => "Connection lost · session closed".to_owned(),
+        RemoteEndReason::Hangup => "Session ended by the other device".to_owned(),
+        RemoteEndReason::Left => "You left the session".to_owned(),
+        RemoteEndReason::Ended | RemoteEndReason::Unknown => "Remote session ended".to_owned(),
+    }
+}
+
+fn party_end_preview(reason: WatchPartyEndReason) -> String {
+    match reason {
+        WatchPartyEndReason::Declined => "Invite declined · no one joined".to_owned(),
+        WatchPartyEndReason::Left => "You left the watch party".to_owned(),
+        WatchPartyEndReason::HostEnded => "Host ended the party".to_owned(),
+        WatchPartyEndReason::HostDisconnected => "Host disconnected · party closed".to_owned(),
+        WatchPartyEndReason::Unknown => "Watch party ended".to_owned(),
+    }
+}
+
 fn fingerprint_detail(fingerprint: &str) -> Option<String> {
     if fingerprint.trim().is_empty() {
         return None;
@@ -485,6 +618,9 @@ fn card_widget(
     let button = gtk::Box::new(gtk::Orientation::Vertical, 0);
     button.add_css_class("ticonnect-card");
     button.add_css_class(card_class(card));
+    if card.kind.is_warning() {
+        button.add_css_class("ticonnect-card-warning");
+    }
     button.set_focusable(false);
 
     let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -594,13 +730,20 @@ fn card_widget(
 }
 
 fn card_class(card: &Card) -> &'static str {
-    if card.kind.is_active() {
-        return "ticonnect-card-active";
-    }
     if card.kind == CardKind::PartyPill {
         return "ticonnect-card-pill";
     }
-    if card.kind == CardKind::Message || card.kind == CardKind::CallEnded {
+    if card.kind.is_active() {
+        return "ticonnect-card-active";
+    }
+    if matches!(
+        card.kind,
+        CardKind::Message
+            | CardKind::CallEnded
+            | CardKind::RemoteEnded
+            | CardKind::PartyEnded
+            | CardKind::DaemonOffline
+    ) {
         return "ticonnect-toast";
     }
     "ticonnect-request"

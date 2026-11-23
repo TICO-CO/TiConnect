@@ -72,6 +72,14 @@ enum Command {
         String,
         Reply<InsertOutcome>,
     ),
+    ApplyLifecycle(Box<MessageRecord>, Reply<()>),
+    ApplyInboundLifecycle(
+        Box<MessageRecord>,
+        i64,
+        Vec<u8>,
+        String,
+        Reply<InsertOutcome>,
+    ),
     GetMessage(String, Reply<Option<StoredMessage>>),
     ListHistory {
         conversation_id: String,
@@ -113,6 +121,13 @@ enum Command {
     MessageState(String, Reply<Option<MessageState>>),
     GetUserState(String, Reply<UserState>),
     AdvanceRecvSeq(String, u64, Reply<()>),
+    RequeueOutbox {
+        message_id: String,
+        sender_id: String,
+        next_try: i64,
+        expires_at: i64,
+        reply: Reply<Option<String>>,
+    },
     EnqueueOutbox {
         message_id: String,
         next_try: i64,
@@ -331,6 +346,30 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
+    pub async fn apply_lifecycle_inbound(
+        &self,
+        record: MessageRecord,
+        received_at: i64,
+        signature: Vec<u8>,
+        user_id: &str,
+    ) -> Result<InsertOutcome, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ApplyInboundLifecycle(
+            Box::new(record),
+            received_at,
+            signature,
+            user_id.to_owned(),
+            reply,
+        ))?;
+        receive(receiver).await
+    }
+
+    pub async fn apply_lifecycle(&self, record: MessageRecord) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ApplyLifecycle(Box::new(record), reply))?;
+        receive(receiver).await
+    }
+
     pub async fn insert_message(
         &self,
         record: MessageRecord,
@@ -513,6 +552,24 @@ impl DatabaseHandle {
     pub async fn advance_recv_seq(&self, user_id: &str, seq: u64) -> Result<(), StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::AdvanceRecvSeq(user_id.to_owned(), seq, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn requeue_outbox(
+        &self,
+        message_id: &str,
+        sender_id: &str,
+        next_try: i64,
+        expires_at: i64,
+    ) -> Result<Option<String>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RequeueOutbox {
+            message_id: message_id.to_owned(),
+            sender_id: sender_id.to_owned(),
+            next_try,
+            expires_at,
+            reply,
+        })?;
         receive(receiver).await
     }
 
@@ -725,6 +782,18 @@ fn dispatch(connection: &Connection, command: Command) {
         Command::AllocateSeq(user_id, reply) => {
             let _ = reply.send(user_state::allocate_seq(connection, &user_id));
         }
+        Command::ApplyLifecycle(record, reply) => {
+            let _ = reply.send(messages::apply_lifecycle_update(connection, &record));
+        }
+        Command::ApplyInboundLifecycle(record, received_at, signature, user_id, reply) => {
+            let _ = reply.send(messages::apply_lifecycle(
+                connection,
+                &record,
+                received_at,
+                &signature,
+                &user_id,
+            ));
+        }
         Command::InsertMessage(record, received_at, signature, state, reply) => {
             let _ = reply.send(messages::insert(
                 connection,
@@ -835,6 +904,21 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::AdvanceRecvSeq(user_id, seq, reply) => {
             let _ = reply.send(user_state::advance_recv(connection, &user_id, seq));
+        }
+        Command::RequeueOutbox {
+            message_id,
+            sender_id,
+            next_try,
+            expires_at,
+            reply,
+        } => {
+            let _ = reply.send(outbox::requeue(
+                connection,
+                &message_id,
+                &sender_id,
+                next_try,
+                expires_at,
+            ));
         }
         Command::EnqueueOutbox {
             message_id,

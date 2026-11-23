@@ -166,6 +166,8 @@ describe('AppState feature behavior', () => {
                 attachment_mime: '',
                 attachment_path: '',
                 state: 'read',
+                edited_at: 0,
+                deleted_at: 0,
                 notify: true,
             },
         ];
@@ -366,6 +368,7 @@ describe('AppState feature behavior', () => {
             role: 'host',
             state: 'requested',
             indicator: false,
+            input_allowed: true,
             expires_at: 1,
         };
         const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
@@ -379,6 +382,123 @@ describe('AppState feature behavior', () => {
         handle({ type: 'remote_session_started', session: { ...session, state: 'active' } });
         expect(app.remote?.state).toBe('active');
         expect(app.remote?.indicator).toBe(true);
+    });
+
+    it('refuses to send while offline or over the body limit', async () => {
+        const { app, client } = makeApp();
+        app.route = { kind: 'chat', id: 'user-1' };
+        app.connection = 'offline';
+        app.draft = 'hello';
+        await app.sendMessage();
+        expect(client.request).not.toHaveBeenCalledWith('send_message', expect.anything());
+
+        app.connection = 'online';
+        app.draft = 'a'.repeat(32_769);
+        await app.sendMessage();
+        expect(client.request).not.toHaveBeenCalledWith('send_message', expect.anything());
+        expect(app.draft).toHaveLength(32_769);
+    });
+
+    it('applies edited and deleted message events', () => {
+        const { app } = makeApp();
+        app.messages = [
+            {
+                id: 'message-1',
+                conversation_id: 'conversation-1',
+                user_id: 'user-1',
+                sender_id: 'user-1',
+                local_sender: true,
+                seq: 1,
+                sent_at: 1_000,
+                received_at: 1_000,
+                body: 'original',
+                attachment_hash: '',
+                attachment_name: '',
+                attachment_size: 0,
+                attachment_mime: '',
+                attachment_path: '',
+                state: 'sent',
+                edited_at: 0,
+                deleted_at: 0,
+                notify: true,
+            },
+        ];
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'message_edited',
+            message_id: 'message-1',
+            user_id: 'user-1',
+            body: 'updated',
+            edited_at: 2_000,
+        });
+        expect(app.messages[0]?.body).toBe('updated');
+        expect(app.messages[0]?.edited_at).toBe(2_000);
+
+        handle({
+            type: 'message_deleted',
+            message_id: 'message-1',
+            user_id: 'user-1',
+        });
+        expect(app.messages[0]?.deleted_at).toBeGreaterThan(0);
+    });
+
+    it('applies remote input policy changes from the daemon', () => {
+        const { app } = makeApp();
+        app.remote = {
+            session_id: 'session-1',
+            user_id: 'user-1',
+            fingerprint: 'a'.repeat(64),
+            role: 'viewer',
+            state: 'active',
+            indicator: true,
+            input_allowed: true,
+            expires_at: 1,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'remote_input_changed',
+            session_id: 'session-1',
+            allowed: false,
+        });
+
+        expect(app.remote?.input_allowed).toBe(false);
+    });
+
+    it('keeps the reason after a remote session ends', () => {
+        const { app } = makeApp();
+        app.remote = {
+            session_id: 'session-1',
+            user_id: 'user-1',
+            fingerprint: 'a'.repeat(64),
+            role: 'viewer',
+            state: 'active',
+            indicator: true,
+            input_allowed: true,
+            expires_at: 1,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'remote_session_ended',
+            session_id: 'session-1',
+            reason: 'expired',
+        });
+
+        expect(app.remote).toBeNull();
+        expect(app.remoteOutcome).toEqual({
+            userId: 'user-1',
+            role: 'viewer',
+            reason: 'expired',
+            endedAt: expect.any(Number),
+        });
     });
 
     it('downloads and caches attachment URLs for playback', async () => {
@@ -416,6 +536,8 @@ describe('AppState feature behavior', () => {
                 attachment_mime: '',
                 attachment_path: '',
                 state: 'read',
+                edited_at: 0,
+                deleted_at: 0,
                 notify: true,
             },
         });
@@ -620,6 +742,28 @@ describe('group watch party behavior', () => {
 
         app.prefetchYouTubeStream('video-1');
         expect(client.request).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the reason after a watch party ends', () => {
+        const { app } = makeApp();
+        app.party = { ...groupParty, state: 'active' };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({
+            type: 'watch_party_ended',
+            party_id: 'party-1',
+            reason: 'host disconnected',
+        });
+
+        expect(app.party).toBeNull();
+        expect(app.partyOutcome).toEqual({
+            partyId: 'party-1',
+            hostId: 'node-1',
+            reason: 'host disconnected',
+            endedAt: expect.any(Number),
+        });
     });
 
     it('prefetches the invited video before joining', async () => {

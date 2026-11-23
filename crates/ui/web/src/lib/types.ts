@@ -96,6 +96,8 @@ export interface Message {
     attachment_mime: string;
     attachment_path: string;
     state: string;
+    edited_at: number;
+    deleted_at: number;
     notify: boolean;
 }
 
@@ -105,6 +107,7 @@ export interface ConversationSummary {
     last_message_id: string;
     last_sender_id: string;
     last_body: string;
+    last_deleted: boolean;
     last_sent_at: number;
     unread_count: number;
 }
@@ -182,6 +185,7 @@ export interface RemoteSession {
     role: string;
     state: string;
     indicator: boolean;
+    input_allowed: boolean;
     expires_at: number;
 }
 

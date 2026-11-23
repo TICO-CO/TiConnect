@@ -1,12 +1,14 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    import type { AppState, AudioDevice, Preferences } from '../lib';
+    import type { AppState, AudioDevice, ConfirmRequest, Preferences } from '../lib';
     import { dateLabel, fileSize, fingerprintLabel } from '../lib';
     import { DEFAULT_PREFERENCES } from '../lib';
     import { SETTINGS_SECTIONS, type SettingsSection } from '../lib';
     import Avatar from './Avatar.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import Icon from './Icon.svelte';
+    import StateBanner from './StateBanner.svelte';
 
     interface Props {
         app: AppState;
@@ -15,6 +17,9 @@
     let { app }: Props = $props();
     let avatarInput: HTMLInputElement | null = $state(null);
     let preferencesDraft = $state<Preferences>({ ...DEFAULT_PREFERENCES });
+    let confirmRequest = $state<ConfirmRequest | null>(null);
+    let confirmPending = $state(false);
+    let confirmError = $state('');
     onMount(() => {
         preferencesDraft = { ...app.preferences };
     });
@@ -37,6 +42,25 @@
             about: 'Version, identity and protocol',
         }[section],
     );
+    const preferencesDirty = $derived(
+        JSON.stringify(preferencesDraft) !== JSON.stringify(app.preferences),
+    );
+    const dirty = $derived(app.settingsDirty || preferencesDirty);
+    const saveStatus = $derived.by(() => {
+        if (app.settingsSave === 'saving') {
+            return { text: 'Saving changes…', style: 'text-ink-3' };
+        }
+        if (app.settingsSave === 'error') {
+            return { text: 'Changes not saved', style: 'text-error' };
+        }
+        if (dirty) {
+            return { text: 'Unsaved changes', style: 'text-warning' };
+        }
+        if (app.settingsSave === 'saved') {
+            return { text: 'All changes saved', style: 'text-success' };
+        }
+        return null;
+    });
 
     function value(key: string, fallback = ''): string {
         return app.settingsDraft[key] ?? fallback;
@@ -72,16 +96,41 @@
         app.applyAppearance();
     }
 
-    function clearHistory(userId = ''): void {
+    function requestClearHistory(userId = ''): void {
         const scope = userId === '' ? 'all local messages and attachments' : 'this conversation';
-        if (!window.confirm(`Clear ${scope}? This cannot be undone.`)) {
+        confirmError = '';
+        confirmRequest = {
+            title: 'Clear local history',
+            body: `Clear ${scope}? This cannot be undone.`,
+            confirmLabel: 'Clear history',
+            cancelLabel: 'Cancel',
+            tone: 'error',
+            action: () => app.clearHistory(userId),
+        };
+    }
+
+    function closeConfirm(): void {
+        if (confirmPending) {
             return;
         }
-        void app.clearHistory(userId);
+        confirmRequest = null;
+        confirmError = '';
+    }
+
+    async function runConfirm(): Promise<void> {
+        if (confirmRequest === null) {
+            return;
+        }
+        confirmPending = true;
+        confirmError = '';
+        await confirmRequest.action();
+        confirmPending = false;
+        confirmRequest = null;
     }
 
     function setPreference<K extends keyof Preferences>(key: K, next: Preferences[K]): void {
         preferencesDraft = { ...preferencesDraft, [key]: next };
+        app.markSettingsDirty();
     }
 
     function lanStateLabel(state: string): string {
@@ -117,9 +166,9 @@
         return 'text-warning';
     }
 
-    function save(): void {
+    async function save(): Promise<void> {
         app.updatePreferences(preferencesDraft);
-        void app.saveSettings();
+        await app.saveSettings();
     }
 
     function revert(): void {
@@ -926,7 +975,7 @@
                     </div>
                     <button
                         class="mt-3 inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
-                        onclick={() => clearHistory()}>Clear local history</button
+                        onclick={() => requestClearHistory()}>Clear local history</button
                     >
                 </section>
             {:else}
@@ -1113,15 +1162,47 @@
                 </section>
             {/if}
         </div>
-        <footer class="flex shrink-0 justify-end gap-2.5 pt-5">
+        {#if app.settingsSave === 'error'}
+            <div class="shrink-0 pt-4">
+                <StateBanner
+                    tone="error"
+                    title="Settings were not saved"
+                    body={app.settingsSaveError || 'Check the daemon connection and try again.'}
+                    actionLabel="Try again"
+                    onaction={() => void save()}
+                />
+            </div>
+        {/if}
+        <footer class="flex shrink-0 items-center gap-2.5 pt-5">
+            <span class="flex-1 text-xs text-ink-3" role="status">
+                {#if saveStatus}
+                    <span class={saveStatus.style}>{saveStatus.text}</span>
+                {/if}
+            </span>
             <button
-                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!dirty || app.settingsSave === 'saving'}
                 onclick={revert}>Revert</button
             >
             <button
-                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
-                onclick={save}>Save changes</button
+                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-busy={app.settingsSave === 'saving'}
+                disabled={!dirty || app.settingsSave === 'saving'}
+                onclick={() => void save()}
+                >{app.settingsSave === 'saving' ? 'Saving…' : 'Save changes'}</button
             >
         </footer>
     </div>
+    <ConfirmDialog
+        open={confirmRequest !== null}
+        title={confirmRequest?.title ?? ''}
+        body={confirmRequest?.body ?? ''}
+        confirmLabel={confirmRequest?.confirmLabel ?? 'Confirm'}
+        cancelLabel={confirmRequest?.cancelLabel ?? 'Cancel'}
+        tone={confirmRequest?.tone ?? 'error'}
+        pending={confirmPending}
+        error={confirmError}
+        onconfirm={() => void runConfirm()}
+        oncancel={closeConfirm}
+    />
 </section>

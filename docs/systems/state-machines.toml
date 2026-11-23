@@ -50,17 +50,22 @@ owner = "CALL.state"
 doc = "16-calls.md"
 states = [
   { name = "idle", description = "No call." },
+  { name = "connecting", description = "Outgoing offer sent, waiting for ring." },
   { name = "ringing", description = "Incoming or outgoing ring." },
   { name = "in_call", description = "Audio connected." },
   { name = "ended", description = "Terminal call state." },
 ]
 transitions = [
-  { from = "idle", event = "start", to = "ringing", guard = "user trusted and policy allows" },
+  { from = "idle", event = "start", to = "connecting", guard = "user trusted and policy allows" },
+  { from = "connecting", event = "ring", to = "ringing" },
   { from = "idle", event = "incoming", to = "ringing", guard = "user trusted and policy allows" },
   { from = "ringing", event = "accept", to = "in_call", action = "start audio devices" },
   { from = "ringing", event = "decline", to = "ended" },
+  { from = "connecting", event = "timeout", to = "ended" },
   { from = "ringing", event = "timeout", to = "ended" },
+  { from = "connecting", event = "hangup", to = "ended" },
   { from = "in_call", event = "hangup", to = "ended" },
+  { from = "connecting", event = "error", to = "ended" },
   { from = "in_call", event = "error", to = "ended" },
   { from = "ringing", event = "error", to = "ended" },
 ]

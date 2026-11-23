@@ -257,8 +257,8 @@ There is deliberately no `settings` table. Configuration lives in
 - `cpal` captures and plays audio.
 - Frames are encoded with Opus at 20ms and sent over QUIC datagrams.
 - A jitter buffer with packet-loss concealment handles loss and reordering.
-- The daemon owns the call state machine: `idle`, `ringing`, `in-call`,
-  `ended`. State changes are D-Bus signals.
+- The daemon owns the call state machine: `idle`, `connecting`, `ringing`,
+  `in-call`, `ended`. State changes are D-Bus signals.
 
 ## 7. Remote desktop
 
@@ -276,7 +276,9 @@ View and control are both in v1.
    session active" indicator, and has a hard kill switch. Sessions are
    consent-gated and scoped to a single trusted user.
 
-Remote desktop is the highest-risk feature. Per-session consent, the visible indicator, and the kill switch are
+Remote pointer and keyboard input can be blocked per session without ending
+sharing, and the daemon enforces that policy before injection. Remote desktop is
+the highest-risk feature. Per-session consent, the visible indicator, and the kill switch are
 mandatory, not optional.
 
 ## 8. UI
@@ -308,8 +310,10 @@ UI.
   top-right, transparent window, rounded card.
 - `KeyboardMode::None` so it never steals focus; only the card itself takes
   pointer input.
-- A card slides in on `MessageReceived`, `IncomingCall`, `RemoteSessionRequested`,
-`WatchPartyRequested`, and `TransferDone`.
+- Cards cover messages, calls, remote consent and sharing, watch parties, and
+  typed ended/offline states so the overlay never disappears without feedback.
+- Outgoing call cards show `connecting` before the remote rings; ended cards
+  preserve the reason (`declined`, `timeout`, `kill-switch`, `host disconnected`).
 - Clicking a card calls `org.ticonnect.UI.Activate(view)` and opens the app on
   the relevant screen.
 - Incoming-call cards persist until answered or declined; other cards
@@ -351,5 +355,6 @@ UI.
   KDE first.
 - Outbox expiry loses undelivered messages after the TTL.
 - Clock skew can reorder messages; there is no global ordering.
-- Deletion is local-only; the sender's or receiver's remote copy cannot be
-  removed.
+- Edits and deletes are signed lifecycle records. Receiving peers update or hide
+  their local copy, but already-downloaded attachment bytes remain until retention
+  cleanup.

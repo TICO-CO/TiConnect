@@ -1,3 +1,4 @@
+use ticonnect_core::ipc::events::{Call, CallEndReason, RemoteEndReason, WatchPartyEndReason};
 use ticonnect_overlay::card::{
     AddOutcome, Card, CardKind, CardQueue, CardRouter, DEDUP_CAPACITY, MAX_VISIBLE, preview,
 };
@@ -142,10 +143,80 @@ fn remote_request_card_shows_the_verified_fingerprint() {
         role: "host".to_owned(),
         state: "requested".to_owned(),
         indicator: false,
+        input_allowed: true,
         expires_at: 1,
     };
     let card = Card::from_remote_request(&session, "Ada".to_owned());
     let detail = card.detail.expect("fingerprint detail");
     assert!(detail.starts_with("Identity: "));
     assert!(detail.contains("a1b2 c3d4 e5f6 0718"));
+}
+
+#[test]
+fn connecting_calls_use_the_calling_card() {
+    let call = Call {
+        id: "call-1".to_owned(),
+        user_id: "user-1".to_owned(),
+        direction: "outgoing".to_owned(),
+        state: "connecting".to_owned(),
+        started_at: 1,
+        connected_at: 0,
+        input_muted: false,
+        output_muted: false,
+    };
+    let card = Card::from_active_call(&call, "Ada".to_owned());
+    assert_eq!(card.kind, CardKind::CallConnecting);
+    assert_eq!(card.preview, "Connecting — waiting for answer");
+}
+
+#[test]
+fn ended_cards_keep_the_typed_reason() {
+    let call = Card::from_call_ended(
+        "Ada".to_owned(),
+        "user-1".to_owned(),
+        "call-1".to_owned(),
+        0,
+        CallEndReason::Declined,
+    );
+    assert_eq!(call.kind, CardKind::CallEnded);
+    assert!(call.preview.contains("declined"));
+
+    let remote = Card::from_remote_ended(
+        "Ada".to_owned(),
+        "user-1".to_owned(),
+        "session-1".to_owned(),
+        RemoteEndReason::KillSwitch,
+    );
+    assert_eq!(remote.kind, CardKind::RemoteEnded);
+    assert!(remote.preview.contains("stopped locally"));
+
+    let party = Card::from_party_ended(
+        "Ada".to_owned(),
+        "user-1".to_owned(),
+        "party-1".to_owned(),
+        WatchPartyEndReason::HostDisconnected,
+    );
+    assert_eq!(party.kind, CardKind::PartyEnded);
+    assert!(party.preview.contains("Host disconnected"));
+}
+
+#[test]
+fn offline_card_carries_the_daemon_reason() {
+    let card = Card::from_daemon_offline("bus not available".to_owned());
+    assert_eq!(card.kind, CardKind::DaemonOffline);
+    assert_eq!(card.detail.as_deref(), Some("bus not available"));
+}
+
+#[test]
+fn lifecycle_toasts_route_to_the_toast_surface() {
+    let mut router = CardRouter::new(1_000);
+    let card = Card::from_remote_ended(
+        "Ada".to_owned(),
+        "user-1".to_owned(),
+        "session-1".to_owned(),
+        RemoteEndReason::Denied,
+    );
+    assert_eq!(router.route(card, true, true, true), AddOutcome::Overlay);
+    assert_eq!(router.visible_toasts().count(), 1);
+    assert_eq!(router.visible_requests().count(), 0);
 }

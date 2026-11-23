@@ -32,6 +32,7 @@ import type {
     YoutubePreview,
     YoutubeStream,
 } from './types';
+import type { LifecycleState, LoadState, PartyOutcome, RemoteOutcome, SaveState } from './ui-state';
 import { firstVideoId } from './youtube';
 
 function timing(label: string): void {
@@ -76,11 +77,16 @@ interface DemoSeed {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+const MAX_MESSAGE_BODY_BYTES = 32 * 1024;
 const TOAST_LIMIT = 3;
 const DEFAULT_TOAST_TIMEOUT_SECS = 5;
 
 function nowSeconds(): number {
     return Math.floor(Date.now() / 1000);
+}
+
+function messageBodyBytes(value: string): number {
+    return new TextEncoder().encode(value).length;
 }
 
 function isDemoEnabled(): boolean {
@@ -89,23 +95,34 @@ function isDemoEnabled(): boolean {
 
 export class AppState {
     connection = $state<Connection>('connecting');
+    lifecycle = $state<LifecycleState>('booting');
+    reconnectAttempt = $state(0);
     bootstrap = $state<Bootstrap | null>(null);
     network = $state<NetworkStatus | null>(null);
     checkingLan = $state(false);
     users = $state<User[]>([]);
+    usersLoad = $state<LoadState>('idle');
+    usersError = $state('');
     summaries = $state<ConversationSummary[]>([]);
     messages = $state<Message[]>([]);
+    messagesLoad = $state<LoadState>('idle');
+    messagesError = $state('');
+    olderMessagesError = $state('');
     hasOlderMessages = $state(false);
     loadingOlderMessages = $state(false);
     details = $state<UserDetails | null>(null);
     call = $state<Call | null>(null);
     remote = $state<RemoteSession | null>(null);
+    remoteOutcome = $state<RemoteOutcome | null>(null);
     party = $state<WatchParty | null>(null);
+    partyOutcome = $state<PartyOutcome | null>(null);
     watchPartySelection = $state<string[]>([]);
     route = $state<Route>({ kind: 'chat', id: '' });
     collapsed = $state(false);
     draft = $state('');
     errorMessage = $state('');
+    messageRetryPending = $state('');
+    messageActionPending = $state('');
     notice = $state('');
     toasts = $state<Toast[]>([]);
     transfers = $state<Record<string, TransferState>>({});
@@ -126,6 +143,10 @@ export class AppState {
     preferences = $state<Preferences>({ ...DEFAULT_PREFERENCES });
     settings = $state<Record<string, string>>({});
     settingsDraft = $state<Record<string, string>>({});
+    settingsLoad = $state<LoadState>('idle');
+    settingsLoadError = $state('');
+    settingsSave = $state<SaveState>('idle');
+    settingsSaveError = $state('');
     autostart = $state(false);
     autostartDraft = $state(false);
     storageUsage = $state<StorageUsage>({
@@ -138,6 +159,7 @@ export class AppState {
     recordingSeconds = $state(0);
     callLevel = $state(0);
     callActionPending = $state(false);
+    remoteInputPending = $state(false);
     demo = false;
     private client: BridgeClient | null = null;
     private videoPreviews = new SvelteMap<string, YoutubePreview>();
@@ -210,15 +232,38 @@ export class AppState {
         this.releaseAttachments();
     }
 
+    async retryConnection(): Promise<void> {
+        if (this.demo) {
+            return;
+        }
+        if (this.reconnectTimer !== null) {
+            window.clearTimeout(this.reconnectTimer);
+            this.reconnectTimer = null;
+        }
+        this.reconnectDelay = 1_000;
+        this.client?.close();
+        await this.connect();
+    }
+
+    async retryRefresh(): Promise<void> {
+        await this.refresh();
+    }
+
     private startDemo(screenName: string): void {
         const seed: DemoSeed = demoScreen(screenName);
         this.demo = true;
         this.connection = 'online';
+        this.lifecycle = 'ready';
         this.users = seed.users;
+        this.usersLoad = seed.users.length === 0 ? 'empty' : 'ready';
+        this.usersError = '';
         this.bootstrap = seed.bootstrap;
         this.network = seed.bootstrap.network;
         this.summaries = seed.summaries;
         this.messages = seed.messages;
+        this.messagesLoad = seed.messages.length === 0 ? 'empty' : 'ready';
+        this.messagesError = '';
+        this.olderMessagesError = '';
         this.details = seed.details;
         this.party = seed.party;
         this.call = seed.call;
@@ -257,7 +302,8 @@ export class AppState {
     }
 
     private async connect(): Promise<void> {
-        this.connection = this.bootstrap === null ? 'connecting' : 'online';
+        this.connection = this.bootstrap === null ? 'connecting' : 'offline';
+        this.lifecycle = this.bootstrap === null ? 'booting' : 'ready';
         const bridge = new BridgeClient(bridgeFromWindow());
         this.client = bridge;
         this.removeBridgeListener?.();
@@ -265,6 +311,7 @@ export class AppState {
         const connectionResult = await bridge.connect();
         if (!connectionResult.ok) {
             this.connection = 'offline';
+            this.lifecycle = this.bootstrap === null ? 'offline' : 'ready';
             this.errorMessage = connectionResult.error.message;
             this.scheduleReconnect();
             return;
@@ -273,6 +320,7 @@ export class AppState {
         const bootstrapResult = await bridge.request<Bootstrap>('bootstrap');
         if (!bootstrapResult.ok) {
             this.connection = 'offline';
+            this.lifecycle = this.bootstrap === null ? 'offline' : 'ready';
             this.errorMessage = bootstrapResult.error.message;
             this.scheduleReconnect();
             return;
@@ -280,6 +328,7 @@ export class AppState {
         const bootstrap = bootstrapResult.value;
         if (bootstrap === null) {
             this.connection = 'offline';
+            this.lifecycle = this.bootstrap === null ? 'offline' : 'ready';
             this.errorMessage = 'bootstrap response was empty';
             this.scheduleReconnect();
             return;
@@ -288,6 +337,8 @@ export class AppState {
         this.network = bootstrap.network;
         this.errorMessage = '';
         this.connection = 'online';
+        this.lifecycle = 'ready';
+        this.reconnectAttempt = 0;
         timing('bootstrap loaded');
         this.reconnectDelay = 1_000;
         this.settings = { ...bootstrap.settings };
@@ -313,6 +364,7 @@ export class AppState {
         if (this.demo || this.reconnectTimer !== null) {
             return;
         }
+        this.reconnectAttempt += 1;
         const delay = this.reconnectDelay;
         this.reconnectDelay = Math.min(this.reconnectDelay * 2, 10_000);
         this.reconnectTimer = window.setTimeout(() => {
@@ -326,12 +378,17 @@ export class AppState {
         if (this.client === null) {
             return;
         }
+        this.usersLoad = 'loading';
+        this.usersError = '';
         const usersResult = await this.client.request<User[]>('list_users');
         if (!usersResult.ok) {
+            this.usersLoad = 'error';
+            this.usersError = usersResult.error.message;
             this.notice = usersResult.error.message;
             return;
         }
         this.users = usersResult.value ?? [];
+        this.usersLoad = this.users.length === 0 ? 'empty' : 'ready';
         this.syncAvatars();
         const summariesResult = await this.client.request<ConversationSummary[]>(
             'list_conversation_summaries',
@@ -362,6 +419,15 @@ export class AppState {
             default:
                 return '';
         }
+    }
+
+    get settingsDirty(): boolean {
+        if (this.autostart !== this.autostartDraft) {
+            return true;
+        }
+        return Object.entries(this.settingsDraft).some(
+            ([key, value]) => this.settings[key] !== value,
+        );
     }
 
     async checkLan(): Promise<void> {
@@ -587,6 +653,17 @@ export class AppState {
         return { ...message, local_sender: message.sender_id === nodeId };
     }
 
+    private applyMessageState(messageId: string, state: string): void {
+        const index = this.messages.findIndex((message) => message.id === messageId);
+        const message = this.messages[index];
+        if (message === undefined) {
+            return;
+        }
+        const next = this.messages.slice();
+        next[index] = { ...message, state };
+        this.messages = next;
+    }
+
     private appendMessage(message: Message): void {
         const normalized = this.normalizeMessage(message);
         const index = this.messages.findIndex((item) => item.id === normalized.id);
@@ -652,12 +729,16 @@ export class AppState {
         if (this.client === null) {
             return;
         }
+        this.messagesLoad = 'loading';
+        this.messagesError = '';
+        this.olderMessagesError = '';
         this.messages = [];
         this.messageOffset = 0;
         this.hasOlderMessages = false;
         this.loadingOlderMessages = false;
         const summary = this.summaries.find((item) => item.user_id === userId);
         if (summary === undefined) {
+            this.messagesLoad = 'empty';
             return;
         }
         const conversationId = summary.conversation_id;
@@ -665,6 +746,8 @@ export class AppState {
             conversation_id: conversationId,
         });
         if (!countResult.ok) {
+            this.messagesLoad = 'error';
+            this.messagesError = countResult.error.message;
             this.notice = countResult.error.message;
             return;
         }
@@ -678,6 +761,8 @@ export class AppState {
                 offset,
             });
             if (!messagesResult.ok) {
+                this.messagesLoad = 'error';
+                this.messagesError = messagesResult.error.message;
                 this.notice = messagesResult.error.message;
                 return;
             }
@@ -693,6 +778,7 @@ export class AppState {
         if (this.route.kind !== 'chat' || this.route.id !== userId) {
             return;
         }
+        this.messagesLoad = this.messages.length === 0 ? 'empty' : 'ready';
         await this.markConversationRead(conversationId);
     }
 
@@ -714,6 +800,7 @@ export class AppState {
         const limit = Math.min(HISTORY_PAGE_SIZE, this.messageOffset);
         const offset = this.messageOffset - limit;
         this.loadingOlderMessages = true;
+        this.olderMessagesError = '';
         const messagesResult = await this.client.request<Message[]>('list_messages', {
             conversation_id: conversationId,
             limit,
@@ -721,6 +808,7 @@ export class AppState {
         });
         this.loadingOlderMessages = false;
         if (!messagesResult.ok) {
+            this.olderMessagesError = messagesResult.error.message;
             this.notice = messagesResult.error.message;
             return;
         }
@@ -817,13 +905,18 @@ export class AppState {
         if (this.client === null) {
             return;
         }
+        this.settingsLoad = 'loading';
+        this.settingsLoadError = '';
         const valuesResult = await this.client.request<Record<string, string>>('list_settings');
         if (!valuesResult.ok) {
+            this.settingsLoad = 'error';
+            this.settingsLoadError = valuesResult.error.message;
             this.notice = valuesResult.error.message;
             return;
         }
         this.settings = { ...(valuesResult.value ?? {}) };
         this.settingsDraft = { ...this.settings };
+        this.settingsLoad = 'ready';
         const autostartResult = await this.client.request<boolean>('autostart_get');
         this.autostart = autostartResult.ok ? autostartResult.value : false;
         this.autostartDraft = this.autostart;
@@ -963,6 +1056,12 @@ export class AppState {
     }
 
     navigate(route: Route): void {
+        if (route.kind !== 'remote') {
+            this.remoteOutcome = null;
+        }
+        if (route.kind !== 'watch-party') {
+            this.partyOutcome = null;
+        }
         this.route = route;
         const hash = routeHash(route);
         if (window.location.hash !== hash) {
@@ -1092,6 +1191,9 @@ export class AppState {
         this.notice = userId === '' ? 'Local history cleared.' : 'Conversation history cleared.';
         this.releaseAttachments();
         this.messages = [];
+        this.messagesLoad = 'empty';
+        this.messagesError = '';
+        this.olderMessagesError = '';
         this.messageOffset = 0;
         this.hasOlderMessages = false;
         await this.refresh();
@@ -1201,12 +1303,101 @@ export class AppState {
         this.recordingSeconds = 0;
     }
 
+    async retryMessage(messageId: string): Promise<void> {
+        if (this.messageRetryPending !== '') {
+            return;
+        }
+        if (this.demo) {
+            this.notice = 'Message retry is not available in the demo.';
+            return;
+        }
+        if (this.client === null) {
+            return;
+        }
+        this.messageRetryPending = messageId;
+        const result = await this.client.request<boolean>('retry_message', {
+            message_id: messageId,
+        });
+        this.messageRetryPending = '';
+        if (!result.ok) {
+            this.notice = result.error.message;
+            return;
+        }
+        if (result.value !== true) {
+            this.notice = 'This message cannot be retried.';
+            return;
+        }
+        this.applyMessageState(messageId, 'queued');
+        this.notice = 'Message queued for retry.';
+    }
+
+    async editMessage(messageId: string, body: string): Promise<boolean> {
+        if (this.messageActionPending !== '' || body.trim() === '') {
+            return false;
+        }
+        if (this.client === null) {
+            this.notice = 'Message editing is not available in the demo.';
+            return false;
+        }
+        this.messageActionPending = messageId;
+        const result = await this.client.request('edit_message', {
+            message_id: messageId,
+            body,
+        });
+        this.messageActionPending = '';
+        if (!result.ok) {
+            this.notice = result.error.message;
+            return false;
+        }
+        return true;
+    }
+
+    async deleteMessage(messageId: string): Promise<boolean> {
+        if (this.messageActionPending !== '') {
+            return false;
+        }
+        if (this.client === null) {
+            this.notice = 'Message deletion is not available in the demo.';
+            return false;
+        }
+        this.messageActionPending = messageId;
+        const result = await this.client.request('delete_message', {
+            message_id: messageId,
+        });
+        this.messageActionPending = '';
+        if (!result.ok) {
+            this.notice = result.error.message;
+            return false;
+        }
+        return true;
+    }
+
+    private sendBlockedReason(userId: string): string {
+        if (this.connection !== 'online') {
+            return 'Messages cannot be sent while the daemon is offline.';
+        }
+        const user = this.users.find((item) => item.id === userId);
+        if (user?.policy === 'ignore') {
+            return 'This user is blocked. Unblock them from Profile to send messages.';
+        }
+        return '';
+    }
+
     async sendMessage(): Promise<void> {
-        if (this.client === null || this.route.kind !== 'chat' || this.draft.trim() === '') {
+        if (this.route.kind !== 'chat' || this.draft.trim() === '') {
             return;
         }
         const body = this.draft;
         const userId = this.route.id;
+        const blocked = this.sendBlockedReason(userId);
+        if (blocked !== '') {
+            this.notice = blocked;
+            return;
+        }
+        if (messageBodyBytes(body) > MAX_MESSAGE_BODY_BYTES) {
+            this.notice = 'Message is too long. Shorten it before sending.';
+            return;
+        }
         this.draft = '';
         await this.setTyping(false);
         if (this.demo) {
@@ -1226,10 +1417,15 @@ export class AppState {
                 attachment_mime: '',
                 attachment_path: '',
                 state: 'sent',
+                edited_at: 0,
+                deleted_at: 0,
                 notify: false,
             };
             this.appendMessage(message);
             this.updateSummary(message);
+            return;
+        }
+        if (this.client === null) {
             return;
         }
         const messageResult = await this.client.request<string>('send_message', {
@@ -1253,6 +1449,11 @@ export class AppState {
             return;
         }
         const userId = this.route.id;
+        const blocked = this.sendBlockedReason(userId);
+        if (blocked !== '') {
+            this.notice = blocked;
+            return;
+        }
         if (this.demo) {
             const message: Message = {
                 id: `demo-${Date.now()}`,
@@ -1270,6 +1471,8 @@ export class AppState {
                 attachment_mime: file.type,
                 attachment_path: '',
                 state: 'sent',
+                edited_at: 0,
+                deleted_at: 0,
                 notify: false,
             };
             this.appendMessage(message);
@@ -1576,6 +1779,7 @@ export class AppState {
     }
 
     async requestRemote(userId: string): Promise<void> {
+        this.remoteOutcome = null;
         if (this.client === null) {
             this.remote = {
                 session_id: 'demo-remote',
@@ -1584,6 +1788,7 @@ export class AppState {
                 role: 'viewer',
                 state: 'requested',
                 indicator: false,
+                input_allowed: true,
                 expires_at: nowSeconds() + 300,
             };
             this.navigate({ kind: 'remote', id: userId });
@@ -1601,6 +1806,7 @@ export class AppState {
     }
 
     async acceptRemote(): Promise<void> {
+        this.remoteOutcome = null;
         if (this.client === null || this.remote === null) {
             if (this.remote !== null) {
                 this.remote = { ...this.remote, state: 'active', indicator: true };
@@ -1619,27 +1825,52 @@ export class AppState {
 
     async denyRemote(): Promise<void> {
         if (this.client === null || this.remote === null) {
-            this.remote = null;
+            this.finishRemote('denied');
             return;
         }
         await this.client.request('deny_remote_session', {
             session_id: this.remote.session_id,
         });
-        this.remote = null;
+        this.finishRemote('denied');
+    }
+
+    async setRemoteInput(allowed: boolean): Promise<void> {
+        if (this.remote === null || this.remoteInputPending) {
+            return;
+        }
+        if (this.client === null) {
+            this.remote = { ...this.remote, input_allowed: allowed };
+            return;
+        }
+        this.remoteInputPending = true;
+        const result = await this.client.request('set_remote_input', {
+            session_id: this.remote.session_id,
+            allowed,
+        });
+        this.remoteInputPending = false;
+        if (!result.ok) {
+            this.notice = result.error.message;
+            return;
+        }
+        if (this.remote !== null) {
+            this.remote = { ...this.remote, input_allowed: allowed };
+        }
     }
 
     async endRemote(): Promise<void> {
         if (this.client === null || this.remote === null) {
-            this.remote = null;
+            this.finishRemote('left');
             return;
         }
+        const role = this.remote.role;
         await this.client.request('end_remote_session', {
             session_id: this.remote.session_id,
         });
-        this.remote = null;
+        this.finishRemote(role === 'host' ? 'ended' : 'left');
     }
 
     async startParty(videoId: string, userIds: string[]): Promise<void> {
+        this.partyOutcome = null;
         const selfId = this.bootstrap?.identity.node_id ?? '';
         if (this.client === null) {
             this.party = {
@@ -1807,6 +2038,7 @@ export class AppState {
     }
 
     async acceptParty(): Promise<void> {
+        this.partyOutcome = null;
         if (this.client === null || this.party === null) {
             if (this.party !== null) {
                 this.party = { ...this.party, state: 'active' };
@@ -1878,30 +2110,47 @@ export class AppState {
 
     setDraftSetting(key: string, value: string): void {
         this.settingsDraft = { ...this.settingsDraft, [key]: value };
+        this.settingsSave = 'dirty';
+        this.settingsSaveError = '';
     }
 
     setAutostart(value: boolean): void {
         this.autostartDraft = value;
+        this.settingsSave = 'dirty';
+        this.settingsSaveError = '';
+    }
+
+    markSettingsDirty(): void {
+        this.settingsSave = 'dirty';
+        this.settingsSaveError = '';
     }
 
     updatePreferences(patch: Partial<Preferences>): void {
         this.preferences = { ...this.preferences, ...patch };
         savePreferences(this.preferences);
+        this.settingsSave = 'dirty';
+        this.settingsSaveError = '';
     }
 
     async saveSettings(): Promise<void> {
         if (this.client === null) {
             this.settings = { ...this.settingsDraft };
             this.autostart = this.autostartDraft;
+            this.settingsSave = 'saved';
+            this.settingsSaveError = '';
             this.notice = 'Settings saved for this demo.';
             return;
         }
+        this.settingsSave = 'saving';
+        this.settingsSaveError = '';
         for (const [key, value] of Object.entries(this.settingsDraft)) {
             if (this.settings[key] === value) {
                 continue;
             }
             const settingsResult = await this.client.request('settings_save', { key, value });
             if (!settingsResult.ok) {
+                this.settingsSave = 'error';
+                this.settingsSaveError = settingsResult.error.message;
                 this.notice = settingsResult.error.message;
                 return;
             }
@@ -1911,10 +2160,14 @@ export class AppState {
                 enabled: this.autostartDraft,
             });
             if (!autostartResult.ok) {
+                this.settingsSave = 'error';
+                this.settingsSaveError = autostartResult.error.message;
                 this.notice = autostartResult.error.message;
                 return;
             }
         }
+        this.settingsSave = 'saved';
+        this.settingsSaveError = '';
         this.notice = 'Settings saved.';
         await this.loadSettings();
         this.applyAppearance();
@@ -1926,6 +2179,9 @@ export class AppState {
     revertSettings(): void {
         this.settingsDraft = { ...this.settings };
         this.autostartDraft = this.autostart;
+        this.settingsSave = 'idle';
+        this.settingsSaveError = '';
+        this.applyAppearance();
     }
 
     openPlayer(videoId: string, positionMs = 0, playing = true): void {
@@ -2039,15 +2295,38 @@ export class AppState {
                 this.receiveMessage(event.message as Message);
                 break;
             case 'message_state_changed': {
+                this.applyMessageState(String(event.message_id ?? ''), String(event.state ?? ''));
+                break;
+            }
+            case 'message_edited': {
                 const messageId = String(event.message_id ?? '');
-                const state = String(event.state ?? '');
                 const index = this.messages.findIndex((message) => message.id === messageId);
                 const message = this.messages[index];
                 if (message !== undefined) {
                     const next = this.messages.slice();
-                    next[index] = { ...message, state };
+                    next[index] = {
+                        ...message,
+                        body: String(event.body ?? ''),
+                        edited_at: Number(event.edited_at ?? 0),
+                    };
                     this.messages = next;
                 }
+                this.scheduleRefresh();
+                break;
+            }
+            case 'message_deleted': {
+                const messageId = String(event.message_id ?? '');
+                const index = this.messages.findIndex((message) => message.id === messageId);
+                const message = this.messages[index];
+                if (message !== undefined) {
+                    const next = this.messages.slice();
+                    next[index] = {
+                        ...message,
+                        deleted_at: Math.floor(Date.now() / 1_000),
+                    };
+                    this.messages = next;
+                }
+                this.scheduleRefresh();
                 break;
             }
             case 'typing_changed': {
@@ -2107,12 +2386,34 @@ export class AppState {
                     this.remote = { ...this.remote, state: 'active', indicator: true };
                 }
                 break;
-            case 'remote_session_ended':
+            case 'remote_session_ended': {
+                const ended = this.remote;
+                if (ended !== null) {
+                    this.remoteOutcome = {
+                        userId: ended.user_id,
+                        role: ended.role,
+                        reason: String(event.reason ?? 'ended'),
+                        endedAt: Date.now(),
+                    };
+                }
                 this.remote = null;
+                this.remoteInputPending = false;
                 break;
+            }
             case 'remote_indicator_changed':
                 if (this.remote !== null) {
                     this.remote = { ...this.remote, indicator: Boolean(event.visible) };
+                }
+                break;
+            case 'remote_input_changed':
+                if (
+                    this.remote !== null &&
+                    this.remote.session_id === String(event.session_id ?? '')
+                ) {
+                    this.remote = {
+                        ...this.remote,
+                        input_allowed: Boolean(event.allowed),
+                    };
                 }
                 break;
             case 'watch_party_requested':
@@ -2122,10 +2423,20 @@ export class AppState {
                 this.prefetchYouTubeStream(party.video_id);
                 break;
             }
-            case 'watch_party_ended':
+            case 'watch_party_ended': {
+                const ended = this.party;
+                if (ended !== null) {
+                    this.partyOutcome = {
+                        partyId: ended.party_id,
+                        hostId: ended.host_id,
+                        reason: String(event.reason ?? 'ended'),
+                        endedAt: Date.now(),
+                    };
+                }
                 this.party = null;
                 this.closePlayer();
                 break;
+            }
             case 'settings_changed':
                 void this.loadSettings();
                 break;
@@ -2185,6 +2496,21 @@ export class AppState {
             });
         }
         this.scheduleRefresh();
+    }
+
+    private finishRemote(reason: string): void {
+        const ended = this.remote;
+        this.remote = null;
+        this.remoteInputPending = false;
+        if (ended === null) {
+            return;
+        }
+        this.remoteOutcome = {
+            userId: ended.user_id,
+            role: ended.role,
+            reason,
+            endedAt: Date.now(),
+        };
     }
 
     private finishCall(callId: string, reason: string): void {

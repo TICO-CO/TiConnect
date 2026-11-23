@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
 
@@ -24,6 +24,41 @@ pub fn enqueue(
         params![message_id, next_try, expires_at],
     )?;
     Ok(())
+}
+
+pub fn requeue(
+    connection: &Connection,
+    message_id: &str,
+    sender_id: &str,
+    next_try: i64,
+    expires_at: i64,
+) -> Result<Option<String>, StorageError> {
+    let transaction = connection.unchecked_transaction()?;
+    let user_id = transaction
+        .query_row(
+            "SELECT c.user_id
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE m.id = ?1 AND m.sender_id = ?2
+               AND m.state IN ('failed', 'expired')",
+            params![message_id, sender_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let Some(user_id) = user_id else {
+        return Ok(None);
+    };
+    transaction.execute(
+        "INSERT OR REPLACE INTO outbox (message_id, attempts, next_try, expires_at)
+         VALUES (?1, 0, ?2, ?3)",
+        params![message_id, next_try, expires_at],
+    )?;
+    transaction.execute(
+        "UPDATE messages SET state = 'queued' WHERE id = ?1",
+        params![message_id],
+    )?;
+    transaction.commit()?;
+    Ok(Some(user_id))
 }
 
 pub fn due_for_user(

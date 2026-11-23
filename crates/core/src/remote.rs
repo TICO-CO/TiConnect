@@ -11,6 +11,7 @@ pub enum RemoteSignalFrame {
     Hangup { session_id: [u8; 16] },
     KillSwitch { session_id: [u8; 16] },
     KeyframeRequest { session_id: [u8; 16] },
+    InputPolicy { session_id: [u8; 16], allowed: bool },
 }
 
 impl RemoteSignalFrame {
@@ -21,7 +22,8 @@ impl RemoteSignalFrame {
             | Self::Start { session_id }
             | Self::Hangup { session_id }
             | Self::KillSwitch { session_id }
-            | Self::KeyframeRequest { session_id } => *session_id,
+            | Self::KeyframeRequest { session_id }
+            | Self::InputPolicy { session_id, .. } => *session_id,
         }
     }
 
@@ -152,6 +154,10 @@ mod tests {
             RemoteSignalFrame::Hangup { session_id },
             RemoteSignalFrame::KillSwitch { session_id },
             RemoteSignalFrame::KeyframeRequest { session_id },
+            RemoteSignalFrame::InputPolicy {
+                session_id,
+                allowed: true,
+            },
         ] {
             assert_eq!(signal.session_id(), session_id);
             let wire = signal.to_wire().expect("wire");

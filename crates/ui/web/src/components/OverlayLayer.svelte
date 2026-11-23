@@ -212,7 +212,7 @@
                 <span class="size-[7px] rounded-full bg-accent group-data-active:bg-success"></span>
                 <span
                     class="flex-1 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
-                    >In call</span
+                    >{activeCall.state === 'connecting' ? 'Calling' : 'In call'}</span
                 >
                 <span class="text-xs text-ink-3 tabular-nums"
                     >{new Date(callSeconds * 1000).toISOString().slice(11, 19)}</span

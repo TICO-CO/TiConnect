@@ -72,6 +72,7 @@ pub struct RemoteSession {
     pub state: RemoteState,
     pub expires_at: i64,
     pub indicator_visible: bool,
+    pub input_allowed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -136,6 +137,7 @@ mod tests {
             state: RemoteState::Idle,
             expires_at: 0,
             indicator_visible: false,
+            input_allowed: true,
         }
     }
 

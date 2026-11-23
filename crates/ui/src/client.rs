@@ -4,8 +4,9 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, AudioDevice, Call, CallLog, CallMetrics, Candidate, ConversationSummary, Message,
-    MessageState, RemoteSession, StorageUsage, User, UserPolicy, WatchParty,
+    self, AudioDevice, Call, CallEndReason, CallLog, CallMetrics, Candidate, ConversationSummary,
+    Message, MessageState, RemoteEndReason, RemoteSession, StorageUsage, User, UserPolicy,
+    WatchParty, WatchPartyEndReason,
 };
 pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
@@ -70,6 +71,19 @@ enum Command {
         user_id: String,
         body: String,
         reply: Reply<String>,
+    },
+    RetryMessage {
+        message_id: String,
+        reply: Reply<bool>,
+    },
+    EditMessage {
+        message_id: String,
+        body: String,
+        reply: Reply<()>,
+    },
+    DeleteMessage {
+        message_id: String,
+        reply: Reply<()>,
     },
     SendAttachment {
         user_id: String,
@@ -153,6 +167,11 @@ enum Command {
     },
     EndRemoteSession {
         session_id: String,
+        reply: Reply<()>,
+    },
+    SetRemoteInput {
+        session_id: String,
+        allowed: bool,
         reply: Reply<()>,
     },
     GetRemoteSession(Reply<Option<RemoteSession>>),
@@ -318,6 +337,25 @@ impl LinkHandle {
         .await
     }
 
+    pub async fn retry_message(&self, message_id: String) -> Result<bool> {
+        self.request(|reply| Command::RetryMessage { message_id, reply })
+            .await
+    }
+
+    pub async fn edit_message(&self, message_id: String, body: String) -> Result<()> {
+        self.request(|reply| Command::EditMessage {
+            message_id,
+            body,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn delete_message(&self, message_id: String) -> Result<()> {
+        self.request(|reply| Command::DeleteMessage { message_id, reply })
+            .await
+    }
+
     pub async fn send_attachment(
         &self,
         user_id: String,
@@ -461,6 +499,15 @@ impl LinkHandle {
     pub async fn end_remote_session(&self, session_id: String) -> Result<()> {
         self.request(|reply| Command::EndRemoteSession { session_id, reply })
             .await
+    }
+
+    pub async fn set_remote_input(&self, session_id: String, allowed: bool) -> Result<()> {
+        self.request(|reply| Command::SetRemoteInput {
+            session_id,
+            allowed,
+            reply,
+        })
+        .await
     }
 
     pub async fn remote_session(&self) -> Result<Option<RemoteSession>> {
@@ -667,6 +714,10 @@ async fn listen(
         .receive_remote_indicator_changed()
         .await
         .map_err(bus_error)?;
+    let mut remote_input = proxy
+        .receive_remote_input_changed()
+        .await
+        .map_err(bus_error)?;
     let mut watch_party_requested = proxy
         .receive_watch_party_requested()
         .await
@@ -841,7 +892,7 @@ async fn listen(
                 };
                 let _ = events.send(DaemonEvent::CallEnded {
                     call_id: args.call_id.to_owned(),
-                    reason: args.reason.to_owned(),
+                    reason: CallEndReason::parse(args.reason),
                 });
             }
             signal = remote_requested.next() => {
@@ -873,7 +924,7 @@ async fn listen(
                 };
                 let _ = events.send(DaemonEvent::RemoteSessionEnded {
                     session_id: args.session_id.to_owned(),
-                    reason: args.reason.to_owned(),
+                    reason: RemoteEndReason::parse(args.reason),
                 });
             }
             signal = remote_indicator.next() => {
@@ -885,6 +936,17 @@ async fn listen(
                 let _ = events.send(DaemonEvent::RemoteIndicatorChanged {
                     session_id: args.session_id.to_owned(),
                     visible: args.visible,
+                });
+            }
+            signal = remote_input.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::RemoteInputChanged {
+                    session_id: args.session_id.to_owned(),
+                    allowed: args.allowed,
                 });
             }
             signal = transfer_progress.next() => {
@@ -933,7 +995,7 @@ async fn listen(
                 };
                 let _ = events.send(DaemonEvent::WatchPartyEnded {
                     party_id: args.party_id.to_owned(),
-                    reason: args.reason.to_owned(),
+                    reason: WatchPartyEndReason::parse(args.reason),
                 });
             }
             signal = transfer_done.next() => {
@@ -1164,6 +1226,25 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = proxy.send_message(&user_id, &body).await.map_err(bus_error);
             let _ = reply.send(result);
         }
+        Command::RetryMessage { message_id, reply } => {
+            let result = proxy.retry_message(&message_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::EditMessage {
+            message_id,
+            body,
+            reply,
+        } => {
+            let result = proxy
+                .edit_message(&message_id, &body)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::DeleteMessage { message_id, reply } => {
+            let result = proxy.delete_message(&message_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
         Command::SendAttachment {
             user_id,
             path,
@@ -1383,6 +1464,17 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         Command::EndRemoteSession { session_id, reply } => {
             let result = proxy
                 .end_remote_session(&session_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetRemoteInput {
+            session_id,
+            allowed,
+            reply,
+        } => {
+            let result = proxy
+                .set_remote_input(&session_id, allowed)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);

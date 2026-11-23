@@ -15,6 +15,7 @@
     let elapsed = $state(0);
     const user = $derived(app.userById(app.call?.user_id ?? app.selectedUserId));
     const active = $derived(app.call);
+    const connecting = $derived(active?.state === 'connecting');
     const ringing = $derived(active?.state === 'ringing');
     const reconnecting = $derived(active?.state === 'reconnecting');
     const muted = $derived(active?.input_muted ?? false);
@@ -74,7 +75,15 @@
                         data-online={user.connected ? '' : undefined}
                     ></span>
                     {active
-                        ? `Voice call · ${ringing ? 'Ringing' : reconnecting ? 'Reconnecting' : 'Encrypted'}`
+                        ? `Voice call · ${
+                              connecting
+                                  ? 'Connecting'
+                                  : ringing
+                                    ? 'Ringing'
+                                    : reconnecting
+                                      ? 'Reconnecting'
+                                      : 'Encrypted'
+                          }`
                         : 'Call ended · Encrypted'}
                 </p>
             </div>
@@ -131,13 +140,17 @@
             <p class="m-0 flex items-center gap-1.5 text-[13px] text-ink-3">
                 <span
                     class="size-1.5 rounded-full border border-line-strong data-[state=online]:border-success data-[state=online]:bg-success data-[state=warning]:border-warning data-[state=warning]:bg-warning"
-                    data-state={reconnecting ? 'warning' : 'online'}
+                    data-state={connecting || reconnecting ? 'warning' : 'online'}
                 ></span>
-                {ringing
-                    ? 'Calling…'
-                    : reconnecting
-                      ? 'Reconnecting — audio resumes automatically'
-                      : 'Connected · Opus · LAN'}
+                {connecting
+                    ? 'Connecting — waiting for answer'
+                    : ringing
+                      ? active?.direction === 'incoming'
+                          ? 'Ringing — waiting for you'
+                          : 'Calling…'
+                      : reconnecting
+                        ? 'Reconnecting — audio resumes automatically'
+                        : 'Connected · Opus · LAN'}
             </p>
             {#if muted}
                 <span

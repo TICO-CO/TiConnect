@@ -198,7 +198,7 @@ impl CallService {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             match registry.start(user_id, now_unix_ms())? {
-                CallTransition::Ringing(call) => call,
+                CallTransition::Connecting(call) => call,
                 _ => return Err(CallError::InvalidState),
             }
         };
@@ -355,7 +355,17 @@ impl CallService {
                 Ok(())
             }
             CallSignalFrame::Ringing(call_id) => {
-                self.ensure_active(call_id, &user_id)?;
+                let transition = {
+                    let mut registry = self
+                        .inner
+                        .registry
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    registry.mark_ringing(call_id, &user_id)?
+                };
+                if let Some(CallTransition::Ringing(call)) = transition {
+                    self.emit(CallEvent::StateChanged(call.info()));
+                }
                 Ok(())
             }
             CallSignalFrame::Accept(call_id) => {
@@ -683,7 +693,10 @@ impl CallService {
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner);
                 match registry.active() {
-                    Some(call) if call.id == call_id && call.state == CallState::Ringing => {
+                    Some(call)
+                        if call.id == call_id
+                            && matches!(call.state, CallState::Connecting | CallState::Ringing) =>
+                    {
                         registry.timeout(call_id).ok()
                     }
                     _ => None,

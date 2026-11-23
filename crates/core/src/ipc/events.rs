@@ -10,12 +10,13 @@ use super::{
     CALL_ID, CALL_INPUT_MUTED, CALL_OUTPUT_LEVEL, CALL_OUTPUT_MUTED, CALL_PACKETS_LOST,
     CALL_REASON, CALL_STARTED_AT, CALL_STATE, CALL_USER_ID, CANDIDATE_ADDRESSES,
     CANDIDATE_AVATAR_HASH, CANDIDATE_DISPLAY_NAME, CANDIDATE_FINGERPRINT, CANDIDATE_NODE_ID,
-    CANDIDATE_SOURCE, CONVERSATION_ID, CONVERSATION_LAST_BODY, CONVERSATION_LAST_MESSAGE_ID,
-    CONVERSATION_LAST_SENDER_ID, CONVERSATION_LAST_SENT_AT, CONVERSATION_UNREAD_COUNT,
-    CONVERSATION_USER_ID, IDENTITY_AVATAR_HASH, IDENTITY_CREATED_AT, IDENTITY_DISPLAY_NAME,
-    IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH, MESSAGE_ATTACHMENT_MIME,
-    MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH, MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY,
-    MESSAGE_CONVERSATION_ID, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
+    CANDIDATE_SOURCE, CONVERSATION_ID, CONVERSATION_LAST_BODY, CONVERSATION_LAST_DELETED,
+    CONVERSATION_LAST_MESSAGE_ID, CONVERSATION_LAST_SENDER_ID, CONVERSATION_LAST_SENT_AT,
+    CONVERSATION_UNREAD_COUNT, CONVERSATION_USER_ID, IDENTITY_AVATAR_HASH, IDENTITY_CREATED_AT,
+    IDENTITY_DISPLAY_NAME, IDENTITY_FINGERPRINT, IDENTITY_NODE_ID, MESSAGE_ATTACHMENT_HASH,
+    MESSAGE_ATTACHMENT_MIME, MESSAGE_ATTACHMENT_NAME, MESSAGE_ATTACHMENT_PATH,
+    MESSAGE_ATTACHMENT_SIZE, MESSAGE_BODY, MESSAGE_CONVERSATION_ID, MESSAGE_DELETED_AT,
+    MESSAGE_EDITED_AT, MESSAGE_ID, MESSAGE_NOTIFY, MESSAGE_RECEIVED_AT, MESSAGE_SENDER_ID,
     MESSAGE_SENT_AT, MESSAGE_SEQ, MESSAGE_STATE, MESSAGE_USER_ID, NETWORK_ACTIVE_SESSIONS,
     NETWORK_BEACON_SEND_ERRORS, NETWORK_BEACONS_RECEIVED, NETWORK_BEACONS_SENT,
     NETWORK_BROADCAST_ACTIVE, NETWORK_CANDIDATE_COUNT, NETWORK_CONFIDENCE, NETWORK_DROPPED_PACKETS,
@@ -23,9 +24,9 @@ use super::{
     NETWORK_LAST_BEACON_SENT_AT, NETWORK_LAST_CANDIDATE_AT, NETWORK_LAST_FAILURE_AT,
     NETWORK_LAST_SESSION_AT, NETWORK_MDNS_ACTIVE, NETWORK_STATE, NETWORK_TRANSPORT_BOUND,
     NETWORK_TRANSPORT_FAILURES, NETWORK_TRANSPORT_PORT, REMOTE_EXPIRES_AT, REMOTE_FINGERPRINT,
-    REMOTE_INDICATOR, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE, REMOTE_USER_ID,
-    STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE, STATUS_USER_COUNT,
-    STORAGE_ATTACHMENT_BYTES, STORAGE_ATTACHMENT_COUNT, STORAGE_DATABASE_BYTES,
+    REMOTE_INDICATOR, REMOTE_INPUT_ALLOWED, REMOTE_ROLE, REMOTE_SESSION_ID, REMOTE_STATE,
+    REMOTE_USER_ID, STATUS_ACTIVE_SESSIONS, STATUS_OUTBOX_DEPTH, STATUS_TRANSPORT_STATE,
+    STATUS_USER_COUNT, STORAGE_ATTACHMENT_BYTES, STORAGE_ATTACHMENT_COUNT, STORAGE_DATABASE_BYTES,
     STORAGE_MESSAGE_COUNT, TRANSFER_BYTES, TRANSFER_HASH, TRANSFER_NAME, TRANSFER_PHASE,
     TRANSFER_REASON, TRANSFER_SIZE, TRANSFER_USER_ID, USER_ADDRESSES, USER_APP_VERSION,
     USER_AVATAR_HASH, USER_CONNECTED, USER_DESKTOP, USER_DISPLAY_NAME, USER_DISPLAY_SERVER,
@@ -186,6 +187,7 @@ pub struct ConversationSummary {
     pub last_message_id: String,
     pub last_sender_id: String,
     pub last_body: String,
+    pub last_deleted: bool,
     pub last_sent_at: u64,
     pub unread_count: u32,
 }
@@ -207,12 +209,141 @@ pub struct Message {
     pub attachment_mime: String,
     pub attachment_path: String,
     pub state: MessageState,
+    pub edited_at: u64,
+    pub deleted_at: u64,
     pub notify: bool,
 }
 
 impl Message {
     pub fn ordering_key(&self) -> (u64, u64, u64) {
         (self.sent_at, self.received_at, self.seq)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CallEndReason {
+    Declined,
+    Hangup,
+    Timeout,
+    Error,
+    Disconnected,
+    Unknown,
+}
+
+impl CallEndReason {
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "declined" => Self::Declined,
+            "hangup" => Self::Hangup,
+            "timeout" => Self::Timeout,
+            "error" => Self::Error,
+            "disconnected" => Self::Disconnected,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Declined => "declined",
+            Self::Hangup => "hangup",
+            Self::Timeout => "timeout",
+            Self::Error => "error",
+            Self::Disconnected => "disconnected",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RemoteEndReason {
+    #[serde(rename = "denied")]
+    Denied,
+    #[serde(rename = "expired")]
+    Expired,
+    #[serde(rename = "start-failed")]
+    StartFailed,
+    #[serde(rename = "unreachable")]
+    Unreachable,
+    #[serde(rename = "kill-switch")]
+    KillSwitch,
+    #[serde(rename = "disconnected")]
+    Disconnected,
+    #[serde(rename = "hangup")]
+    Hangup,
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "ended")]
+    Ended,
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+impl RemoteEndReason {
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "denied" => Self::Denied,
+            "expired" => Self::Expired,
+            "start-failed" => Self::StartFailed,
+            "unreachable" => Self::Unreachable,
+            "kill-switch" => Self::KillSwitch,
+            "disconnected" => Self::Disconnected,
+            "hangup" => Self::Hangup,
+            "left" => Self::Left,
+            "ended" => Self::Ended,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Denied => "denied",
+            Self::Expired => "expired",
+            Self::StartFailed => "start-failed",
+            Self::Unreachable => "unreachable",
+            Self::KillSwitch => "kill-switch",
+            Self::Disconnected => "disconnected",
+            Self::Hangup => "hangup",
+            Self::Left => "left",
+            Self::Ended => "ended",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WatchPartyEndReason {
+    #[serde(rename = "declined")]
+    Declined,
+    #[serde(rename = "left")]
+    Left,
+    #[serde(rename = "host ended")]
+    HostEnded,
+    #[serde(rename = "host disconnected")]
+    HostDisconnected,
+    #[serde(rename = "unknown")]
+    Unknown,
+}
+
+impl WatchPartyEndReason {
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "declined" => Self::Declined,
+            "left" => Self::Left,
+            "host ended" => Self::HostEnded,
+            "host disconnected" => Self::HostDisconnected,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Declined => "declined",
+            Self::Left => "left",
+            Self::HostEnded => "host ended",
+            Self::HostDisconnected => "host disconnected",
+            Self::Unknown => "unknown",
+        }
     }
 }
 
@@ -224,6 +355,7 @@ pub struct RemoteSession {
     pub role: String,
     pub state: String,
     pub indicator: bool,
+    pub input_allowed: bool,
     pub expires_at: u64,
 }
 
@@ -341,6 +473,16 @@ pub enum DaemonEvent {
         message_id: String,
         state: MessageState,
     },
+    MessageEdited {
+        message_id: String,
+        user_id: String,
+        body: String,
+        edited_at: u64,
+    },
+    MessageDeleted {
+        message_id: String,
+        user_id: String,
+    },
     ConversationChanged {
         user_id: String,
     },
@@ -385,23 +527,27 @@ pub enum DaemonEvent {
     },
     CallEnded {
         call_id: String,
-        reason: String,
+        reason: CallEndReason,
     },
     RemoteSessionRequested(RemoteSession),
     RemoteSessionStarted(String),
     RemoteSessionEnded {
         session_id: String,
-        reason: String,
+        reason: RemoteEndReason,
     },
     RemoteIndicatorChanged {
         session_id: String,
         visible: bool,
     },
+    RemoteInputChanged {
+        session_id: String,
+        allowed: bool,
+    },
     WatchPartyRequested(WatchParty),
     WatchPartyChanged(WatchParty),
     WatchPartyEnded {
         party_id: String,
-        reason: String,
+        reason: WatchPartyEndReason,
     },
 }
 
@@ -546,6 +692,7 @@ pub fn parse_conversation_summary(
         last_message_id: optional_string(values, CONVERSATION_LAST_MESSAGE_ID)?,
         last_sender_id: optional_string(values, CONVERSATION_LAST_SENDER_ID)?,
         last_body: optional_string(values, CONVERSATION_LAST_BODY)?,
+        last_deleted: optional_bool(values, CONVERSATION_LAST_DELETED)?,
         last_sent_at: optional_u64(values, CONVERSATION_LAST_SENT_AT)?,
         unread_count: optional_u32(values, CONVERSATION_UNREAD_COUNT)?,
     })
@@ -580,6 +727,8 @@ pub fn parse_message(
                 MessageState::parse(&state)?
             }
         },
+        edited_at: optional_u64(values, MESSAGE_EDITED_AT)?,
+        deleted_at: optional_u64(values, MESSAGE_DELETED_AT)?,
         notify: optional_bool(values, MESSAGE_NOTIFY)?,
     })
 }
@@ -592,6 +741,7 @@ pub fn parse_remote_session(values: &HashMap<String, OwnedVariant>) -> Result<Re
         role: optional_string(values, REMOTE_ROLE)?,
         state: optional_string(values, REMOTE_STATE)?,
         indicator: optional_bool(values, REMOTE_INDICATOR)?,
+        input_allowed: optional_bool(values, REMOTE_INPUT_ALLOWED)?,
         expires_at: optional_u64(values, REMOTE_EXPIRES_AT)?,
     })
 }
@@ -851,12 +1001,56 @@ mod tests {
             attachment_mime: String::new(),
             attachment_path: String::new(),
             state: MessageState::Sent,
+            edited_at: 0,
+            deleted_at: 0,
             notify: true,
         };
         let value = serde_json::to_value(&message).unwrap();
         assert_eq!(value["id"], "m1");
         assert_eq!(value["state"], "sent");
         assert_eq!(value["local_sender"], false);
+    }
+
+    #[test]
+    fn end_reasons_keep_wire_strings() {
+        for reason in [
+            CallEndReason::Declined,
+            CallEndReason::Hangup,
+            CallEndReason::Timeout,
+            CallEndReason::Error,
+            CallEndReason::Disconnected,
+        ] {
+            assert_eq!(CallEndReason::parse(reason.as_str()), reason);
+        }
+        for reason in [
+            RemoteEndReason::Denied,
+            RemoteEndReason::Expired,
+            RemoteEndReason::StartFailed,
+            RemoteEndReason::Unreachable,
+            RemoteEndReason::KillSwitch,
+            RemoteEndReason::Disconnected,
+            RemoteEndReason::Hangup,
+            RemoteEndReason::Left,
+            RemoteEndReason::Ended,
+        ] {
+            assert_eq!(RemoteEndReason::parse(reason.as_str()), reason);
+        }
+        for reason in [
+            WatchPartyEndReason::Declined,
+            WatchPartyEndReason::Left,
+            WatchPartyEndReason::HostEnded,
+            WatchPartyEndReason::HostDisconnected,
+        ] {
+            assert_eq!(WatchPartyEndReason::parse(reason.as_str()), reason);
+        }
+        assert_eq!(
+            RemoteEndReason::parse("future-reason"),
+            RemoteEndReason::Unknown
+        );
+        assert_eq!(
+            WatchPartyEndReason::parse("future-reason"),
+            WatchPartyEndReason::Unknown
+        );
     }
 
     #[test]

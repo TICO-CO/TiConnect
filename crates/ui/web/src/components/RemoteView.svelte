@@ -9,15 +9,59 @@
     }
 
     let { app }: Props = $props();
-    let inputAllowed = $state(true);
     const session = $derived(app.remote);
     const user = $derived(app.userById(session?.user_id ?? app.selectedUserId));
     const active = $derived(session?.state === 'active');
     const waiting = $derived(session === null || session.state === 'requested');
     const host = $derived(session?.role === 'host');
+    const outcome = $derived(
+        app.remoteOutcome?.userId === app.selectedUserId ? app.remoteOutcome : null,
+    );
     const elapsed = $derived(
         app.demo ? 221 : Math.max(0, (Date.now() - (session?.expires_at ?? 0)) / -1000),
     );
+
+    function outcomeTitle(reason: string): string {
+        switch (reason) {
+            case 'denied':
+                return 'Request declined';
+            case 'expired':
+                return 'Request expired';
+            case 'unreachable':
+                return 'Host unreachable';
+            case 'start-failed':
+                return 'Session failed to start';
+            case 'kill-switch':
+                return 'Session stopped';
+            case 'disconnected':
+                return 'Connection lost';
+            default:
+                return 'Remote session ended';
+        }
+    }
+
+    function outcomeBody(reason: string): string {
+        switch (reason) {
+            case 'denied':
+                return 'The host declined this request. No screen data was shared.';
+            case 'expired':
+                return 'The request expired before the host answered.';
+            case 'unreachable':
+                return 'The other device could not be reached on this network.';
+            case 'start-failed':
+                return 'The session could not start. Check that screen capture is available.';
+            case 'kill-switch':
+                return 'Remote desktop was disabled locally and the session stopped.';
+            case 'disconnected':
+                return 'The other device disconnected. The session was closed.';
+            case 'left':
+                return 'You left the session. Screen capture and input have stopped.';
+            case 'ended':
+                return 'The sharing device ended the session. Screen capture has stopped.';
+            default:
+                return 'The session has ended. Screen capture and input have stopped.';
+        }
+    }
 </script>
 
 <section class="flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-base">
@@ -41,12 +85,48 @@
         </div>
         <span
             class="flex h-[34px] items-center gap-1.5 rounded-pill border border-line px-3.5 text-xs tracking-[0.06em] text-ink-2 uppercase"
-            ><span class="size-[7px] rounded-full bg-error"></span>Live · {sessionClock(
-                Math.max(0, elapsed),
-            )}</span
         >
+            <span
+                class="size-[7px] rounded-full {session
+                    ? 'bg-error'
+                    : outcome
+                      ? 'bg-ink-3'
+                      : 'bg-warning'}"
+            ></span>
+            {#if session}
+                Live · {sessionClock(Math.max(0, elapsed))}
+            {:else if outcome}
+                Ended
+            {:else}
+                Pending
+            {/if}
+        </span>
     </header>
-    {#if waiting}
+    {#if outcome}
+        <div class="flex flex-1 flex-col items-center justify-center gap-2.5 text-center">
+            <span class="flex size-[88px] items-center justify-center rounded-full bg-surface">
+                <Icon name="alert" size={28} color="var(--color-ink-2)" />
+            </span>
+            <h2
+                class="mt-2 mb-0 font-display text-step-2 leading-[1.15] font-normal tracking-[-0.01em]"
+            >
+                {outcomeTitle(outcome.reason)}
+            </h2>
+            <p class="m-0 max-w-[420px] text-step-xs leading-[1.5] text-ink-3">
+                {outcomeBody(outcome.reason)}
+            </p>
+            <div class="mt-2 flex gap-2.5">
+                <button
+                    class="inline-flex min-h-9 items-center justify-center rounded-pill border border-line bg-transparent px-[18px] text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    onclick={() => app.backToChat()}>Back to chat</button
+                >
+                <button
+                    class="inline-flex min-h-9 items-center justify-center rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
+                    onclick={() => void app.requestRemote(outcome.userId)}>Request again</button
+                >
+            </div>
+        </div>
+    {:else if waiting}
         <div class="flex flex-1 flex-col items-center justify-center gap-2.5 text-center">
             <span class="flex size-[88px] items-center justify-center rounded-full bg-surface"
                 ><Icon name="remote" size={28} color="var(--color-ink-2)" /></span
@@ -183,7 +263,7 @@
                         >
                             <span>09:41</span><span>Keyboard control enabled</span><span
                                 class="text-right text-ink-3"
-                                >{inputAllowed ? 'Allowed' : 'Blocked'}</span
+                                >{session?.input_allowed ? 'Allowed' : 'Blocked'}</span
                             >
                         </div>
                     </section>
@@ -227,8 +307,11 @@
                             <button
                                 class="toggle"
                                 aria-label="Allow pointer and keyboard"
-                                aria-pressed={inputAllowed}
-                                onclick={() => (inputAllowed = !inputAllowed)}
+                                aria-pressed={session?.input_allowed ?? false}
+                                aria-busy={app.remoteInputPending}
+                                disabled={app.remoteInputPending}
+                                onclick={() =>
+                                    void app.setRemoteInput(!(session?.input_allowed ?? false))}
                             ></button>
                         </div>
                         <p class="my-3.5 text-[13px] leading-normal text-ink-3">
@@ -259,7 +342,9 @@
                             </div>
                         </div>
                         <p class="my-3.5 text-[13px] leading-normal text-ink-3">
-                            You are viewing this screen. Input is controlled by the host.
+                            {session?.input_allowed
+                                ? 'You are viewing this screen. Pointer and keyboard control are allowed.'
+                                : 'You are viewing this screen. The host has disabled input.'}
                         </p>
                         <button
                             class="inline-flex min-h-9 w-full items-center justify-center gap-1.5 rounded-pill border border-error bg-transparent px-[18px] text-step-xs leading-none font-bold text-error transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-error/12"
@@ -272,11 +357,13 @@
         {#if !host}
             <div class="flex shrink-0 justify-center gap-2 pb-5">
                 <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!session?.input_allowed}
                     ><Icon name="pointer" size={14} />Pointer</button
                 >
                 <button
-                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                    class="inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!session?.input_allowed}
                     ><Icon name="keyboard" size={14} />Keyboard</button
                 >
                 <button

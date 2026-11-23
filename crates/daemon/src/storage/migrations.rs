@@ -15,6 +15,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (7, include_str!("migrations/0007_users_rename.sql")),
     (8, include_str!("migrations/0008_message_indexes.sql")),
     (9, include_str!("migrations/0009_call_logs.sql")),
+    (10, include_str!("migrations/0010_message_lifecycle.sql")),
 ];
 
 pub fn run(connection: &mut Connection) -> Result<(), StorageError> {

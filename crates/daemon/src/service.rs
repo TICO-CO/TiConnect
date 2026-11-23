@@ -672,6 +672,31 @@ impl DaemonService {
         Ok(message_id.to_string())
     }
 
+    async fn retry_message(&self, message_id: &str) -> Result<bool, ServiceError> {
+        self.state
+            .messaging()
+            .retry_message(message_id)
+            .await
+            .map(|_| true)
+            .map_err(messaging_error)
+    }
+
+    async fn edit_message(&self, message_id: &str, body: &str) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .edit_message(message_id, body.to_owned())
+            .await
+            .map_err(messaging_error)
+    }
+
+    async fn delete_message(&self, message_id: &str) -> Result<(), ServiceError> {
+        self.state
+            .messaging()
+            .delete_message(message_id)
+            .await
+            .map_err(messaging_error)
+    }
+
     async fn list_messages(
         &self,
         conversation_id: &str,
@@ -1067,6 +1092,15 @@ impl DaemonService {
             .map_err(remote_error)
     }
 
+    async fn set_remote_input(&self, session_id: &str, allowed: bool) -> Result<(), ServiceError> {
+        self.state
+            .remote()
+            .set_input_allowed(session_id, allowed)
+            .await
+            .map(|_| ())
+            .map_err(remote_error)
+    }
+
     async fn get_remote_session(&self) -> HashMap<String, OwnedVariant> {
         self.state
             .remote()
@@ -1201,6 +1235,22 @@ impl DaemonService {
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    pub async fn message_edited(
+        emitter: SignalEmitter<'_>,
+        message_id: &str,
+        user_id: &str,
+        body: &str,
+        edited_at: u64,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    pub async fn message_deleted(
+        emitter: SignalEmitter<'_>,
+        message_id: &str,
+        user_id: &str,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
     pub async fn message_state_changed(
         emitter: SignalEmitter<'_>,
         message_id: &str,
@@ -1289,6 +1339,13 @@ impl DaemonService {
     ) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    pub async fn remote_input_changed(
+        emitter: SignalEmitter<'_>,
+        session_id: &str,
+        allowed: bool,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
     pub async fn incoming_call(
         emitter: SignalEmitter<'_>,
         call: HashMap<String, OwnedVariant>,
@@ -1358,6 +1415,26 @@ pub(crate) async fn emit_messaging_event(
         MessagingEvent::MessageStateChanged { message_id, state } => {
             DaemonService::message_state_changed(emitter, &message_id, state.as_str()).await
         }
+        MessagingEvent::MessageEdited {
+            user_id,
+            message_id,
+            body,
+            edited_at,
+        } => {
+            DaemonService::message_edited(
+                emitter,
+                &message_id,
+                &user_id,
+                &body,
+                u64::try_from(edited_at)
+                    .map_err(|_| zbus::Error::Failure("edited_at out of range".to_owned()))?,
+            )
+            .await
+        }
+        MessagingEvent::MessageDeleted {
+            user_id,
+            message_id,
+        } => DaemonService::message_deleted(emitter, &message_id, &user_id).await,
         MessagingEvent::SyncCompleted { user_id, count } => {
             DaemonService::sync_completed(emitter, &user_id, count).await
         }
@@ -1381,6 +1458,16 @@ fn stored_message_variant_with(
     message: StoredMessage,
     notify: bool,
 ) -> Result<HashMap<String, OwnedVariant>, ServiceError> {
+    let edited_at = message
+        .edited_at
+        .map(|value| checked_u64("message edited_at", value))
+        .transpose()?
+        .unwrap_or_default();
+    let deleted_at = message
+        .deleted_at
+        .map(|value| checked_u64("message deleted_at", value))
+        .transpose()?
+        .unwrap_or_default();
     let record = message.record;
     let sent_at = checked_u64("message sent_at", record.sent_at)?;
     let received_at = checked_u64("message received_at", message.received_at)?;
@@ -1439,6 +1526,14 @@ fn stored_message_variant_with(
                     .state
                     .map_or_else(String::new, |state| state.as_str().to_owned()),
             ),
+        ),
+        (
+            ipc::MESSAGE_EDITED_AT.to_owned(),
+            OwnedVariant::from(edited_at),
+        ),
+        (
+            ipc::MESSAGE_DELETED_AT.to_owned(),
+            OwnedVariant::from(deleted_at),
         ),
         (ipc::MESSAGE_NOTIFY.to_owned(), OwnedVariant::from(notify)),
     ]))
@@ -1619,6 +1714,10 @@ fn conversation_summary_variant(
             string_variant(summary.last_body.unwrap_or_default()),
         ),
         (
+            ipc::CONVERSATION_LAST_DELETED.to_owned(),
+            OwnedVariant::from(summary.last_deleted),
+        ),
+        (
             ipc::CONVERSATION_LAST_SENT_AT.to_owned(),
             OwnedVariant::from(last_sent_at),
         ),
@@ -1796,6 +1895,10 @@ pub(crate) async fn emit_remote_event(
             session_id,
             visible,
         } => DaemonService::remote_indicator_changed(emitter, &session_id, visible).await,
+        RemoteEventMessage::InputChanged {
+            session_id,
+            allowed,
+        } => DaemonService::remote_input_changed(emitter, &session_id, allowed).await,
     }
 }
 
@@ -1824,6 +1927,10 @@ fn remote_variant(snapshot: &RemoteSnapshot) -> HashMap<String, OwnedVariant> {
         (
             ipc::REMOTE_INDICATOR.to_owned(),
             OwnedVariant::from(snapshot.indicator),
+        ),
+        (
+            ipc::REMOTE_INPUT_ALLOWED.to_owned(),
+            OwnedVariant::from(snapshot.input_allowed),
         ),
         (
             ipc::REMOTE_EXPIRES_AT.to_owned(),

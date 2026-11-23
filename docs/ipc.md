@@ -44,16 +44,25 @@ fails to acquire the name and exits non-zero.
 | `MarkConversationRead` | `(s) -> ()` | Marks every unread inbound message in a conversation read and queues receipts when enabled. |
 | `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted user. |
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
+| `RetryMessage` | `(s) -> b` | Requeues a failed or expired outgoing message. |
+| `EditMessage` | `(ss) -> ()` | Publishes a signed edit for a local text message. |
+| `DeleteMessage` | `(s) -> ()` | Publishes a signed tombstone for a local message. |
 | `SetUserPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one user. |
 | `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |
 | `StartCall` | `(s) -> s` | Starts an outgoing call and returns its call id. |
 | `AcceptCall` | `(s) -> ()` | Accepts an incoming call and opens audio devices. |
 | `DeclineCall` | `(s) -> ()` | Declines an incoming ringing call. |
-| `HangupCall` | `(s) -> ()` | Ends an active call; also cancels an outgoing ringing call. |
+| `HangupCall` | `(s) -> ()` | Ends an active call; also cancels an outgoing connecting or ringing call. |
 | `SetCallMuted` | `(sbb) -> ()` | Sets microphone and output mute for the active call. |
 | `GetCallState` | `() -> a{sv}` | Returns the active call, or an empty map when idle. |
 | `ListCallLogs` | `(su) -> aa{sv}` | Returns persisted call logs for one user, or all when the user id is empty. |
 | `ListAudioDevices` | `() -> aa{sv}` | Returns discovered input and output devices. |
+| `RequestRemoteSession` | `(s) -> a{sv}` | Requests remote desktop consent from one user. |
+| `AcceptRemoteSession` | `(s) -> ()` | Grants a pending remote desktop request. |
+| `DenyRemoteSession` | `(s) -> ()` | Denies a pending remote desktop request. |
+| `EndRemoteSession` | `(s) -> ()` | Ends the active remote desktop session. |
+| `SetRemoteInput` | `(sb) -> ()` | Enables or blocks pointer and keyboard input for an active remote session. |
+| `GetRemoteSession` | `() -> a{sv}` | Returns the active remote session, or an empty map. |
 | `Shutdown` | `() -> ()` | Requests a clean shutdown. |
 
 Settings writes do not use D-Bus. Any process may update `config.toml` through
@@ -93,6 +102,8 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `UserDisconnected(a{sv})` | When a trusted QUIC session closes. |
 | `MessageReceived(a{sv})` | When an inbound message is stored. |
 | `MessageStateChanged(ss)` | When a message state changes. |
+| `MessageEdited(sssu)` | When a message body changes from an edit record. |
+| `MessageDeleted(ss)` | When a message receives a delete tombstone. |
 | `ConversationChanged(s)` | When a conversation summary should be reloaded. |
 | `TypingChanged(sb)` | When a user starts or stops typing. |
 | `UserProfileChanged(s)` | When a cached user profile or avatar changes. |
@@ -106,6 +117,8 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 | `CallStateChanged(ss)` | When the active call state changes. |
 | `CallMuteChanged(sbb)` | When call microphone or output mute changes. |
 | `CallEnded(ss)` | When the active call ends. |
+| `RemoteIndicatorChanged(sb)` | When the remote sharing indicator visibility changes. |
+| `RemoteInputChanged(sb)` | When remote pointer and keyboard input is enabled or blocked. |
 
 ## Status keys
 
@@ -137,7 +150,7 @@ Starting a second UI forwards `Activate("chat")` to the running instance and exi
 
 | Key | Type | Meaning |
 |---|---|---|
-| `message_count` | `u64` | Stored non-ack messages. |
+| `message_count` | `u64` | Stored visible messages; excludes acks and lifecycle records. |
 | `attachment_count` | `u64` | Rows in the attachments table. |
 | `attachment_bytes` | `u64` | Sum of attachment sizes. |
 | `database_bytes` | `u64` | SQLite page count multiplied by page size. |

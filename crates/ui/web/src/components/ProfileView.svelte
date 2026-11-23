@@ -1,7 +1,8 @@
 <script lang="ts">
-    import type { AppState } from '../lib';
+    import type { AppState, ConfirmRequest } from '../lib';
     import { clock, fingerprintLabel, relativeSeen, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
+    import ConfirmDialog from './ConfirmDialog.svelte';
     import Icon from './Icon.svelte';
 
     interface Props {
@@ -9,6 +10,9 @@
     }
 
     let { app }: Props = $props();
+    let confirmRequest = $state<ConfirmRequest | null>(null);
+    let confirmPending = $state(false);
+    let confirmError = $state('');
     const details = $derived(app.details);
     const user = $derived(details?.user ?? app.userById(app.selectedUserId));
 
@@ -24,11 +28,38 @@
         }
     }
 
-    function clearHistory(): void {
-        if (user === null || !window.confirm('Clear this conversation? This cannot be undone.')) {
+    function requestClearHistory(): void {
+        if (user === null) {
             return;
         }
-        void app.clearHistory(user.id);
+        confirmError = '';
+        confirmRequest = {
+            title: 'Clear local history',
+            body: 'Clear this conversation? This cannot be undone.',
+            confirmLabel: 'Clear history',
+            cancelLabel: 'Cancel',
+            tone: 'error',
+            action: () => app.clearHistory(user.id),
+        };
+    }
+
+    function closeConfirm(): void {
+        if (confirmPending) {
+            return;
+        }
+        confirmRequest = null;
+        confirmError = '';
+    }
+
+    async function runConfirm(): Promise<void> {
+        if (confirmRequest === null) {
+            return;
+        }
+        confirmPending = true;
+        confirmError = '';
+        await confirmRequest.action();
+        confirmPending = false;
+        confirmRequest = null;
     }
 
     function firstSeen(timestamp: number): string {
@@ -340,7 +371,7 @@
                     </div>
                     <button
                         class="mt-3 border-0 bg-transparent p-0 text-sm font-bold text-ink"
-                        onclick={clearHistory}
+                        onclick={requestClearHistory}
                     >
                         Clear local history
                     </button>
@@ -354,4 +385,16 @@
     {:else}
         <p class="m-0 p-8 text-step-xs text-ink-3">User details are not available.</p>
     {/if}
+    <ConfirmDialog
+        open={confirmRequest !== null}
+        title={confirmRequest?.title ?? ''}
+        body={confirmRequest?.body ?? ''}
+        confirmLabel={confirmRequest?.confirmLabel ?? 'Confirm'}
+        cancelLabel={confirmRequest?.cancelLabel ?? 'Cancel'}
+        tone={confirmRequest?.tone ?? 'error'}
+        pending={confirmPending}
+        error={confirmError}
+        onconfirm={() => void runConfirm()}
+        oncancel={closeConfirm}
+    />
 </section>
