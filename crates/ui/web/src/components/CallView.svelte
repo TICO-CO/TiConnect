@@ -1,8 +1,8 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    import type { AppState } from '../lib';
-    import { initials, sessionClock, shortName } from '../lib';
+    import type { AppState, CallLog } from '../lib';
+    import { clock, initials, sessionClock, shortName } from '../lib';
     import Avatar from './Avatar.svelte';
     import CallWaveform from './CallWaveform.svelte';
     import Icon from './Icon.svelte';
@@ -19,6 +19,29 @@
     const reconnecting = $derived(active?.state === 'reconnecting');
     const muted = $derived(active?.input_muted ?? false);
     const outputMuted = $derived(active?.output_muted ?? false);
+    const lastLog = $derived(
+        user === null ? undefined : app.callLogs.find((log) => log.user_id === user.id),
+    );
+    const endedTitle = $derived(callEndTitle(lastLog));
+    const endedDuration = $derived(lastLog?.duration_secs ?? 0);
+    const endedConnected = $derived(endedDuration > 0);
+
+    function callEndTitle(log: CallLog | undefined): string {
+        switch (log?.reason) {
+            case 'declined':
+                return 'Call declined';
+            case 'timeout':
+                return 'Missed call';
+            case 'error':
+                return 'Call failed';
+            case 'disconnected':
+                return 'Connection lost';
+            case 'hangup':
+            case undefined:
+                return 'Call ended';
+        }
+        return 'Call ended';
+    }
 
     onMount(() => {
         const update = () => {
@@ -50,19 +73,33 @@
                         class="size-1.5 rounded-full border border-line-strong data-online:border-success data-online:bg-success"
                         data-online={user.connected ? '' : undefined}
                     ></span>
-                    Voice call · {ringing ? 'Ringing' : reconnecting ? 'Reconnecting' : 'Encrypted'}
+                    {active
+                        ? `Voice call · ${ringing ? 'Ringing' : reconnecting ? 'Reconnecting' : 'Encrypted'}`
+                        : 'Call ended · Encrypted'}
                 </p>
             </div>
         {/if}
-        <div class="ml-auto flex flex-col items-end gap-0.5">
-            <strong class="text-[23px] leading-[26px] font-normal tabular-nums"
-                >{sessionClock(elapsed)}</strong
-            >
-            <span
-                class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
-                >Live · LAN</span
-            >
-        </div>
+        {#if active}
+            <div class="ml-auto flex flex-col items-end gap-0.5">
+                <strong class="text-[23px] leading-[26px] font-normal tabular-nums"
+                    >{sessionClock(elapsed)}</strong
+                >
+                <span
+                    class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >Live · LAN</span
+                >
+            </div>
+        {:else if lastLog}
+            <div class="ml-auto flex flex-col items-end gap-0.5">
+                <strong class="text-[23px] leading-[26px] font-normal tabular-nums"
+                    >{clock(lastLog.ended_at)}</strong
+                >
+                <span
+                    class="font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >Ended · LAN</span
+                >
+            </div>
+        {/if}
     </header>
     {#if active && user}
         <div class="flex flex-1 flex-col items-center justify-center gap-2">
@@ -151,17 +188,76 @@
             </div>
         </div>
     {:else}
-        <div class="flex flex-1 flex-col items-center justify-center gap-[18px]">
-            <div
-                class="flex w-[min(560px,70%)] items-center justify-center gap-3 text-xs tracking-[0.06em] text-ink-3 uppercase"
-            >
-                <span class="h-px flex-1 bg-line"></span>Call ended<span class="h-px flex-1 bg-line"
-                ></span>
+        <div class="flex flex-1 flex-col items-center justify-center gap-[30px] pb-2">
+            <div class="relative flex size-[300px] items-center justify-center">
+                <span class="absolute size-[300px] rounded-full border border-line"></span>
+                <svg
+                    class="pointer-events-none absolute size-[300px]"
+                    viewBox="0 0 300 300"
+                    aria-hidden="true"
+                >
+                    <circle
+                        cx="150"
+                        cy="150"
+                        r="139"
+                        fill="none"
+                        stroke="var(--color-accent)"
+                        stroke-width="1.5"
+                        stroke-linecap="round"
+                        stroke-dasharray="86 787"
+                        transform="rotate(-58 150 150)"
+                        opacity="0.75"
+                    />
+                </svg>
+                <span
+                    class="relative flex size-[168px] items-center justify-center rounded-full border border-line-strong bg-surface font-display text-[48px] leading-[56px] text-ink-2"
+                    >{user ? initials(shortName(user)) : '··'}</span
+                >
             </div>
-            <button
-                class="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-pill border border-accent bg-accent px-[18px] text-step-xs leading-none font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink-2 hover:bg-ink-2"
-                onclick={() => (user ? void app.startCall(user.id) : undefined)}>Call back</button
-            >
+            <div class="flex flex-col items-center gap-3">
+                <h2
+                    class="m-0 font-display text-step-4 leading-[38px] font-normal tracking-[-0.01em]"
+                >
+                    {endedTitle}
+                </h2>
+                {#if endedConnected}
+                    <p class="m-0 text-step-5 leading-[44px] font-normal text-ink-2 tabular-nums">
+                        {sessionClock(endedDuration)}
+                    </p>
+                {/if}
+                <p class="m-0 flex items-center gap-2 text-step-xs text-ink-3">
+                    <span class="size-1.5 rounded-full bg-ink-3"></span>
+                    {endedConnected ? 'Encrypted · Opus · LAN' : 'End-to-end encrypted'}
+                </p>
+                {#if lastLog}
+                    <div class="flex items-center gap-3.5 pt-2.5">
+                        <span class="text-xs font-bold tracking-[0.08em] text-ink-3 uppercase"
+                            >Ended {clock(lastLog.ended_at)}</span
+                        >
+                        <span class="h-3 w-px bg-line-strong"></span>
+                        <span class="text-step-xs text-ink-3"
+                            >{lastLog.direction === 'incoming' ? 'Incoming' : 'Outgoing'} call</span
+                        >
+                    </div>
+                {/if}
+            </div>
         </div>
+        {#if user}
+            <div class="flex shrink-0 items-center justify-center gap-3 pb-12">
+                <button
+                    class="inline-flex min-h-12 items-center justify-center gap-2.5 rounded-pill border border-ink-2 bg-ink-2 px-[26px] text-[15px] leading-5 font-bold text-base transition-[background-color,border-color,color] duration-150 ease-soft hover:border-ink hover:bg-ink"
+                    onclick={() => void app.startCall(user.id)}
+                >
+                    <Icon name="call" size={16} color="var(--color-base)" />
+                    Call back
+                </button>
+                <button
+                    class="inline-flex min-h-12 items-center justify-center rounded-pill border border-line-strong bg-transparent px-6 text-[15px] leading-5 font-bold text-ink-2 transition-[background-color,border-color,color] duration-150 ease-soft hover:bg-surface-2"
+                    onclick={() => app.navigate({ kind: 'chat', id: user.id })}
+                >
+                    Message
+                </button>
+            </div>
+        {/if}
     {/if}
 </section>
