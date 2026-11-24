@@ -370,6 +370,44 @@ describe('feature surfaces', () => {
         expect(retry).toHaveBeenCalledTimes(1);
     });
 
+    it('expands from collapsed search and focuses the search field', async () => {
+        const app = makeApp();
+        app.users = [USER];
+        app.collapsed = true;
+        render(UsersRail, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Search users' }));
+
+        expect(app.collapsed).toBe(false);
+        const search = screen.getByLabelText('Search users');
+        await waitFor(() => expect(document.activeElement).toBe(search));
+    });
+
+    it('expands from the collapsed rail with the slash shortcut', async () => {
+        const app = makeApp();
+        app.users = [USER];
+        app.collapsed = true;
+        render(UsersRail, { app });
+
+        await fireEvent.keyDown(window, { key: '/' });
+
+        expect(app.collapsed).toBe(false);
+        const search = screen.getByLabelText('Search users');
+        await waitFor(() => expect(document.activeElement).toBe(search));
+    });
+
+    it('keeps the logo below the collapsed rail actions', () => {
+        const app = makeApp();
+        app.collapsed = true;
+        render(UsersRail, { app });
+
+        const settings = screen.getByRole('button', { name: 'Settings' });
+        const logo = screen.getByRole('link', { name: 'TiConnect' });
+        expect(
+            settings.compareDocumentPosition(logo) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+    });
+
     it('shows message timeline loading and failure states', async () => {
         const app = makeApp();
         app.messagesLoad = 'loading';

@@ -114,7 +114,7 @@ Window 1440 × 900, full-bleed. Minimum 1024 × 720.
 
 Profile replaces the right pane, not the whole window. Users rail and top bar stay. Clicking the conversation header opens profile; back returns to chat; clicking another user switches conversation.
 
-The users rail collapses from 320px to 72px with a chevron control at its top. Expanded: search, full user cards, and a square, edge-to-edge footer pinned to the bottom of the rail holding only the 34px logo and the no-background settings button. Collapsed: monogram-only tiles with presence dots, selected user inverted to the `--ink`/`--base` pair, logo and settings at the bottom, chat pane expands to fill the space.
+The users rail collapses from 320px to 72px with a chevron control at its top. Expanded: search, full user cards, and a square, edge-to-edge footer pinned to the bottom of the rail holding the 34px logo and the no-background watch party and settings buttons. Collapsed: a chevron to expand, a search control that expands the rail and focuses search, monogram-only tiles with presence dots, selected user inverted to the `--ink`/`--base` pair, watch party and settings actions above the logo at the bottom, chat pane expands to fill the space.
 
 ## Users
 

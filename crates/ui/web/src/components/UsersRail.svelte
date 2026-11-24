@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
 
     import type { AppState } from '../lib';
     import { clock, preview, shortName } from '../lib';
@@ -34,6 +34,12 @@
         app.navigate({ kind: 'chat', id: userId });
     }
 
+    async function expandForSearch() {
+        app.collapsed = false;
+        await tick();
+        searchInput?.focus();
+    }
+
     onMount(() => {
         const onKey = (event: KeyboardEvent) => {
             const target = event.target as HTMLElement | null;
@@ -43,7 +49,7 @@
                 target?.isContentEditable;
             if (event.key === '/' && !editing) {
                 event.preventDefault();
-                searchInput?.focus();
+                void expandForSearch();
             }
         };
         window.addEventListener('keydown', onKey);
@@ -62,6 +68,13 @@
             aria-label="Expand chats"
         >
             <Icon name="expand" />
+        </button>
+        <button
+            class="inline-flex size-9 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface"
+            onclick={() => void expandForSearch()}
+            aria-label="Search users"
+        >
+            <Icon name="search" size={16} />
         </button>
         <div
             class="-mx-3 flex scroll min-h-0 w-[72px] flex-1 flex-col items-center gap-2.5 overflow-x-hidden overflow-y-auto"
@@ -93,7 +106,6 @@
         <footer
             class="-mx-3 mt-auto -mb-3 flex w-[72px] flex-col items-center gap-2 border-t border-line bg-surface py-3"
         >
-            <a class="logo-mark size-[34px] shrink-0" href="#/chat" aria-label="TiConnect"></a>
             <button
                 class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                 onclick={() => app.navigate({ kind: 'watch-party' })}
@@ -108,6 +120,7 @@
             >
                 <Icon name="settings" size={15} />
             </button>
+            <a class="logo-mark size-[34px] shrink-0" href="#/chat" aria-label="TiConnect"></a>
         </footer>
     {:else}
         <header class="flex h-[30px] items-center justify-between px-3">
