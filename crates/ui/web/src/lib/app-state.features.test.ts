@@ -146,6 +146,74 @@ describe('AppState feature behavior', () => {
         expect(app.recording).toBe(false);
     });
 
+    it('keeps forming waveform bars while the input holds steady', async () => {
+        vi.useFakeTimers();
+        const { app } = makeApp();
+        app.route = { kind: 'chat', id: 'user-1' };
+        const stream = {
+            getTracks: () => [{ stop: vi.fn() }],
+        } as unknown as MediaStream;
+        vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+        vi.stubGlobal('navigator', {
+            mediaDevices: { getUserMedia: vi.fn(async () => stream) },
+        });
+        const getByteTimeDomainData = vi.fn((target: Uint8Array) => {
+            target.fill(200);
+        });
+        const analyser = { fftSize: 0, getByteTimeDomainData };
+        const connect = vi.fn();
+        class FakeAudioContext {
+            state: AudioContextState = 'running';
+            resume = vi.fn(async () => undefined);
+            close = vi.fn(async () => undefined);
+            createMediaStreamSource = vi.fn(() => ({ connect }));
+            createAnalyser = vi.fn(() => analyser);
+        }
+        vi.stubGlobal('AudioContext', FakeAudioContext);
+        const sendFile = vi.spyOn(app, 'sendFile').mockResolvedValue(undefined);
+
+        await app.startRecording();
+        expect(app.recording).toBe(true);
+        await vi.advanceTimersByTimeAsync(350);
+
+        expect(app.recordingLevel).toBeGreaterThan(0.5);
+        expect(app.recordingWaveform.length).toBeGreaterThanOrEqual(3);
+        await app.stopRecording();
+
+        expect(sendFile).toHaveBeenCalledTimes(1);
+        expect(app.recording).toBe(false);
+        expect(app.recordingWaveform).toEqual([]);
+        vi.useRealTimers();
+    });
+
+    it('reports an unavailable microphone level meter', async () => {
+        vi.useFakeTimers();
+        const { app } = makeApp();
+        app.route = { kind: 'chat', id: 'user-1' };
+        const stream = {
+            getTracks: () => [{ stop: vi.fn() }],
+        } as unknown as MediaStream;
+        vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+        vi.stubGlobal('navigator', {
+            mediaDevices: { getUserMedia: vi.fn(async () => stream) },
+        });
+        class SuspendedAudioContext {
+            state: AudioContextState = 'suspended';
+            resume = vi.fn(async () => undefined);
+            close = vi.fn(async () => undefined);
+        }
+        vi.stubGlobal('AudioContext', SuspendedAudioContext);
+
+        await app.startRecording();
+        await vi.advanceTimersByTimeAsync(10);
+
+        expect(app.recording).toBe(true);
+        expect(app.notice).toBe('Microphone level is unavailable.');
+        expect(app.recordingWaveform).toEqual([]);
+        app.cancelRecording();
+        vi.useRealTimers();
+    });
+
     it('clears all and scoped history through the bridge', async () => {
         const { app, client } = makeApp();
         app.route = { kind: 'settings', section: 'storage' };

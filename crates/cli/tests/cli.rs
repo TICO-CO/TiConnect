@@ -40,6 +40,7 @@ fn messaging_commands_are_exposed() {
     assert_success(&help);
     let stdout = String::from_utf8_lossy(&help.stdout);
     for command in [
+        "doctor",
         "send",
         "messages",
         "mark-read",

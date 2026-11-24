@@ -13,6 +13,7 @@ export interface WaveBar {
     y: number;
     height: number;
     opacity: number;
+    leading: boolean;
 }
 
 export function pushWaveSample(history: readonly number[], level: number): number[] {
@@ -33,12 +34,12 @@ export function interpolatedSample(history: readonly number[], position: number)
     return first + (second - first) * fraction;
 }
 
-export function waveBars(history: readonly number[], scroll: number): WaveBar[] {
+export function waveBars(history: readonly number[]): WaveBar[] {
     const center = WAVE_SIZE / 2;
     const x = (WAVE_SIZE - WAVE_BAR_WIDTH) / 2;
     return Array.from({ length: WAVE_BAR_COUNT }, (_unused, index) => {
         const angle = (360 * index) / WAVE_BAR_COUNT;
-        const sample = interpolatedSample(history, scroll + index);
+        const sample = interpolatedSample(history, history.length - 1 - index);
         const height = WAVE_MIN_LENGTH + WAVE_BAR_LENGTH * Math.pow(sample, 1.35);
         return {
             angle,
@@ -46,6 +47,7 @@ export function waveBars(history: readonly number[], scroll: number): WaveBar[] 
             y: center - WAVE_INNER_RADIUS - height,
             height,
             opacity: 0.4 + 0.6 * sample,
+            leading: index === 0,
         };
     });
 }

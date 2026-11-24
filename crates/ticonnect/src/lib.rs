@@ -16,7 +16,10 @@ Usage:
 
 Install:
   ticonnect --install-user
-  ticonnect --uninstall-user [--purge]";
+  ticonnect --uninstall-user [--purge]
+
+Diagnostics:
+  ticonnect doctor [--json]";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
@@ -99,6 +102,13 @@ fn unknown_flag(arg: &OsString) -> ParseError {
     ParseError(format!("unknown option: {}", arg.to_string_lossy()))
 }
 
+fn spawns_daemon(args: &[OsString]) -> bool {
+    !matches!(
+        args.first().and_then(|arg| arg.to_str()),
+        Some("settings" | "doctor")
+    )
+}
+
 pub fn run(action: Action) -> Result<()> {
     match action {
         Action::App | Action::Ui => {
@@ -120,7 +130,7 @@ pub fn run(action: Action) -> Result<()> {
             Ok(())
         }
         Action::Cli(args) => {
-            if args.first().is_none_or(|arg| arg != "settings")
+            if spawns_daemon(&args)
                 && let Err(error) = ticonnect_runtime::ensure_daemon()
             {
                 eprintln!("warning: {error}");
@@ -147,4 +157,17 @@ fn runtime() -> Result<tokio::runtime::Runtime> {
     Ok(tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn daemon_free_commands_do_not_spawn_a_daemon() {
+        assert!(!spawns_daemon(&[OsString::from("settings")]));
+        assert!(!spawns_daemon(&[OsString::from("doctor")]));
+        assert!(spawns_daemon(&[OsString::from("status")]));
+        assert!(spawns_daemon(&[]));
+    }
 }

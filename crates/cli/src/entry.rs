@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::OsString;
 
+use crate::doctor;
 use crate::output::{
     candidate_line, network_human, network_json, status_human, status_json, variant_text,
 };
@@ -58,6 +59,12 @@ enum Command {
     Network {
         #[command(subcommand)]
         command: NetworkCommand,
+    },
+    /// Check local desktop, audio, media, and config prerequisites.
+    Doctor {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
     },
     /// Send a text message to a trusted user.
     Send { user_id: String, body: String },
@@ -271,6 +278,7 @@ async fn run_command(command: Command) -> Result<()> {
             );
         }
         Command::Settings { command } => run_settings(command)?,
+        Command::Doctor { json } => doctor::run(json)?,
         Command::Users { command } => run_users(command).await?,
         Command::Discover { command } => run_discover(command).await?,
         Command::Network { command } => run_network(command).await?,

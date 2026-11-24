@@ -94,9 +94,11 @@ ticonnect id show
 ticonnect send <user-id> "hello"
 ticonnect users list
 ticonnect settings list
+ticonnect doctor
 ```
 
-The command line starts the daemon when it is absent. `ticonnect --help` lists
+The command line starts the daemon when it is absent. `ticonnect doctor` checks
+local prerequisites without starting the daemon. `ticonnect --help` lists
 the user-facing surface; `ticonnect --version` prints the binary version.
 `ticonnect version` is an alias. `ticonnect cli ...` remains a hidden
 compatibility alias.
@@ -165,17 +167,28 @@ sudo firewall-cmd --reload
 traffic. `peers_unreachable` means discovery worked but the transport port did
 not. Check client isolation, VPNs, and the configured `transport.port`.
 
-## Flatpak (experimental)
+## Flatpak
 
-Flatpak is kept as an experimental packaging path and is not a release gate:
+Flatpak is the recommended tester path. Download
+`org.ticonnect.TiConnect-<tag>.flatpak` from the latest release, then install
+it:
 
 ```sh
-flatpak-builder --user --install --force-clean build packaging/flatpak/org.ticonnect.TiConnect.yml
+flatpak install --user ./org.ticonnect.TiConnect-v0.0.6.flatpak
+flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
 
-Portal-backed capture and input, notifications, autostart, and the status
-notifier must be provided by the host desktop.
+The bundle includes the media codec extension and `yt-dlp`. Portal-backed
+capture and input, notifications, tray integration, audio devices, and LAN UDP
+access must still be provided by the host desktop. See
+`docs/tester-quickstart.md` for the full two-machine checklist.
+
+Developers can build the bundle locally:
+
+```sh
+scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.0.6 dist
+```
 
 ## From source
 

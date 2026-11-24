@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
-import { describe, expect, it, vi } from 'vitest';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
     Bootstrap,
@@ -157,7 +157,68 @@ function audioMessage(): Message {
     };
 }
 
+class FakeMediaRecorder {
+    static isTypeSupported = vi.fn((type: string) => type.includes('webm'));
+
+    state = 'inactive';
+    mimeType: string;
+    ondataavailable: ((event: { data: Blob }) => void) | null = null;
+    onstop: (() => void) | null = null;
+
+    constructor(
+        readonly stream: MediaStream,
+        options?: { mimeType?: string },
+    ) {
+        this.mimeType = options?.mimeType ?? 'audio/webm';
+    }
+
+    start(): void {
+        this.state = 'recording';
+    }
+
+    stop(): void {
+        this.state = 'inactive';
+        this.ondataavailable?.({ data: new Blob(['voice'], { type: this.mimeType }) });
+        this.onstop?.();
+    }
+}
+
+function stubDecodableAudio(): void {
+    const channel = new Float32Array(600).fill(0.5);
+    const decodeAudioData = vi.fn(async () => ({
+        duration: 6,
+        getChannelData: () => channel,
+    }));
+    const close = vi.fn(async () => undefined);
+    class FakeAudioContext {
+        decodeAudioData = decodeAudioData;
+        close = close;
+    }
+    vi.stubGlobal('AudioContext', FakeAudioContext);
+    class FakeResizeObserver {
+        constructor(private callback: ResizeObserverCallback) {}
+        observe(): void {
+            this.callback(
+                [{ contentRect: { width: 180 } }] as unknown as ResizeObserverEntry[],
+                this as unknown as ResizeObserver,
+            );
+        }
+        disconnect(): void {}
+        unobserve(): void {}
+    }
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => new Response(new Uint8Array([1, 2, 3]))),
+    );
+    vi.spyOn(window.HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    vi.spyOn(window.HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+}
+
 describe('feature surfaces', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+    });
     it('changes appearance from Settings and applies it immediately', async () => {
         const themeColor = document.createElement('meta');
         themeColor.name = 'theme-color';
@@ -401,7 +462,8 @@ describe('feature surfaces', () => {
         app.connection = 'offline';
         const offline = render(ChatView, { app });
         expect(screen.getByText('Daemon offline — messages cannot be sent.')).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty(
+        expect(screen.queryByRole('button', { name: 'Send message' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Record voice message' })).toHaveProperty(
             'disabled',
             true,
         );
@@ -480,6 +542,54 @@ describe('feature surfaces', () => {
         expect(retry).toHaveBeenCalledWith('message-failed');
     });
 
+    it('keeps forming recording bars while the input holds steady', async () => {
+        vi.useFakeTimers();
+        const app = makeApp();
+        const stream = {
+            getTracks: () => [{ stop: vi.fn() }],
+        } as unknown as MediaStream;
+        vi.stubGlobal('MediaRecorder', FakeMediaRecorder);
+        vi.stubGlobal('navigator', {
+            mediaDevices: { getUserMedia: vi.fn(async () => stream) },
+        });
+        const getByteTimeDomainData = vi.fn((target: Uint8Array) => {
+            target.fill(200);
+        });
+        const analyser = { fftSize: 0, getByteTimeDomainData };
+        const connect = vi.fn();
+        class FakeAudioContext {
+            state: AudioContextState = 'running';
+            resume = vi.fn(async () => undefined);
+            close = vi.fn(async () => undefined);
+            createMediaStreamSource = vi.fn(() => ({ connect }));
+            createAnalyser = vi.fn(() => analyser);
+        }
+        vi.stubGlobal('AudioContext', FakeAudioContext);
+        class FakeResizeObserver {
+            constructor(private callback: ResizeObserverCallback) {}
+            observe(): void {
+                this.callback(
+                    [{ contentRect: { width: 300 } }] as unknown as ResizeObserverEntry[],
+                    this as unknown as ResizeObserver,
+                );
+            }
+            disconnect(): void {}
+            unobserve(): void {}
+        }
+        vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+        const { container } = render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Record voice message' }));
+        await act(async () => {
+            await vi.advanceTimersByTimeAsync(450);
+        });
+
+        const bars = container.querySelectorAll('span[class*="w-[3px]"]');
+        expect(bars.length).toBe(app.recordingWaveform.length);
+        expect(bars.length).toBeGreaterThan(0);
+        expect(bars.length).toBeLessThan(50);
+    });
+
     it('starts, stops, and cancels voice recording from chat', async () => {
         const app = makeApp();
         const start = vi.spyOn(app, 'startRecording').mockResolvedValue(undefined);
@@ -499,17 +609,16 @@ describe('feature surfaces', () => {
         expect(cancel).toHaveBeenCalled();
     });
 
-    it('loads an inline player for audio attachments', async () => {
+    it('loads a player-only bubble for audio attachments', async () => {
+        stubDecodableAudio();
         const app = makeApp();
         app.messages = [audioMessage()];
         const url = vi.spyOn(app, 'attachmentUrl').mockResolvedValue('blob:voice');
         render(ChatView, { app });
 
-        await fireEvent.click(screen.getByRole('button', { name: 'Play' }));
-        await waitFor(() => expect(url).toHaveBeenCalledWith('hash-1'));
-        await waitFor(() =>
-            expect(document.querySelector('audio')?.getAttribute('src')).toBe('blob:voice'),
-        );
+        await waitFor(() => expect(screen.getByText('00:06')).toBeTruthy());
+        expect(screen.getByRole('button', { name: 'Play voice message' })).toBeTruthy();
+        expect(screen.queryByText('voice.webm')).toBeNull();
     });
 
     it('interleaves call events with messages by time', async () => {

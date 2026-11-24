@@ -10,7 +10,7 @@ import {
     type Preferences,
     savePreferences,
 } from './preferences';
-import { attemptAsync } from './result';
+import { attempt, attemptAsync } from './result';
 import { activationRoute, parseRoute, type Route, routeHash, type SettingsSection } from './routes';
 import type {
     AudioDevice,
@@ -33,6 +33,7 @@ import type {
     YoutubeStream,
 } from './types';
 import type { LifecycleState, LoadState, PartyOutcome, RemoteOutcome, SaveState } from './ui-state';
+import { pushWaveSample } from './waveform';
 import { firstVideoId } from './youtube';
 
 function timing(label: string): void {
@@ -77,6 +78,10 @@ interface DemoSeed {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+const RECORDING_LEVEL_SAMPLE_MS = 100;
+const RECORDING_RMS_GAIN = 4;
+const RECORDING_LEVEL_ATTACK = 0.6;
+const RECORDING_LEVEL_RELEASE = 0.25;
 const MAX_MESSAGE_BODY_BYTES = 32 * 1024;
 const TOAST_LIMIT = 3;
 const DEFAULT_TOAST_TIMEOUT_SECS = 5;
@@ -157,6 +162,8 @@ export class AppState {
     });
     recording = $state(false);
     recordingSeconds = $state(0);
+    recordingLevel = $state(0);
+    recordingWaveform = $state<number[]>([]);
     callLevel = $state(0);
     callActionPending = $state(false);
     remoteInputPending = $state(false);
@@ -184,6 +191,8 @@ export class AppState {
     private recordingChunks: Blob[] = [];
     private recordingStream: MediaStream | null = null;
     private recordingTimer: number | null = null;
+    private recordingContext: AudioContext | null = null;
+    private recordingLevelTimer: number | null = null;
     private discardRecording = false;
 
     get selectedUserId(): string {
@@ -1269,6 +1278,7 @@ export class AppState {
                 void this.stopRecording();
             }
         }, 1_000);
+        void this.startRecordingLevel();
     }
 
     async stopRecording(): Promise<void> {
@@ -1291,16 +1301,69 @@ export class AppState {
         }
     }
 
+    private async startRecordingLevel(): Promise<void> {
+        if (typeof AudioContext === 'undefined') {
+            return;
+        }
+        const stream = this.recordingStream;
+        if (stream === null) {
+            return;
+        }
+        const contextResult = attempt(() => new AudioContext());
+        if (!contextResult.ok) {
+            return;
+        }
+        const context = contextResult.value;
+        const resumeResult = await attemptAsync(() => context.resume());
+        if (!resumeResult.ok || context.state === 'suspended') {
+            void context.close();
+            this.notice = 'Microphone level is unavailable.';
+            return;
+        }
+        const sourceResult = attempt(() => context.createMediaStreamSource(stream));
+        if (!sourceResult.ok) {
+            void context.close();
+            return;
+        }
+        const analyser = context.createAnalyser();
+        analyser.fftSize = 512;
+        sourceResult.value.connect(analyser);
+        const samples = new Uint8Array(analyser.fftSize);
+        this.recordingContext = context;
+        this.recordingLevelTimer = window.setInterval(() => {
+            analyser.getByteTimeDomainData(samples);
+            const energy = samples.reduce((total, sample) => {
+                const deviation = (sample - 128) / 128;
+                return total + deviation * deviation;
+            }, 0);
+            const target = Math.min(1, Math.sqrt(energy / samples.length) * RECORDING_RMS_GAIN);
+            const factor =
+                target > this.recordingLevel ? RECORDING_LEVEL_ATTACK : RECORDING_LEVEL_RELEASE;
+            this.recordingLevel = this.recordingLevel + (target - this.recordingLevel) * factor;
+            this.recordingWaveform = pushWaveSample(this.recordingWaveform, this.recordingLevel);
+        }, RECORDING_LEVEL_SAMPLE_MS);
+    }
+
     private releaseRecording(): void {
         if (this.recordingTimer !== null) {
             window.clearInterval(this.recordingTimer);
             this.recordingTimer = null;
+        }
+        if (this.recordingLevelTimer !== null) {
+            window.clearInterval(this.recordingLevelTimer);
+            this.recordingLevelTimer = null;
+        }
+        if (this.recordingContext !== null) {
+            void this.recordingContext.close();
+            this.recordingContext = null;
         }
         this.recordingStream?.getTracks().forEach((track) => track.stop());
         this.recordingStream = null;
         this.recorder = null;
         this.recording = false;
         this.recordingSeconds = 0;
+        this.recordingLevel = 0;
+        this.recordingWaveform = [];
     }
 
     async retryMessage(messageId: string): Promise<void> {

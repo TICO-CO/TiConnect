@@ -15,7 +15,9 @@
 - [ ] A second launch reuses the running UI.
 - [ ] `--uninstall-user` leaves config, data, and state; `--purge` removes them after confirmation.
 - [ ] `desktop-file-validate`, `appstreamcli validate`, and `systemd-analyze` pass.
-- [ ] Flatpak build reproducible on a clean VM (experimental).
+- [ ] Flatpak bundle builds reproducibly and publishes with the release.
+- [ ] Flatpak install smoke passes: D-Bus names, `doctor --json`, and bundled `yt-dlp`.
+- [ ] Tester quickstart matches the released Flatpak and AppImage filenames.
 - [ ] Arch package builds in a clean container and installs with `pacman -U`; app menu, units, and autostart files present.
 - [ ] Binary tarball is kept as an internal Arch build input and is not published.
 - [ ] `nix build .#ticonnect`, `nix flake check`, and the NixOS module evaluate.

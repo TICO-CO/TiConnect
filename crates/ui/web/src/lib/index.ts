@@ -1,6 +1,18 @@
 export type { PlayerState, Toast } from './app-state.svelte';
 export { AppState } from './app-state.svelte';
 export { assertNever } from './assert';
+export type { AttachmentKind } from './attachments';
+export { attachmentKind, effectiveMimeType, mimeFromName } from './attachments';
+export type { VoiceWaveform, VoiceWaveformFailure } from './audio-waveform';
+export {
+    decodeVoiceWaveform,
+    formatVoiceTime,
+    peaksFromSamples,
+    resampleWaveform,
+    VOICE_DECODE_BARS,
+    VOICE_MIN_PEAK,
+    VoiceWaveformFailures,
+} from './audio-waveform';
 export type { BridgeInfo } from './bridge';
 export { BridgeClient, resolveBridge } from './bridge';
 export type { BridgeFailure } from './bridge-failures';

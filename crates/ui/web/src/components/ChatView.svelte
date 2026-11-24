@@ -2,7 +2,15 @@
     import { tick } from 'svelte';
 
     import type { AppState, CallLog, Message } from '../lib';
-    import { clock, dayLabel, fileSize, fingerprintLabel, sessionClock, shortName } from '../lib';
+    import {
+        attachmentKind,
+        clock,
+        dayLabel,
+        fileSize,
+        fingerprintLabel,
+        sessionClock,
+        shortName,
+    } from '../lib';
     import { firstVideoId } from '../lib';
     import Avatar from './Avatar.svelte';
     import ConfirmDialog from './ConfirmDialog.svelte';
@@ -10,6 +18,7 @@
     import Icon from './Icon.svelte';
     import SkeletonBlock from './SkeletonBlock.svelte';
     import StateBanner from './StateBanner.svelte';
+    import VoiceMessage from './VoiceMessage.svelte';
 
     interface Props {
         app: AppState;
@@ -23,9 +32,8 @@
     let stream: HTMLDivElement | null = $state(null);
     let fileInput: HTMLInputElement | null = $state(null);
     let composer: HTMLTextAreaElement | null = $state(null);
-    let audioUrls = $state<Record<string, string>>({});
-    let loadingAudio = $state<Record<string, boolean>>({});
-    let audioErrors = $state<Record<string, string>>({});
+    let recordingTrack: HTMLElement | null = $state(null);
+    let recordingTrackWidth = $state(0);
     let imageUrls = $state<Record<string, string>>({});
     let imageLoading = $state<Record<string, boolean>>({});
     let imageErrors = $state<Record<string, string>>({});
@@ -37,6 +45,10 @@
     let deleteError = $state('');
     let prependingOlderMessages = false;
     const loadingTimelineRows = [0, 1, 2, 3, 4];
+    const recordingBarCount = $derived(
+        recordingTrackWidth > 0 ? Math.max(1, Math.floor(recordingTrackWidth / 6)) : 24,
+    );
+    const recordingLevels = $derived(app.recordingWaveform.slice(-recordingBarCount));
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
     const draftBytes = $derived(new TextEncoder().encode(app.draft).length);
@@ -211,23 +223,6 @@
         deleteError = '';
     }
 
-    async function loadAudio(messageId: string, hash: string): Promise<void> {
-        if (audioUrls[messageId] !== undefined || loadingAudio[messageId]) {
-            return;
-        }
-        loadingAudio = { ...loadingAudio, [messageId]: true };
-        const errors = { ...audioErrors };
-        delete errors[messageId];
-        audioErrors = errors;
-        const url = await app.attachmentUrl(hash);
-        loadingAudio = { ...loadingAudio, [messageId]: false };
-        if (url !== '') {
-            audioUrls = { ...audioUrls, [messageId]: url };
-            return;
-        }
-        audioErrors = { ...audioErrors, [messageId]: 'Voice message unavailable.' };
-    }
-
     async function loadImage(messageId: string, hash: string): Promise<void> {
         if (imageUrls[messageId] !== undefined || imageLoading[messageId] === true) {
             return;
@@ -285,7 +280,7 @@
 
     $effect(() => {
         for (const message of app.messages) {
-            if (!message.attachment_mime.startsWith('image/')) {
+            if (attachmentKind(message.attachment_mime, message.attachment_name) !== 'image') {
                 continue;
             }
             if (imageErrors[message.id] !== undefined) {
@@ -297,6 +292,17 @@
             }
             void loadImage(message.id, message.attachment_hash);
         }
+    });
+
+    $effect(() => {
+        if (recordingTrack === null || typeof ResizeObserver === 'undefined') {
+            return;
+        }
+        const observer = new ResizeObserver((entries) => {
+            recordingTrackWidth = entries[0]?.contentRect.width ?? 0;
+        });
+        observer.observe(recordingTrack);
+        return () => observer.disconnect();
     });
 
     async function loadOlderMessages(): Promise<void> {
@@ -504,6 +510,10 @@
                         {:else}
                             <article
                                 class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
+                                class:w-full={attachmentKind(
+                                    message.attachment_mime,
+                                    message.attachment_name,
+                                ) === 'audio'}
                                 data-local={message.local_sender ? '' : undefined}
                             >
                                 {#if message.deleted_at > 0}
@@ -519,7 +529,7 @@
                                         </p>
                                     {/if}
                                     {#if message.attachment_hash}
-                                        {#if message.attachment_mime.startsWith('image/')}
+                                        {#if attachmentKind(message.attachment_mime, message.attachment_name) === 'image'}
                                             <button
                                                 class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
                                                 onclick={() =>
@@ -554,66 +564,8 @@
                                                         : ''}</span
                                                 >
                                             </button>
-                                        {:else if message.attachment_mime.startsWith('audio/')}
-                                            <div
-                                                class="flex w-full flex-col gap-2 rounded-md border border-line bg-surface px-3.5 py-3"
-                                            >
-                                                <div class="flex items-center gap-3">
-                                                    <span
-                                                        class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                                        ><Icon
-                                                            name="mic"
-                                                            size={18}
-                                                            color="var(--color-ink-2)"
-                                                        /></span
-                                                    >
-                                                    <span class="flex min-w-0 flex-col gap-0.5">
-                                                        <strong class="truncate text-[14px]"
-                                                            >{message.attachment_name ||
-                                                                'Voice message'}</strong
-                                                        >
-                                                        <span class="text-xs text-ink-3"
-                                                            >{fileSize(
-                                                                message.attachment_size,
-                                                            )}{transferLabel(
-                                                                message.attachment_hash,
-                                                            )
-                                                                ? ` · ${transferLabel(message.attachment_hash)}`
-                                                                : ''}</span
-                                                        >
-                                                    </span>
-                                                    {#if audioErrors[message.id]}
-                                                        <span class="text-xs text-error"
-                                                            >{audioErrors[message.id]}</span
-                                                        >
-                                                    {/if}
-                                                    {#if audioUrls[message.id] === undefined}
-                                                        <button
-                                                            class="ml-auto inline-flex min-h-8 items-center justify-center rounded-pill border border-line px-3.5 text-step-xs font-bold text-ink hover:border-line-strong hover:bg-surface-2"
-                                                            onclick={() =>
-                                                                void loadAudio(
-                                                                    message.id,
-                                                                    message.attachment_hash,
-                                                                )}
-                                                            disabled={loadingAudio[message.id] ===
-                                                                true}
-                                                        >
-                                                            {loadingAudio[message.id] === true
-                                                                ? 'Loading…'
-                                                                : audioErrors[message.id]
-                                                                  ? 'Retry'
-                                                                  : 'Play'}
-                                                        </button>
-                                                    {/if}
-                                                </div>
-                                                {#if audioUrls[message.id] !== undefined}
-                                                    <audio
-                                                        class="w-full"
-                                                        controls
-                                                        src={audioUrls[message.id]}
-                                                    ></audio>
-                                                {/if}
-                                            </div>
+                                        {:else if attachmentKind(message.attachment_mime, message.attachment_name) === 'audio'}
+                                            <VoiceMessage {app} {message} />
                                         {:else}
                                             <button
                                                 class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
@@ -809,36 +761,23 @@
             class="mx-5 mb-5 flex shrink-0 flex-col rounded-md border border-line bg-surface px-4 pt-3.5 pb-2.5"
             onsubmit={send}
         >
-            <label class="sr-only" for="message-body">Message</label>
-            <textarea
-                id="message-body"
-                class="max-h-[120px] min-h-9 w-full resize-none border-0 bg-transparent text-step-0 leading-[1.45] text-ink outline-none placeholder:text-ink-3"
-                bind:this={composer}
-                value={app.draft}
-                disabled={composerBlocked !== ''}
-                oninput={(event) =>
-                    app.updateDraft((event.currentTarget as HTMLTextAreaElement).value)}
-                onkeydown={onComposerKey}
-                placeholder={composerBlocked === '' ? 'Write a message' : composerBlocked}
-                rows="1"></textarea>
-            <div class="flex items-center gap-1.5">
-                <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
-                <button
-                    type="button"
-                    class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={composerBlocked !== ''}
-                    onclick={() => fileInput?.click()}
-                    aria-label="Attach file"
-                >
-                    <Icon name="paperclip" size={16} color="var(--color-ink-2)" />
-                </button>
-                {#if app.recording}
-                    <span
-                        class="inline-flex h-8 items-center gap-1.5 rounded-pill border border-error bg-error/10 px-3 text-xs font-bold text-error tabular-nums"
-                        role="status"
+            {#if app.recording}
+                <div class="flex items-center gap-3" role="status">
+                    <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-error"></span>
+                    <span class="text-sm font-bold text-ink tabular-nums"
+                        >{sessionClock(app.recordingSeconds)}</span
                     >
-                        <span class="size-1.5 rounded-full bg-error"></span>
-                        {sessionClock(app.recordingSeconds)}
+                    <span
+                        bind:this={recordingTrack}
+                        class="flex h-8 min-w-0 flex-1 items-center justify-start gap-[3px]"
+                        aria-hidden="true"
+                    >
+                        {#each recordingLevels as level, index (index)}
+                            <span
+                                class="w-[3px] shrink-0 rounded-full bg-ink-2"
+                                style="height: {6 + Math.min(1, Math.max(0, level)) * 26}px;"
+                            ></span>
+                        {/each}
                     </span>
                     <button
                         type="button"
@@ -850,37 +789,66 @@
                     </button>
                     <button
                         type="button"
-                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-error bg-error/10 text-error hover:bg-error/20"
+                        class="flex size-8 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent"
                         onclick={() => void app.stopRecording()}
                         aria-label="Stop and send voice message"
                     >
-                        <Icon name="check" size={16} color="var(--color-error)" />
+                        <Icon name="check" size={16} color="var(--color-base)" />
                     </button>
-                {:else}
+                </div>
+            {:else}
+                <label class="sr-only" for="message-body">Message</label>
+                <textarea
+                    id="message-body"
+                    class="max-h-[120px] min-h-9 w-full resize-none border-0 bg-transparent text-step-0 leading-[1.45] text-ink outline-none placeholder:text-ink-3"
+                    bind:this={composer}
+                    value={app.draft}
+                    disabled={composerBlocked !== ''}
+                    oninput={(event) =>
+                        app.updateDraft((event.currentTarget as HTMLTextAreaElement).value)}
+                    onkeydown={onComposerKey}
+                    placeholder={composerBlocked === '' ? 'Write a message' : composerBlocked}
+                    rows="1"></textarea>
+                <div class="flex items-center gap-1.5">
+                    <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
                     <button
                         type="button"
                         class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={composerBlocked !== ''}
-                        onclick={() => void app.startRecording()}
-                        aria-label="Record voice message"
+                        onclick={() => fileInput?.click()}
+                        aria-label="Attach file"
                     >
-                        <Icon name="mic" size={16} color="var(--color-ink-2)" />
+                        <Icon name="paperclip" size={16} color="var(--color-ink-2)" />
                     </button>
-                {/if}
-                <span
-                    class="ml-auto text-xs tabular-nums {overLimit ? 'text-error' : 'text-ink-3'}"
-                >
-                    {app.draft === '' ? '' : `${draftBytes} / 32768`}
-                </span>
-                <button
-                    type="submit"
-                    class="flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Send message"
-                    disabled={!canSend()}
-                >
-                    <Icon name="send" size={18} color="var(--color-base)" />
-                </button>
-            </div>
+                    <span
+                        class="ml-auto text-xs tabular-nums {overLimit
+                            ? 'text-error'
+                            : 'text-ink-3'}"
+                    >
+                        {app.draft === '' ? '' : `${draftBytes} / 32768`}
+                    </span>
+                    {#if app.draft.trim() === ''}
+                        <button
+                            type="button"
+                            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={composerBlocked !== ''}
+                            onclick={() => void app.startRecording()}
+                            aria-label="Record voice message"
+                        >
+                            <Icon name="mic" size={16} color="var(--color-ink-2)" />
+                        </button>
+                    {:else}
+                        <button
+                            type="submit"
+                            class="flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Send message"
+                            disabled={!canSend()}
+                        >
+                            <Icon name="send" size={18} color="var(--color-base)" />
+                        </button>
+                    {/if}
+                </div>
+            {/if}
         </form>
     {:else}
         <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">

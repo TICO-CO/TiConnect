@@ -72,6 +72,7 @@ fn help_hides_internal_entry_points() {
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Launch TiConnect"));
+    assert!(stdout.contains("ticonnect doctor"));
     let words: Vec<&str> = stdout
         .split_whitespace()
         .map(|word| word.trim_matches(|c: char| !c.is_alphanumeric()))

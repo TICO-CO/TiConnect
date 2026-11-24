@@ -1,3 +1,4 @@
+import { effectiveMimeType } from './attachments';
 import type { BridgeFailure } from './bridge-failures';
 import { BridgeFailures } from './bridge-failures';
 import type { Result } from './result';
@@ -15,10 +16,6 @@ export interface BridgeInfo {
 function normalizeBaseUrl(value: string): string {
     const withScheme = value.includes('://') ? value : `http://${value}`;
     return withScheme.replace(/\/+$/, '');
-}
-
-function baseMimeType(value: string): string {
-    return (value.split(';', 1)[0] ?? '').trim();
 }
 
 function uploadFailureDetail(body: string): string {
@@ -211,7 +208,7 @@ export class BridgeClient {
     }
 
     async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
-        const mime = baseMimeType(file.type);
+        const mime = effectiveMimeType(file.type, file.name);
         const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(mime)}`;
         const uploadResult = await this.upload(path, file);
         if (!uploadResult.ok) {

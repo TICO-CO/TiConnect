@@ -98,6 +98,19 @@ Launch TiConnect from the app menu. `--uninstall-user` removes the app
 integration and keeps your configuration, identity, database, attachments, and
 logs. Use `--uninstall-user --purge` to remove those too.
 
+### Flatpak
+
+Install the tester bundle from the latest release, then run the preflight check
+and launch the app:
+
+```sh
+flatpak install --user ./org.ticonnect.TiConnect-<tag>.flatpak
+flatpak run org.ticonnect.TiConnect doctor
+flatpak run org.ticonnect.TiConnect
+```
+
+See `docs/tester-quickstart.md` for the two-machine test checklist.
+
 ### Arch
 
 Install the package from the latest release with `pacman -U`. The package adds
@@ -141,6 +154,7 @@ ticonnect discover list
 ticonnect network status
 ticonnect network check
 ticonnect settings list
+ticonnect doctor
 ```
 
 `ticonnect --help` lists the user-facing surface. `ticonnect --version` prints
@@ -191,10 +205,11 @@ Paths are overridable with `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`,
 
 Every push to `main` compiles and tests the workspace. Merging a `v*` branch
 (for example `v0.1.0`) into `main` creates the matching tag automatically, then
-builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the Arch package, and
-`SHA256SUMS.txt`. The tag must match the `version` in `Cargo.toml`. The binary
-tarball is an internal Arch build input and is not published. See
-`docs/install.md` for AppImage, `pacman -U`, and Nix instructions.
+builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the Flatpak bundle, the
+Arch package, and `SHA256SUMS.txt`. The tag must match the `version` in
+`Cargo.toml`. The binary tarball is an internal Arch build input and is not
+published. See `docs/install.md` for Flatpak, AppImage, `pacman -U`, and Nix
+instructions.
 
 ```sh
 git switch -c v0.1.0

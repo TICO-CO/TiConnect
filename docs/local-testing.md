@@ -101,9 +101,10 @@ stops. Run the automated harness check with:
 make lab-smoke
 ```
 
-On Nix, `nix develop` supplies the ALSA, GTK, WebKitGTK, Bun, and Node development
-outputs together with `pkg-config`, while keeping the Rust toolchain selected
-by `rust-toolchain.toml`:
+On Nix, `nix develop` supplies the Rust toolchain, ALSA, GTK, WebKitGTK, Bun,
+Node, and local integration test tools together with `pkg-config`. The shell uses
+the Rust toolchain from nixpkgs; outside the shell, `rust-toolchain.toml` still
+selects the host toolchain:
 
 ```sh
 nix develop

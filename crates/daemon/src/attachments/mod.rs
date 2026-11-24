@@ -31,6 +31,17 @@ fn requested_mime(mime: Option<&str>) -> Option<&str> {
     mime.map(base_mime).filter(|mime| !mime.is_empty())
 }
 
+fn preferred_mime<'a>(derived: &'a str, requested: Option<&'a str>) -> &'a str {
+    match requested_mime(requested) {
+        Some(specific)
+            if specific != "application/octet-stream" || derived == "application/octet-stream" =>
+        {
+            specific
+        }
+        _ => derived,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferPhase {
     Requesting,
@@ -144,7 +155,8 @@ impl AttachmentService {
         mime: Option<&str>,
     ) -> Result<AttachmentRef, AttachmentsError> {
         let mut attachment = self.inner.store.put_file(path)?;
-        if let Some(mime) = requested_mime(mime) {
+        let mime = preferred_mime(attachment.mime.as_str(), mime);
+        if mime != attachment.mime {
             attachment.mime = mime.to_owned();
             attachment
                 .validate(self.max_size())
@@ -828,6 +840,23 @@ mod tests {
         assert_eq!(requested_mime(Some(" audio/webm ")), Some("audio/webm"));
         assert_eq!(requested_mime(Some("")), None);
         assert_eq!(requested_mime(None), None);
+    }
+
+    #[test]
+    fn preferred_mime_keeps_derived_over_generic_request() {
+        assert_eq!(
+            preferred_mime("audio/mpeg", Some("application/octet-stream")),
+            "audio/mpeg"
+        );
+        assert_eq!(preferred_mime("audio/mpeg", None), "audio/mpeg");
+        assert_eq!(
+            preferred_mime("application/octet-stream", Some("audio/mpeg")),
+            "audio/mpeg"
+        );
+        assert_eq!(
+            preferred_mime("image/png", Some("audio/mpeg")),
+            "audio/mpeg"
+        );
     }
 
     #[test]

@@ -20,6 +20,7 @@
             | 'close'
             | 'check'
             | 'checks'
+            | 'retry'
             | 'pointer'
             | 'keyboard'
             | 'fullscreen'
@@ -141,6 +142,21 @@
             d="m3 12 3.5 3.5L13 9M11 15.5 12.5 17 21 8.5"
             stroke={color}
             stroke-width="1.6"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        />
+    {:else if name === 'retry'}
+        <path
+            d="M4 4v6h6M20 20v-6h-6"
+            stroke={color}
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        />
+        <path
+            d="M20 9A8 8 0 0 0 5.6 5.6L4 7.2M4 15a8 8 0 0 0 14.4 3.4L20 16.8"
+            stroke={color}
+            stroke-width="1.7"
             stroke-linecap="round"
             stroke-linejoin="round"
         />

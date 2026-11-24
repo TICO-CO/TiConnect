@@ -32,7 +32,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin desktop-file-utils appstream systemd jq
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin desktop-file-utils appstream systemd jq xvfb
 
       - name: Build gtk4-layer-shell
         run: |
@@ -115,6 +115,33 @@ jobs:
           TICONNECT_INSTALL_ASSUME_YES=1 "$TMP_HOME/.local/bin/ticonnect" --uninstall-user --purge
           test ! -e "$TMP_HOME/.local/share/applications/org.ticonnect.TiConnect.desktop"
 
+      - name: Install Flatpak toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak bundle
+        run: |
+          flatpak-builder --show-manifest packaging/flatpak/org.ticonnect.TiConnect.yml >/dev/null
+          scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml "${TAG_NAME}" dist
+
+      - name: Flatpak install smoke
+        run: |
+          BUNDLE="dist/org.ticonnect.TiConnect-${TAG_NAME}.flatpak"
+          flatpak install --user -y "$BUNDLE"
+          flatpak info -m org.ticonnect.TiConnect | grep -q 'org.ticonnect.Daemon'
+          flatpak info -m org.ticonnect.TiConnect | grep -q 'org.ticonnect.UI'
+          dbus-run-session -- flatpak run \
+            --env=TICONNECT_DOCTOR_BUS=present \
+            --env=TICONNECT_DOCTOR_DISPLAY=x11 \
+            --env=TICONNECT_DOCTOR_AUDIO=missing \
+            --env=TICONNECT_DOCTOR_YTDLP=available \
+            --env=TICONNECT_DOCTOR_GSTREAMER=missing \
+            org.ticonnect.TiConnect doctor --json > /tmp/ticonnect-flatpak-doctor.json
+          python3 -c 'import json; report = json.load(open("/tmp/ticonnect-flatpak-doctor.json")); assert report["failed"] is False, report'
+          flatpak run --command=sh org.ticonnect.TiConnect -c 'test -x /app/bin/yt-dlp && /app/bin/yt-dlp --version'
+
       - name: Build and validate Arch package
         env:
           TAG: ${{ inputs.tag || github.ref_name }}
@@ -146,6 +173,7 @@ jobs:
           name: ticonnect-${{ inputs.tag || github.ref_name }}-linux
           path: |
             dist/*.AppImage
+            dist/*.flatpak
             dist/*.pkg.tar.zst
           if-no-files-found: error
 
@@ -161,12 +189,13 @@ jobs:
 
       - name: Checksums
         run: |
-          (cd dist && sha256sum *.AppImage *.pkg.tar.zst > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          (cd dist && sha256sum *.AppImage *.flatpak *.pkg.tar.zst > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.AppImage
+            dist/*.flatpak
             dist/*.pkg.tar.zst
             dist/SHA256SUMS.txt
           generate_release_notes: true

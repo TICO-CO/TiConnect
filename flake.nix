@@ -99,8 +99,37 @@
           nativeBuildInputs = nativeBuildInputsFor pkgs;
 
           buildInputs = buildInputsFor pkgs ++ runtimeInputsFor pkgs ++ [
+            pkgs.alsa-plugins
+            pkgs.appstream
             pkgs.bun
+            pkgs.cargo
+            pkgs.cargo-audit
+            pkgs.clippy
+            pkgs.curl
+            pkgs.dbus
+            pkgs.desktop-file-utils
+            pkgs.git
+            pkgs.grim
+            pkgs.jq
+            pkgs.kdePackages.kwin
+            pkgs.kdePackages.xdg-desktop-portal-kde
+            pkgs.libxkbcommon
             pkgs.nodejs
+            pkgs.psmisc
+            pkgs.python3
+            pkgs.rustc
+            pkgs.rustfmt
+            pkgs.systemd
+            pkgs.wayland-protocols
+            pkgs.weston
+            pkgs.wtype
+            pkgs.xdotool
+            pkgs.xdg-desktop-portal
+            pkgs.libx11
+            pkgs.libxi
+            pkgs.libxtst
+            pkgs.xvfb
+            pkgs.zellij
           ];
 
           shellHook = ''

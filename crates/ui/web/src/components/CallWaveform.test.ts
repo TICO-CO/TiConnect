@@ -11,9 +11,11 @@ function barHeights(container: HTMLElement): number[] {
 }
 
 describe('CallWaveform', () => {
-    it('renders one bar per radial slot', () => {
+    it('renders one bar per radial slot with a cursor on the newest bar', () => {
         const { container } = render(CallWaveform, { level: 0.4 });
         expect(container.querySelectorAll('rect')).toHaveLength(WAVE_BAR_COUNT);
+        const cursor = container.querySelector('circle');
+        expect(cursor?.getAttribute('fill')).toBe('var(--color-accent)');
     });
 
     it('uses the warning tone while reconnecting', () => {
