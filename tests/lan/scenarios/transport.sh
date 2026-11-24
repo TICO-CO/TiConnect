@@ -44,6 +44,7 @@ wait_for 60 message_body_is node-b "$A_ID" "$MSG_NET" "$TOKEN_NET" \
     || fail "node-b did not receive the queued message"
 
 log "checking forget closes the session and blocks reconnect"
+B_FP="$(fingerprint_raw node-b)"
 monitor_start node-a forget-signals
 forget_user node-a "$B_ID"
 wait_for 30 session_idle node-a || fail "node-a kept a session after forget"
@@ -53,7 +54,9 @@ user_known node-b "$A_ID" || fail "node-b lost its trust row unexpectedly"
 sleep 16
 assert_eq "$(session_count node-a)" "0" "forgotten user reconnected"
 assert_eq "$(session_count node-b)" "0" "forgotten user session stayed open"
-pair_with_pin
+cli node-a users unblock "$B_FP" >/dev/null
+wait_trusted
+wait_online
 
 log "checking custom transport port and restart requirement"
 cli node-a settings set transport.port 45999 >/dev/null

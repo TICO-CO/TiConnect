@@ -81,6 +81,7 @@ fn flatpak_manifest_installs_unified_binary_with_minimal_permissions() {
         "--socket=session-bus",
         "--socket=wayland",
         "--socket=fallback-x11",
+        "--socket=pulseaudio",
         "--device=dri",
         "--filesystem=xdg-config/ticonnect:create",
         "--filesystem=xdg-data/ticonnect:create",
@@ -89,7 +90,6 @@ fn flatpak_manifest_installs_unified_binary_with_minimal_permissions() {
     }
     assert!(manifest.contains("gtk4-layer-shell"));
     assert!(!manifest.contains("--filesystem=home"));
-    assert!(!manifest.contains("--socket=pulseaudio"));
 }
 
 #[test]
