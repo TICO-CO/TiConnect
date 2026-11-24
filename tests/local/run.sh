@@ -371,6 +371,7 @@ scenario_ui() {
     UI_PID=$!
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
+    WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
     TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect-ovl" >"$WORK/overlay.log" 2>&1 &
     OVL_PID=$!
     sleep 3
