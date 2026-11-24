@@ -33,7 +33,7 @@ fails to acquire the name and exits non-zero.
 | `RunLanCheck` | `() -> a{sv}` | Sends an immediate discovery probe and waits up to 15 seconds for a peer or session. |
 | `GetUser` | `(s) -> a{sv}` | Returns stable identity plus live address, MAC, OS, desktop, and display-server metadata. |
 | `ForgetUser` | `(s) -> b` | Removes trust, local history, and queued outbox rows; preserves sequence state and closes an active session. |
-| `SendMessage` | `(ss) -> s` | Queues a text message and returns its message id. |
+| `SendMessage` | `(sss) -> s` | Queues a text message and returns its message id. The third argument is the id of the message being replied to, or empty for no reply. |
 | `GetMessage` | `(s) -> a{sv}` | Returns one stored message by id. |
 | `ListMessages` | `(s u u) -> aa{sv}` | Returns message history for a conversation. |
 | `CountMessages` | `(s) -> u` | Returns the number of stored messages in a conversation. |
@@ -45,7 +45,7 @@ fails to acquire the name and exits non-zero.
 | `SetTyping` | `(sb) -> ()` | Sends a typing indicator to a connected trusted user. |
 | `GetMessageState` | `(s) -> s` | Returns the current state for a message id. |
 | `RetryMessage` | `(s) -> b` | Requeues a failed or expired outgoing message. |
-| `EditMessage` | `(ss) -> ()` | Publishes a signed edit for a local text message. |
+| `EditMessage` | `(ss) -> ()` | Publishes a signed edit for a local text message. Edits are accepted within 5 minutes of sending. |
 | `DeleteMessage` | `(s) -> ()` | Publishes a signed tombstone for a local message. |
 | `SetUserPolicy` | `(ss) -> ()` | Sets `accept`, `mute`, or `ignore` for one user. |
 | `SetDnd` | `(b) -> ()` | Toggles global do-not-disturb mode and persists it. |

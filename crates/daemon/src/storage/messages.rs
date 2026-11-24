@@ -372,9 +372,9 @@ pub fn insert(
         .map_err(|error| StorageError::InvalidData(error.to_string()))?;
     let inserted = connection.execute(
         "INSERT OR IGNORE INTO messages
-         (id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id, body,
+         (id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id, reply_to, body,
           attachment_hash, attachment_name, attachment_size, attachment_mime, signature, state)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
         params![
             record.message_id.to_string(),
             record.conversation_id,
@@ -385,6 +385,7 @@ pub fn insert(
             received_at,
             record.kind.as_str(),
             record.target_id,
+            record.reply_to,
             record.body,
             record.attachment_hash,
             record.attachment_name,
@@ -427,7 +428,7 @@ pub fn get(connection: &Connection, id: &str) -> Result<Option<StoredMessage>, S
     connection
         .query_row(
             "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                    body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                    reply_to, body, attachment_hash, attachment_name, attachment_size, attachment_mime,
                     signature, state, edited_at, deleted_at
              FROM messages WHERE id = ?1",
             params![id],
@@ -512,7 +513,7 @@ pub fn history(
 ) -> Result<Vec<StoredMessage>, StorageError> {
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                reply_to, body, attachment_hash, attachment_name, attachment_size, attachment_mime,
                 signature, state, edited_at, deleted_at
          FROM messages
          WHERE conversation_id = ?1 AND kind NOT IN ('ack', 'edit', 'delete')
@@ -541,7 +542,7 @@ pub fn records_between(
 ) -> Result<Vec<StoredMessage>, StorageError> {
     let mut statement = connection.prepare(
         "SELECT id, conversation_id, sender_id, seq, sent_at, received_at, kind, target_id,
-                body, attachment_hash, attachment_name, attachment_size, attachment_mime,
+                reply_to, body, attachment_hash, attachment_name, attachment_size, attachment_mime,
                 signature, state, edited_at, deleted_at
          FROM messages
          WHERE conversation_id = ?1 AND sender_id = ?2 AND seq >= ?3 AND seq <= ?4
@@ -606,7 +607,7 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
     let kind: String = row.get(6)?;
     let kind = MessageKind::from_str(&kind).map_err(to_sql_error)?;
     let seq: i64 = row.get(3)?;
-    let state: Option<String> = row.get(14)?;
+    let state: Option<String> = row.get(15)?;
     let state = state
         .map(|value| value.parse().map_err(to_sql_error))
         .transpose()?;
@@ -618,23 +619,24 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
         sent_at: row.get(4)?,
         kind,
         target_id: row.get(7)?,
-        body: row.get(8)?,
-        attachment_hash: row.get(9)?,
-        attachment_name: row.get(10)?,
+        reply_to: row.get(8)?,
+        body: row.get(9)?,
+        attachment_hash: row.get(10)?,
+        attachment_name: row.get(11)?,
         attachment_size: row
-            .get::<_, Option<i64>>(11)?
+            .get::<_, Option<i64>>(12)?
             .map(u64::try_from)
             .transpose()
             .map_err(to_sql_error)?,
-        attachment_mime: row.get(12)?,
+        attachment_mime: row.get(13)?,
     };
     Ok(StoredMessage {
         record,
         received_at: row.get(5)?,
-        signature: row.get(13)?,
+        signature: row.get(14)?,
         state,
-        edited_at: row.get(15)?,
-        deleted_at: row.get(16)?,
+        edited_at: row.get(16)?,
+        deleted_at: row.get(17)?,
     })
 }
 

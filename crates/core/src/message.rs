@@ -87,6 +87,7 @@ pub struct MessageRecord {
     pub sent_at: i64,
     pub kind: MessageKind,
     pub target_id: Option<String>,
+    pub reply_to: Option<String>,
     pub body: Option<String>,
     pub attachment_hash: Option<String>,
     pub attachment_name: Option<String>,
@@ -111,6 +112,7 @@ impl MessageRecord {
             sent_at,
             kind,
             target_id: None,
+            reply_to: None,
             body,
             attachment_hash: None,
             attachment_name: None,
@@ -199,6 +201,7 @@ impl MessageRecord {
             .u8(self.kind.as_u8())
             .map_err(MessageError::Canonical)?;
         encode_optional(&mut encoder, self.target_id.as_deref())?;
+        encode_optional(&mut encoder, self.reply_to.as_deref())?;
         encode_optional(&mut encoder, self.body.as_deref())?;
         encode_optional(&mut encoder, self.attachment_hash.as_deref())?;
         encode_optional(&mut encoder, self.attachment_name.as_deref())?;
@@ -221,7 +224,7 @@ impl MessageRecord {
     pub fn from_canonical(bytes: &[u8]) -> Result<Self, MessageError> {
         let mut decoder = Decoder::new(MESSAGE_DOMAIN, bytes).map_err(MessageError::Canonical)?;
         let version = decoder.u16().map_err(MessageError::Canonical)?;
-        if version != PROTOCOL_VERSION {
+        if version != PROTOCOL_VERSION && version != PROTOCOL_VERSION - 1 {
             return Err(MessageError::UnsupportedVersion(version));
         }
         let message_id = MessageId::from_uuid(Uuid::from_bytes(
@@ -245,6 +248,11 @@ impl MessageRecord {
         let kind = MessageKind::from_u8(decoder.u8().map_err(MessageError::Canonical)?)
             .ok_or(MessageError::UnknownKindNumber)?;
         let target_id = decode_optional(&mut decoder)?;
+        let reply_to = if version == PROTOCOL_VERSION {
+            decode_optional(&mut decoder)?
+        } else {
+            None
+        };
         let body = decode_optional(&mut decoder)?;
         let attachment_hash = decode_optional(&mut decoder)?;
         let attachment_name = decode_optional(&mut decoder)?;
@@ -264,6 +272,7 @@ impl MessageRecord {
             sent_at,
             kind,
             target_id,
+            reply_to,
             body,
             attachment_hash,
             attachment_name,
@@ -307,6 +316,11 @@ impl MessageRecord {
         {
             return Err(MessageError::InvalidTarget);
         }
+        if let Some(reply_to) = &self.reply_to
+            && MessageId::from_str(reply_to).is_err()
+        {
+            return Err(MessageError::InvalidReply);
+        }
         if let Some(body) = &self.body
             && body.len() > MAX_MESSAGE_BODY
         {
@@ -338,6 +352,9 @@ impl MessageRecord {
                 if self.target_id.is_none() {
                     return Err(MessageError::InvalidAck);
                 }
+                if self.reply_to.is_some() {
+                    return Err(MessageError::InvalidReply);
+                }
                 match self.body.as_deref() {
                     Some("delivered" | "read") => {}
                     _ => return Err(MessageError::InvalidAck),
@@ -346,6 +363,9 @@ impl MessageRecord {
             MessageKind::Edit => {
                 if self.target_id.is_none() {
                     return Err(MessageError::InvalidTarget);
+                }
+                if self.reply_to.is_some() {
+                    return Err(MessageError::InvalidReply);
                 }
                 if self.body.as_deref().is_none_or(str::is_empty) {
                     return Err(MessageError::EmptyBody);
@@ -357,6 +377,9 @@ impl MessageRecord {
             MessageKind::Delete => {
                 if self.target_id.is_none() {
                     return Err(MessageError::InvalidTarget);
+                }
+                if self.reply_to.is_some() {
+                    return Err(MessageError::InvalidReply);
                 }
                 if self.body.is_some() || self.attachment_hash.is_some() {
                     return Err(MessageError::InvalidDelete);
@@ -443,6 +466,9 @@ pub enum MessageError {
 
     #[error("message target id is invalid")]
     InvalidTarget,
+
+    #[error("message reply id is invalid")]
+    InvalidReply,
 
     #[error("message body exceeds {MAX_MESSAGE_BODY} bytes")]
     BodyTooLarge,
@@ -599,6 +625,90 @@ mod tests {
         assert!(matches!(
             record.canonical_bytes(),
             Err(MessageError::InvalidAck)
+        ));
+    }
+
+    #[test]
+    fn reply_record_round_trips() {
+        let identity = IdentityKeyPair::from_secret_bytes([74_u8; 32]);
+        let sender = NodeId::generate();
+        let user = NodeId::generate();
+        let target = MessageId::generate();
+        let mut record = MessageRecord::text(
+            conversation_id(sender, user),
+            sender.to_string(),
+            1,
+            1,
+            "reply body",
+        );
+        record.reply_to = Some(target.to_string());
+        let envelope = record.signed(&identity).expect("sign");
+        let (decoded, _) =
+            MessageRecord::decode_signed(&envelope.encode(), &identity.verifying_key())
+                .expect("decode");
+        assert_eq!(
+            decoded.reply_to.as_deref(),
+            Some(target.to_string()).as_deref()
+        );
+        assert_eq!(decoded, record);
+    }
+
+    #[test]
+    fn legacy_v1_record_decodes_without_reply() {
+        use crate::canonical::Encoder;
+
+        let sender = NodeId::generate();
+        let user = NodeId::generate();
+        let target = MessageId::generate();
+        let target_id = target.to_string();
+        let conversation = conversation_id(sender, user);
+        let message_id = MessageId::generate();
+        // Hand-rolled v1 payload: same field order as canonical_bytes
+        // but without the reply_to optional.
+        let mut encoder = Encoder::new(MESSAGE_DOMAIN).expect("encoder");
+        encoder.u16(1).expect("version");
+        encoder.bytes(message_id.as_uuid().as_bytes()).expect("id");
+        encoder.string(&conversation).expect("conversation");
+        encoder.string(&sender.to_string()).expect("sender");
+        encoder.u64(1).expect("seq");
+        encoder.u64(1).expect("sent_at");
+        encoder.u8(MessageKind::Text.as_u8()).expect("kind");
+        encoder.u8(1).expect("target present");
+        encoder.string(&target_id).expect("target");
+        encoder.u8(0).expect("no body");
+        encoder.u8(0).expect("no hash");
+        encoder.u8(0).expect("no name");
+        encoder.u8(0).expect("no size");
+        encoder.u8(0).expect("no mime");
+        let decoded = MessageRecord::from_canonical(&encoder.finish()).expect("decode v1");
+        assert_eq!(decoded.reply_to, None);
+        assert_eq!(decoded.target_id.as_deref(), Some(target_id.as_str()));
+    }
+
+    #[test]
+    fn rejects_bad_reply_reference() {
+        let sender = NodeId::generate();
+        let user = NodeId::generate();
+        let mut record = MessageRecord::text(
+            conversation_id(sender, user),
+            sender.to_string(),
+            1,
+            1,
+            "hello",
+        );
+        record.reply_to = Some("not-a-message-id".to_owned());
+        assert!(matches!(
+            record.canonical_bytes(),
+            Err(MessageError::InvalidReply)
+        ));
+
+        record.reply_to = None;
+        record.kind = MessageKind::Edit;
+        record.target_id = Some(MessageId::generate().to_string());
+        record.reply_to = Some(MessageId::generate().to_string());
+        assert!(matches!(
+            record.canonical_bytes(),
+            Err(MessageError::InvalidReply)
         ));
     }
 }

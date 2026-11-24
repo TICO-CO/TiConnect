@@ -27,7 +27,7 @@ pub trait Daemon {
     fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
     fn list_blocked_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn unblock_user(&self, fingerprint: &str) -> zbus::Result<bool>;
-    fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
+    fn send_message(&self, user_id: &str, body: &str, reply_to: &str) -> zbus::Result<String>;
     fn retry_message(&self, message_id: &str) -> zbus::Result<bool>;
     fn edit_message(&self, message_id: &str, body: &str) -> zbus::Result<()>;
     fn delete_message(&self, message_id: &str) -> zbus::Result<()>;
@@ -48,7 +48,13 @@ pub trait Daemon {
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
     fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
-    fn send_attachment(&self, user_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn send_attachment(
+        &self,
+        user_id: &str,
+        path: &str,
+        mime: &str,
+        reply_to: &str,
+    ) -> zbus::Result<String>;
     fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
     fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;

@@ -90,6 +90,7 @@ export interface Message {
     sent_at: number;
     received_at: number;
     body: string;
+    reply_to: string;
     attachment_hash: string;
     attachment_name: string;
     attachment_size: number;

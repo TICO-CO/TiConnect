@@ -27,6 +27,7 @@
             | 'fullscreen'
             | 'chevron-right'
             | 'chevron-left'
+            | 'dots'
             | 'alert';
         size?: number;
         color?: string;
@@ -192,6 +193,10 @@
             stroke-linecap="round"
             stroke-linejoin="round"
         />
+    {:else if name === 'dots'}
+        <circle cx="5.5" cy="12" r="1.6" fill={color} />
+        <circle cx="12" cy="12" r="1.6" fill={color} />
+        <circle cx="18.5" cy="12" r="1.6" fill={color} />
     {:else if name === 'alert'}
         <circle cx="12" cy="12" r="8.5" stroke={color} stroke-width="1.5" />
         <path d="M12 8v4.5M12 16h.01" stroke={color} stroke-width="1.8" stroke-linecap="round" />

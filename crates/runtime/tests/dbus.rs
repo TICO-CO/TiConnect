@@ -33,7 +33,7 @@ trait Daemon {
     fn get_network_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn run_lan_check(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
-    fn send_message(&self, user_id: &str, body: &str) -> zbus::Result<String>;
+    fn send_message(&self, user_id: &str, body: &str, reply_to: &str) -> zbus::Result<String>;
     fn retry_message(&self, message_id: &str) -> zbus::Result<bool>;
     fn edit_message(&self, message_id: &str, body: &str) -> zbus::Result<()>;
     fn delete_message(&self, message_id: &str) -> zbus::Result<()>;
@@ -48,7 +48,13 @@ trait Daemon {
     fn get_storage_usage(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
-    fn send_attachment(&self, user_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn send_attachment(
+        &self,
+        user_id: &str,
+        path: &str,
+        mime: &str,
+        reply_to: &str,
+    ) -> zbus::Result<String>;
     fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
     fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
@@ -224,7 +230,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     assert!(
         proxy
-            .send_message("00000000-0000-7000-8000-000000000000", "hello")
+            .send_message("00000000-0000-7000-8000-000000000000", "hello", "")
             .await
             .is_err()
     );
@@ -269,6 +275,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
             .send_attachment(
                 "00000000-0000-7000-8000-000000000000",
                 "/missing/path.bin",
+                "",
                 ""
             )
             .await

@@ -14,6 +14,7 @@ const MESSAGE: Message = {
     sent_at: 1_700_000_000,
     received_at: 1_700_000_000,
     body: '',
+    reply_to: '',
     attachment_hash: 'hash-1',
     attachment_name: 'voice.webm',
     attachment_size: 2048,

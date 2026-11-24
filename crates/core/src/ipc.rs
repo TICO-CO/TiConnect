@@ -116,6 +116,7 @@ pub const MESSAGE_SENT_AT: &str = "sent_at";
 pub const MESSAGE_RECEIVED_AT: &str = "received_at";
 pub const MESSAGE_KIND: &str = "kind";
 pub const MESSAGE_TARGET_ID: &str = "target_id";
+pub const MESSAGE_REPLY_TO: &str = "reply_to";
 pub const MESSAGE_BODY: &str = "body";
 pub const MESSAGE_ATTACHMENT_HASH: &str = "attachment_hash";
 pub const MESSAGE_ATTACHMENT_NAME: &str = "attachment_name";

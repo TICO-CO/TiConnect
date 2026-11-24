@@ -192,7 +192,14 @@ async fn dispatch_inner(
         "storage_usage" => Ok(json!(link.storage_usage().await?)),
         "send_message" => {
             let input: SendMessage = params(value)?;
-            Ok(json!(link.send_message(input.user_id, input.body).await?))
+            if input.reply_to.is_empty() {
+                Ok(json!(link.send_message(input.user_id, input.body).await?))
+            } else {
+                Ok(json!(
+                    link.send_message_reply(input.user_id, input.body, input.reply_to)
+                        .await?
+                ))
+            }
         }
         "retry_message" => {
             let input: MessageId = params(value)?;
@@ -442,6 +449,8 @@ struct ListMessages {
 struct SendMessage {
     user_id: String,
     body: String,
+    #[serde(default)]
+    reply_to: String,
 }
 
 #[derive(Deserialize)]

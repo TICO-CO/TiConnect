@@ -7,14 +7,23 @@ use ticonnect_core::sign::SignedEnvelope;
 use super::MessagingError;
 use crate::storage::User;
 
-pub fn text(local: NodeId, user: NodeId, seq: u64, sent_at: i64, body: String) -> MessageRecord {
-    MessageRecord::text(
+pub fn text(
+    local: NodeId,
+    user: NodeId,
+    seq: u64,
+    sent_at: i64,
+    body: String,
+    reply_to: Option<String>,
+) -> MessageRecord {
+    let mut record = MessageRecord::text(
         conversation_id(local, user),
         local.to_string(),
         seq,
         sent_at,
         body,
-    )
+    );
+    record.reply_to = reply_to;
+    record
 }
 
 pub fn attachment(
@@ -23,17 +32,20 @@ pub fn attachment(
     seq: u64,
     sent_at: i64,
     attachment: &ticonnect_core::attachment::AttachmentRef,
+    reply_to: Option<String>,
 ) -> Result<MessageRecord, MessagingError> {
-    MessageRecord::new(
+    let mut record = MessageRecord::new(
         conversation_id(local, user),
         local.to_string(),
         seq,
         sent_at,
         attachment.kind(),
         None,
-    )
-    .with_attachment(attachment)
-    .map_err(MessagingError::Message)
+    );
+    record.reply_to = reply_to;
+    record
+        .with_attachment(attachment)
+        .map_err(MessagingError::Message)
 }
 
 pub fn ack(

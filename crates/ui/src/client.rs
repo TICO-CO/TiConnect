@@ -70,6 +70,7 @@ enum Command {
     SendMessage {
         user_id: String,
         body: String,
+        reply_to: String,
         reply: Reply<String>,
     },
     RetryMessage {
@@ -89,6 +90,7 @@ enum Command {
         user_id: String,
         path: String,
         mime: String,
+        reply_to: String,
         reply: Reply<String>,
     },
     AttachmentPath {
@@ -332,6 +334,22 @@ impl LinkHandle {
         self.request(|reply| Command::SendMessage {
             user_id,
             body,
+            reply_to: String::new(),
+            reply,
+        })
+        .await
+    }
+
+    pub async fn send_message_reply(
+        &self,
+        user_id: String,
+        body: String,
+        reply_to: String,
+    ) -> Result<String> {
+        self.request(|reply| Command::SendMessage {
+            user_id,
+            body,
+            reply_to,
             reply,
         })
         .await
@@ -366,6 +384,24 @@ impl LinkHandle {
             user_id,
             path,
             mime,
+            reply_to: String::new(),
+            reply,
+        })
+        .await
+    }
+
+    pub async fn send_attachment_reply(
+        &self,
+        user_id: String,
+        path: String,
+        mime: String,
+        reply_to: String,
+    ) -> Result<String> {
+        self.request(|reply| Command::SendAttachment {
+            user_id,
+            path,
+            mime,
+            reply_to,
             reply,
         })
         .await
@@ -672,6 +708,8 @@ async fn listen(
         .receive_message_state_changed()
         .await
         .map_err(bus_error)?;
+    let mut message_edited = proxy.receive_message_edited().await.map_err(bus_error)?;
+    let mut message_deleted = proxy.receive_message_deleted().await.map_err(bus_error)?;
     let mut conversation_changed = proxy
         .receive_conversation_changed()
         .await
@@ -765,6 +803,30 @@ async fn listen(
                 let _ = events.send(DaemonEvent::MessageStateChanged {
                     message_id: args.message_id.to_owned(),
                     state,
+                });
+            }
+            signal = message_edited.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::MessageEdited {
+                    message_id: args.message_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
+                    body: args.body.to_owned(),
+                    edited_at: args.edited_at,
+                });
+            }
+            signal = message_deleted.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::MessageDeleted {
+                    message_id: args.message_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                 });
             }
             signal = conversation_changed.next() => {
@@ -1221,9 +1283,13 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         Command::SendMessage {
             user_id,
             body,
+            reply_to,
             reply,
         } => {
-            let result = proxy.send_message(&user_id, &body).await.map_err(bus_error);
+            let result = proxy
+                .send_message(&user_id, &body, &reply_to)
+                .await
+                .map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::RetryMessage { message_id, reply } => {
@@ -1249,10 +1315,11 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             user_id,
             path,
             mime,
+            reply_to,
             reply,
         } => {
             let result = proxy
-                .send_attachment(&user_id, &path, &mime)
+                .send_attachment(&user_id, &path, &mime, &reply_to)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);

@@ -6,7 +6,7 @@ use crate::fingerprint::Fingerprint;
 use crate::id::NodeId;
 
 pub const WIRE_VERSION: u8 = 1;
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 2;
 pub const MAX_CONTROL_FRAME: usize = 64 * 1024;
 pub const MAX_WATCH_PARTY_FRAME: usize = 4096;
 pub const MAX_TRUST_FRAME: usize = 4 * 1024;

@@ -29,6 +29,8 @@ export {
     sessionClock,
     shortName,
 } from './format';
+export type { AnchorRect, MenuAlignment, MenuAnchor } from './message-menu';
+export { messageMenuAlignment, placeMessageMenu } from './message-menu';
 export type { Preferences } from './preferences';
 export { DEFAULT_PREFERENCES, loadPreferences, savePreferences } from './preferences';
 export type { Result } from './result';

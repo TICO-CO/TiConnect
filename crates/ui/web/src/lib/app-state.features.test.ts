@@ -228,6 +228,7 @@ describe('AppState feature behavior', () => {
                 sent_at: 1,
                 received_at: 1,
                 body: 'hello',
+                reply_to: '',
                 attachment_hash: '',
                 attachment_name: '',
                 attachment_size: 0,
@@ -480,6 +481,7 @@ describe('AppState feature behavior', () => {
                 sent_at: 1_000,
                 received_at: 1_000,
                 body: 'original',
+                reply_to: '',
                 attachment_hash: '',
                 attachment_name: '',
                 attachment_size: 0,
@@ -511,6 +513,65 @@ describe('AppState feature behavior', () => {
             user_id: 'user-1',
         });
         expect(app.messages[0]?.deleted_at).toBeGreaterThan(0);
+    });
+
+    it('sends a reply with the quoted message id and clears the reply target', async () => {
+        const { app, client } = makeApp();
+        client.request.mockImplementation(async (method: string) => {
+            if (method === 'send_message') {
+                return ok('message-9');
+            }
+            return ok(null);
+        });
+        app.route = { kind: 'chat', id: 'user-1' };
+        app.connection = 'online';
+        app.draft = 'answer';
+        app.replyToId = 'message-1';
+        await app.sendMessage();
+
+        expect(client.request).toHaveBeenCalledWith('send_message', {
+            user_id: 'user-1',
+            body: 'answer',
+            reply_to: 'message-1',
+        });
+        expect(app.replyToId).toBe('');
+        expect(app.draft).toBe('');
+    });
+
+    it('edits and deletes messages locally in the demo', async () => {
+        const { app } = makeApp();
+        app.demo = true;
+        app.messages = [
+            {
+                id: 'message-1',
+                conversation_id: 'conversation-1',
+                user_id: 'user-1',
+                sender_id: 'user-1',
+                local_sender: true,
+                seq: 1,
+                sent_at: 1_000,
+                received_at: 1_000,
+                body: 'original',
+                reply_to: '',
+                attachment_hash: '',
+                attachment_name: '',
+                attachment_size: 0,
+                attachment_mime: '',
+                attachment_path: '',
+                state: 'sent',
+                edited_at: 0,
+                deleted_at: 0,
+                notify: true,
+            },
+        ];
+
+        expect(await app.editMessage('message-1', 'updated')).toBe(true);
+        expect(app.messages[0]?.body).toBe('updated');
+        expect(app.messages[0]?.edited_at).toBeGreaterThan(0);
+
+        expect(await app.deleteMessage('message-1')).toBe(true);
+        expect(app.messages[0]?.deleted_at).toBeGreaterThan(0);
+        expect(await app.editMessage('message-1', 'again')).toBe(false);
     });
 
     it('applies remote input policy changes from the daemon', () => {
@@ -598,6 +659,7 @@ describe('AppState feature behavior', () => {
                 sent_at: 1_000,
                 received_at: 1_000,
                 body: 'hello',
+                reply_to: '',
                 attachment_hash: '',
                 attachment_name: '',
                 attachment_size: 0,

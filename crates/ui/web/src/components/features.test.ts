@@ -122,6 +122,7 @@ function textMessage(id: string, body: string, sentAt: number): Message {
         sent_at: sentAt,
         received_at: sentAt,
         body,
+        reply_to: '',
         attachment_hash: '',
         attachment_name: '',
         attachment_size: 0,
@@ -145,6 +146,7 @@ function audioMessage(): Message {
         sent_at: CREATED_AT,
         received_at: CREATED_AT,
         body: '',
+        reply_to: '',
         attachment_hash: 'hash-1',
         attachment_name: 'voice.webm',
         attachment_size: 2048,
@@ -492,7 +494,7 @@ describe('feature surfaces', () => {
 
     it('edits and deletes local text messages', async () => {
         const app = makeApp();
-        const message = { ...textMessage('message-edit', 'original', CREATED_AT) };
+        const message = { ...textMessage('message-edit', 'original', Date.now()) };
         message.local_sender = true;
         message.state = 'sent';
         app.messages = [message];
@@ -501,16 +503,178 @@ describe('feature surfaces', () => {
         const remove = vi.spyOn(app, 'deleteMessage').mockResolvedValue(true);
         render(ChatView, { app });
 
-        await fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
         const field = screen.getByLabelText('Message text');
+        expect(field.closest('article')?.className).toMatch(/(?:^|\s)w-full(?:\s|$)/);
         await fireEvent.input(field, { target: { value: 'updated text' } });
         await fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         expect(edit).toHaveBeenCalledWith('message-edit', 'updated text');
 
-        await fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+        await fireEvent.input(screen.getByLabelText('Message text'), {
+            target: { value: 'saved with enter' },
+        });
+        await fireEvent.keyDown(screen.getByLabelText('Message text'), { key: 'Enter' });
+        await waitFor(() => {
+            expect(edit).toHaveBeenCalledWith('message-edit', 'saved with enter');
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+        await fireEvent.keyDown(screen.getByLabelText('Message text'), { key: 'Escape' });
+        expect(screen.queryByLabelText('Message text')).toBeNull();
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
         expect(screen.getByRole('alertdialog')).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: 'Delete message' }));
         expect(remove).toHaveBeenCalledWith('message-edit');
+    });
+
+    it('closes the message menu on outside click and on Escape', async () => {
+        const app = makeApp();
+        const message = { ...textMessage('message-menu', 'original', Date.now()) };
+        message.local_sender = true;
+        message.state = 'sent';
+        app.messages = [message];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
+        expect(screen.getByRole('menu').classList.contains('w-40')).toBe(true);
+
+        await fireEvent.click(screen.getByText('original'));
+        expect(screen.queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Edit' })).toBeTruthy();
+
+        await fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(screen.queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+    });
+
+    it('hides the action button after closing the menu with it', async () => {
+        const app = makeApp();
+        const message = { ...textMessage('message-menu-close', 'original', Date.now()) };
+        message.local_sender = true;
+        message.state = 'sent';
+        app.messages = [message];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        const actions = screen.getByRole('button', { name: 'Message actions' });
+        await fireEvent.click(actions);
+        expect(actions.getAttribute('aria-expanded')).toBe('true');
+        expect(actions.classList.contains('opacity-100')).toBe(true);
+
+        await fireEvent.click(actions);
+        expect(screen.queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+        expect(actions.getAttribute('aria-expanded')).toBe('false');
+        expect(actions.classList.contains('opacity-100')).toBe(false);
+    });
+
+    it('hides the edit action once the five minute window passes', async () => {
+        const app = makeApp();
+        const message = {
+            ...textMessage('message-stale', 'original', Date.now() - 6 * 60 * 1000),
+        };
+        message.local_sender = true;
+        message.state = 'sent';
+        app.messages = [message];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Reply' })).toBeTruthy();
+        expect(screen.queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+    });
+
+    it('replies to a message and jumps to the original', async () => {
+        const app = makeApp();
+        const original = { ...textMessage('message-original', 'quoted text', Date.now()) };
+        original.local_sender = false;
+        const replier = { ...textMessage('message-reply', 'answer', Date.now()) };
+        replier.local_sender = true;
+        replier.state = 'sent';
+        replier.reply_to = original.id;
+        app.messages = [original, replier];
+        app.messagesLoad = 'ready';
+        const scrollIntoView = vi.fn();
+        window.HTMLElement.prototype.scrollIntoView = scrollIntoView;
+        render(ChatView, { app });
+
+        expect(screen.getAllByText('quoted text').length).toBeGreaterThan(0);
+        vi.useFakeTimers();
+        await fireEvent.click(screen.getByRole('button', { name: 'Jump to original message' }));
+        expect(scrollIntoView).toHaveBeenCalled();
+        const target = document.getElementById('chat-message-message-original');
+        expect(target?.className).toContain('reply-flash');
+
+        await vi.advanceTimersByTimeAsync(1700);
+        expect(document.getElementById('chat-message-message-original')?.className).not.toContain(
+            'reply-flash',
+        );
+
+        await fireEvent.click(
+            screen.getAllByRole('button', { name: 'Message actions' })[1] as HTMLElement,
+        );
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+        expect(app.replyToId).toBe(replier.id);
+        expect(screen.getByText(/Replying to/)).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: 'Cancel reply' }));
+        expect(app.replyToId).toBe('');
+    });
+
+    it('offers only reply on remote messages', async () => {
+        const app = makeApp();
+        const remote = { ...textMessage('message-remote', 'from a peer', Date.now()) };
+        remote.local_sender = false;
+        app.messages = [remote];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Reply' })).toBeTruthy();
+        expect(screen.queryByRole('menuitem', { name: 'Edit' })).toBeNull();
+        expect(screen.queryByRole('menuitem', { name: 'Delete' })).toBeNull();
+
+        await fireEvent.click(screen.getByRole('menuitem', { name: 'Reply' }));
+        expect(app.replyToId).toBe(remote.id);
+    });
+
+    it('mirrors message actions by sender', () => {
+        const app = makeApp();
+        const remote = { ...textMessage('message-remote-side', 'from a peer', CREATED_AT) };
+        const local = {
+            ...textMessage('message-local-side', 'from me', CREATED_AT + 1),
+        };
+        local.local_sender = true;
+        local.state = 'sent';
+        app.messages = [remote, local];
+        app.messagesLoad = 'ready';
+        const { container } = render(ChatView, { app });
+
+        const remoteArticle = container.querySelector('#chat-message-message-remote-side');
+        const localArticle = container.querySelector('#chat-message-message-local-side');
+        expect(remoteArticle?.hasAttribute('data-local')).toBe(false);
+        expect(remoteArticle?.classList.contains('flex-row-reverse')).toBe(true);
+        expect(localArticle?.hasAttribute('data-local')).toBe(true);
+        expect(localArticle?.classList.contains('data-local:flex-row')).toBe(true);
+    });
+
+    it('shows no actions on deleted remote messages', async () => {
+        const app = makeApp();
+        const remote = { ...textMessage('message-remote-deleted', 'gone', Date.now()) };
+        remote.local_sender = false;
+        remote.deleted_at = Date.now();
+        app.messages = [remote];
+        app.messagesLoad = 'ready';
+        render(ChatView, { app });
+
+        expect(screen.queryByRole('button', { name: 'Message actions' })).toBeNull();
     });
 
     it('renders edited markers and deleted tombstones', () => {

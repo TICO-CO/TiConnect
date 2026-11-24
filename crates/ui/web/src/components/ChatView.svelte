@@ -1,20 +1,21 @@
 <script lang="ts">
     import { tick } from 'svelte';
 
-    import type { AppState, CallLog, Message } from '../lib';
+    import type { AppState, CallLog, MenuAnchor, Message } from '../lib';
     import {
         attachmentKind,
         clock,
         dayLabel,
         fileSize,
         fingerprintLabel,
+        messageMenuAlignment,
+        placeMessageMenu,
         sessionClock,
         shortName,
     } from '../lib';
     import { firstVideoId } from '../lib';
     import Avatar from './Avatar.svelte';
     import ConfirmDialog from './ConfirmDialog.svelte';
-    import EditMessageDialog from './EditMessageDialog.svelte';
     import Icon from './Icon.svelte';
     import MessageComposer from './MessageComposer.svelte';
     import SkeletonBlock from './SkeletonBlock.svelte';
@@ -38,8 +39,15 @@
     let editingMessage = $state<Message | null>(null);
     let editingBody = $state('');
     let editError = $state('');
+    let editTextarea = $state<HTMLTextAreaElement | null>(null);
     let deleteTarget = $state<Message | null>(null);
     let deleteError = $state('');
+    let openMenuMessageId = $state<string | null>(null);
+    let menuPosition = $state<MenuAnchor | null>(null);
+    let replyTarget = $state<Message | null>(null);
+    let highlightedMessageId = $state<string | null>(null);
+    let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+    const EDIT_WINDOW_MS = 5 * 60 * 1000;
     let prependingOlderMessages = false;
     const loadingTimelineRows = [0, 1, 2, 3, 4];
 
@@ -135,6 +143,166 @@
         editingMessage = message;
         editingBody = message.body;
         editError = '';
+        openMenuMessageId = null;
+    }
+
+    function toggleMessageMenu(message: Message, event: MouseEvent): void {
+        if (openMenuMessageId === message.id) {
+            closeMessageMenu();
+            return;
+        }
+        openMenuMessageId = message.id;
+        const anchor = event.currentTarget;
+        if (anchor instanceof HTMLElement) {
+            menuPosition = placeMessageMenu(
+                window.innerWidth,
+                window.innerHeight,
+                anchor.getBoundingClientRect(),
+                messageMenuAlignment(message.local_sender),
+            );
+        } else {
+            menuPosition = null;
+        }
+    }
+
+    function closeMessageMenu(): void {
+        openMenuMessageId = null;
+        menuPosition = null;
+    }
+
+    function requestDelete(message: Message): void {
+        deleteTarget = message;
+        deleteError = '';
+        openMenuMessageId = null;
+    }
+
+    function canShowActions(message: Message): boolean {
+        if (message.deleted_at !== 0 || editingMessage?.id === message.id) {
+            return false;
+        }
+        if (!message.local_sender) {
+            return true;
+        }
+        return message.state !== 'failed' && message.state !== 'expired';
+    }
+
+    function canEdit(message: Message): boolean {
+        if (!message.local_sender || message.deleted_at !== 0) {
+            return false;
+        }
+        if (message.body === '' || message.attachment_hash !== '') {
+            return false;
+        }
+        const at = message.sent_at || message.received_at;
+        return Date.now() - at < EDIT_WINDOW_MS;
+    }
+
+    function requestReply(message: Message): void {
+        replyTarget = message;
+        app.replyToId = message.id;
+        openMenuMessageId = null;
+    }
+
+    function cancelReply(): void {
+        replyTarget = null;
+        app.replyToId = '';
+    }
+
+    function replyOriginal(message: Message): Message | undefined {
+        if (message.reply_to === '') {
+            return undefined;
+        }
+        return app.messages.find((item) => item.id === message.reply_to);
+    }
+
+    function replySenderName(target: Message): string {
+        const user =
+            app.userById(target.sender_id) ??
+            (selectedUser?.id === target.sender_id ? selectedUser : null);
+        if (user === null) {
+            return 'Peer';
+        }
+        return shortName(user);
+    }
+
+    function replyLabel(target: Message | undefined): string {
+        if (target === undefined) {
+            return 'Original message';
+        }
+        return target.local_sender ? 'You' : replySenderName(target);
+    }
+
+    function replySnippet(target: Message | undefined): string {
+        if (target === undefined) {
+            return 'Original message unavailable';
+        }
+        if (target.deleted_at > 0) {
+            return 'Original message deleted';
+        }
+        const text = target.body.trim();
+        if (text !== '') {
+            return text.length > 140 ? `${text.slice(0, 140)}…` : text;
+        }
+        if (target.attachment_hash !== '') {
+            const kind = attachmentKind(target.attachment_mime, target.attachment_name);
+            if (kind === 'image') {
+                return target.attachment_name || 'Image';
+            }
+            if (kind === 'audio') {
+                return target.attachment_name || 'Voice message';
+            }
+            return target.attachment_name || 'Attachment';
+        }
+        return 'Message unavailable.';
+    }
+
+    async function jumpToMessage(messageId: string): Promise<void> {
+        const element = document.getElementById(`chat-message-${messageId}`);
+        if (element === null) {
+            return;
+        }
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (highlightTimer !== null) {
+            clearTimeout(highlightTimer);
+            highlightTimer = null;
+        }
+        highlightedMessageId = null;
+        await tick();
+        highlightedMessageId = messageId;
+        highlightTimer = setTimeout(() => {
+            highlightedMessageId = null;
+            highlightTimer = null;
+        }, 1600);
+    }
+
+    $effect(() => {
+        if (app.replyToId === '') {
+            replyTarget = null;
+        }
+    });
+
+    $effect(() => {
+        app.selectedUserId;
+        cancelReply();
+    });
+
+    function handleDocumentClick(event: MouseEvent): void {
+        if (openMenuMessageId === null) {
+            return;
+        }
+        if (!(event.target instanceof HTMLElement)) {
+            return;
+        }
+        if (event.target.closest('[data-message-menu]') !== null) {
+            return;
+        }
+        openMenuMessageId = null;
+    }
+
+    function handleMenuKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Escape') {
+            openMenuMessageId = null;
+        }
     }
 
     async function saveEdit(body: string): Promise<void> {
@@ -157,6 +325,22 @@
         }
         editingMessage = null;
         editError = '';
+    }
+
+    function editInputKeydown(event: KeyboardEvent): void {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            closeEdit();
+            return;
+        }
+        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
+            return;
+        }
+        event.preventDefault();
+        if (editingBody.trim() === '' || app.messageActionPending !== '') {
+            return;
+        }
+        void saveEdit(editingBody);
     }
 
     function closeDelete(): void {
@@ -270,8 +454,21 @@
     }
 
     function handleStreamScroll(): void {
+        closeMessageMenu();
         void loadOlderMessages();
     }
+
+    $effect(() => {
+        if (editingMessage === null) {
+            return;
+        }
+        const frame = window.requestAnimationFrame(() => {
+            editTextarea?.focus();
+            const caret = editTextarea?.value.length ?? 0;
+            editTextarea?.setSelectionRange(caret, caret);
+        });
+        return () => window.cancelAnimationFrame(frame);
+    });
 
     $effect(() => {
         if (timeline.length > 0 && stream !== null && !prependingOlderMessages) {
@@ -279,6 +476,8 @@
         }
     });
 </script>
+
+<svelte:document onclick={handleDocumentClick} />
 
 <section class="flex h-full min-w-0 flex-1 flex-col bg-base">
     {#if selectedUser}
@@ -455,190 +654,336 @@
                             <p class="m-0 text-step-xs text-ink-3">Message unavailable.</p>
                         {:else}
                             <article
-                                class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
+                                id="chat-message-{message.id}"
+                                class="group flex max-w-[min(760px,78%)] flex-row-reverse items-start gap-3 self-start rounded-md pb-3 text-ink data-local:flex-row data-local:self-end {highlightedMessageId ===
+                                message.id
+                                    ? 'reply-flash -mx-3 -my-3 rounded-md px-3 py-3'
+                                    : ''}"
+                                class:w-full={editingMessage?.id === message.id}
                                 data-local={message.local_sender ? '' : undefined}
                             >
-                                {#if message.deleted_at > 0}
-                                    <p class="m-0 text-step-xs leading-[1.5] text-ink-3 italic">
-                                        Message deleted
-                                    </p>
-                                {:else}
-                                    {#if message.body && !isOnlyVideoLink(message.body)}
-                                        <p
-                                            class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
+                                {#if canShowActions(message)}
+                                    <div
+                                        class="flex shrink-0 self-center"
+                                        data-message-menu={message.id}
+                                    >
+                                        <button
+                                            class="inline-flex size-7 items-center justify-center rounded-pill border border-line bg-surface-2 text-ink-2 opacity-0 transition-[background-color,border-color,color,opacity] duration-150 ease-soft group-hover:opacity-100 hover:border-line-strong hover:text-ink focus-visible:opacity-100 {openMenuMessageId ===
+                                            message.id
+                                                ? 'opacity-100'
+                                                : ''}"
+                                            aria-label="Message actions"
+                                            aria-haspopup="menu"
+                                            aria-expanded={openMenuMessageId === message.id}
+                                            onclick={(event) => toggleMessageMenu(message, event)}
                                         >
-                                            {message.body}
-                                        </p>
-                                    {/if}
-                                    {#if message.attachment_hash}
-                                        {#if attachmentKind(message.attachment_mime, message.attachment_name) === 'image'}
-                                            <button
-                                                class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
-                                                onclick={() =>
-                                                    showImage(
-                                                        message.id,
-                                                        message.attachment_hash,
-                                                        message.attachment_name || 'Image',
-                                                    )}
+                                            <Icon name="dots" size={16} />
+                                        </button>
+                                        {#if openMenuMessageId === message.id && menuPosition !== null}
+                                            <div
+                                                class="fixed z-50 flex w-40 flex-col gap-0.5 rounded-md border border-line bg-surface-2 p-1 shadow-soft"
+                                                style="left: {menuPosition.left}px; top: {menuPosition.top}px;"
+                                                role="menu"
+                                                tabindex={-1}
+                                                data-message-menu={message.id}
+                                                onkeydown={handleMenuKeydown}
                                             >
-                                                {#if imageUrls[message.id] !== undefined}
-                                                    <img
-                                                        class="max-h-[360px] w-full rounded-sm object-contain"
-                                                        src={imageUrls[message.id]}
-                                                        alt={message.attachment_name ||
-                                                            'Image attachment'}
-                                                    />
-                                                {:else}
-                                                    <div
-                                                        class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
+                                                {#if message.deleted_at === 0}
+                                                    <button
+                                                        class="flex w-full items-center rounded-sm px-3 py-2 text-left text-step-xs font-bold text-ink hover:bg-surface"
+                                                        role="menuitem"
+                                                        onclick={() => requestReply(message)}
                                                     >
-                                                        {imageStatus(
-                                                            message.id,
-                                                            message.attachment_hash,
-                                                        )}
-                                                    </div>
+                                                        Reply
+                                                    </button>
                                                 {/if}
-                                                <span class="px-2 py-1.5 text-xs text-ink-3"
-                                                    >{message.attachment_name || 'Image'} · {fileSize(
-                                                        message.attachment_size,
-                                                    )}{transferLabel(message.attachment_hash)
-                                                        ? ` · ${transferLabel(message.attachment_hash)}`
-                                                        : ''}</span
+                                                {#if canEdit(message)}
+                                                    <button
+                                                        class="flex w-full items-center rounded-sm px-3 py-2 text-left text-step-xs font-bold text-ink hover:bg-surface"
+                                                        role="menuitem"
+                                                        onclick={() => openEdit(message)}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                {/if}
+                                                {#if message.local_sender}
+                                                    <button
+                                                        class="flex w-full items-center rounded-sm px-3 py-2 text-left text-step-xs font-bold text-error hover:bg-error/10"
+                                                        role="menuitem"
+                                                        onclick={() => requestDelete(message)}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                {/if}
+                                            </div>
+                                        {/if}
+                                    </div>
+                                {/if}
+                                <div class="flex min-w-0 flex-1 flex-col gap-1.5">
+                                    {#if message.deleted_at > 0}
+                                        <p class="m-0 text-step-xs leading-[1.5] text-ink-3 italic">
+                                            Message deleted
+                                        </p>
+                                    {:else}
+                                        {#if editingMessage?.id === message.id}
+                                            <div class="flex w-full flex-col gap-2">
+                                                <div
+                                                    class="flex items-center justify-between gap-2"
                                                 >
-                                            </button>
-                                        {:else if attachmentKind(message.attachment_mime, message.attachment_name) === 'audio'}
-                                            <VoiceMessage {app} {message} />
-                                        {:else}
-                                            <button
-                                                class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
-                                                onclick={() =>
-                                                    void app.saveAttachment(
-                                                        message.attachment_hash,
-                                                        message.attachment_name || 'attachment',
-                                                    )}
-                                            >
-                                                <span
-                                                    class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
-                                                    ><Icon
-                                                        name="file"
-                                                        size={18}
-                                                        color="var(--color-ink-2)"
-                                                    /></span
-                                                >
-                                                <span class="flex flex-col gap-0.5">
-                                                    <strong class="text-[14px]"
-                                                        >{message.attachment_name ||
-                                                            'Attachment'}</strong
+                                                    <span
+                                                        class="text-xs font-bold tracking-[0.06em] text-ink-2 uppercase"
+                                                        >Editing</span
                                                     >
                                                     <span class="text-xs text-ink-3"
-                                                        >BLAKE3 {fingerprintLabel(
-                                                            message.attachment_hash,
-                                                        )} ·
-                                                        {fileSize(
-                                                            message.attachment_size,
-                                                        )}{transferLabel(message.attachment_hash)
-                                                            ? ` · ${transferLabel(message.attachment_hash)}`
-                                                            : ''}</span
+                                                        >Enter to save · Esc to cancel</span
                                                     >
-                                                </span>
-                                            </button>
+                                                </div>
+                                                <label
+                                                    class="sr-only"
+                                                    for="edit-message-{message.id}"
+                                                    >Message text</label
+                                                >
+                                                <textarea
+                                                    id="edit-message-{message.id}"
+                                                    class="min-h-[96px] w-full resize-y rounded-sm border border-line-strong bg-base px-3 py-2 text-step-0 leading-[1.45] text-ink outline-none"
+                                                    bind:this={editTextarea}
+                                                    bind:value={editingBody}
+                                                    maxlength="32768"
+                                                    disabled={app.messageActionPending !== ''}
+                                                    rows="3"
+                                                    onkeydown={editInputKeydown}></textarea>
+                                                <div
+                                                    class="flex items-center justify-between gap-2"
+                                                >
+                                                    <span
+                                                        class="text-xs text-ink-3"
+                                                        role={editError ? 'alert' : undefined}
+                                                    >
+                                                        {editError ||
+                                                            `${editingBody.length} / 32768`}
+                                                    </span>
+                                                    <div class="flex gap-2">
+                                                        <button
+                                                            type="button"
+                                                            class="inline-flex min-h-9 items-center justify-center rounded-pill border border-line bg-transparent px-4 text-step-xs leading-none font-bold text-ink hover:border-line-strong hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
+                                                            disabled={app.messageActionPending !==
+                                                                ''}
+                                                            onclick={closeEdit}>Cancel</button
+                                                        >
+                                                        <button
+                                                            type="button"
+                                                            class="inline-flex min-h-9 items-center justify-center rounded-pill border border-accent bg-accent px-4 text-step-xs leading-none font-bold text-base hover:border-ink-2 hover:bg-ink-2 disabled:cursor-not-allowed disabled:opacity-50"
+                                                            disabled={app.messageActionPending !==
+                                                                '' || editingBody.trim() === ''}
+                                                            onclick={() =>
+                                                                void saveEdit(editingBody)}
+                                                            >{app.messageActionPending !== ''
+                                                                ? 'Saving…'
+                                                                : 'Save'}</button
+                                                        >
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {:else}
+                                            {#if message.reply_to !== ''}
+                                                {@const original = replyOriginal(message)}
+                                                <button
+                                                    class="flex w-full min-w-0 flex-col gap-0.5 rounded-sm border-l-2 border-accent bg-surface-2/60 px-2.5 py-1.5 text-left hover:bg-surface-2"
+                                                    onclick={() =>
+                                                        void jumpToMessage(message.reply_to)}
+                                                    aria-label="Jump to original message"
+                                                >
+                                                    <span class="text-xs font-bold text-accent"
+                                                        >{replyLabel(original)}</span
+                                                    >
+                                                    <span class="truncate text-xs text-ink-3"
+                                                        >{replySnippet(original)}</span
+                                                    >
+                                                </button>
+                                            {/if}
+                                            {#if message.body && !isOnlyVideoLink(message.body)}
+                                                <p
+                                                    class="m-0 text-step-0 leading-[155%] [overflow-wrap:anywhere] whitespace-pre-wrap"
+                                                >
+                                                    {message.body}
+                                                </p>
+                                            {/if}
+                                            {#if message.attachment_hash}
+                                                {#if attachmentKind(message.attachment_mime, message.attachment_name) === 'image'}
+                                                    <button
+                                                        class="flex w-full flex-col overflow-hidden rounded-md border border-line bg-surface p-1 text-left hover:border-line-strong"
+                                                        onclick={() =>
+                                                            showImage(
+                                                                message.id,
+                                                                message.attachment_hash,
+                                                                message.attachment_name || 'Image',
+                                                            )}
+                                                    >
+                                                        {#if imageUrls[message.id] !== undefined}
+                                                            <img
+                                                                class="max-h-[360px] w-full rounded-sm object-contain"
+                                                                src={imageUrls[message.id]}
+                                                                alt={message.attachment_name ||
+                                                                    'Image attachment'}
+                                                            />
+                                                        {:else}
+                                                            <div
+                                                                class="flex min-h-[120px] items-center justify-center rounded-sm bg-surface-2 px-4 text-center text-step-xs text-ink-3"
+                                                            >
+                                                                {imageStatus(
+                                                                    message.id,
+                                                                    message.attachment_hash,
+                                                                )}
+                                                            </div>
+                                                        {/if}
+                                                        <span class="px-2 py-1.5 text-xs text-ink-3"
+                                                            >{message.attachment_name || 'Image'} · {fileSize(
+                                                                message.attachment_size,
+                                                            )}{transferLabel(
+                                                                message.attachment_hash,
+                                                            )
+                                                                ? ` · ${transferLabel(message.attachment_hash)}`
+                                                                : ''}</span
+                                                        >
+                                                    </button>
+                                                {:else if attachmentKind(message.attachment_mime, message.attachment_name) === 'audio'}
+                                                    <VoiceMessage {app} {message} />
+                                                {:else}
+                                                    <button
+                                                        class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3 text-left text-ink hover:border-line-strong hover:bg-surface-2"
+                                                        onclick={() =>
+                                                            void app.saveAttachment(
+                                                                message.attachment_hash,
+                                                                message.attachment_name ||
+                                                                    'attachment',
+                                                            )}
+                                                    >
+                                                        <span
+                                                            class="flex size-8 shrink-0 items-center justify-center rounded-sm bg-base"
+                                                            ><Icon
+                                                                name="file"
+                                                                size={18}
+                                                                color="var(--color-ink-2)"
+                                                            /></span
+                                                        >
+                                                        <span class="flex flex-col gap-0.5">
+                                                            <strong class="text-[14px]"
+                                                                >{message.attachment_name ||
+                                                                    'Attachment'}</strong
+                                                            >
+                                                            <span class="text-xs text-ink-3"
+                                                                >BLAKE3 {fingerprintLabel(
+                                                                    message.attachment_hash,
+                                                                )} ·
+                                                                {fileSize(
+                                                                    message.attachment_size,
+                                                                )}{transferLabel(
+                                                                    message.attachment_hash,
+                                                                )
+                                                                    ? ` · ${transferLabel(message.attachment_hash)}`
+                                                                    : ''}</span
+                                                            >
+                                                        </span>
+                                                    </button>
+                                                {/if}
+                                            {/if}
+                                            {#if firstVideoId(message.body)}
+                                                {@const videoId = firstVideoId(message.body) ?? ''}
+                                                <div
+                                                    class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
+                                                >
+                                                    <div
+                                                        class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
+                                                    >
+                                                        <img
+                                                            class="h-full w-full object-cover opacity-[0.82]"
+                                                            src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
+                                                            alt=""
+                                                        />
+                                                        <span
+                                                            class="absolute inset-0 flex items-center justify-center"
+                                                            ><Icon
+                                                                name="play"
+                                                                size={18}
+                                                                color="var(--color-base)"
+                                                            /></span
+                                                        >
+                                                    </div>
+                                                    <div
+                                                        class="flex min-w-0 flex-col items-start gap-1"
+                                                    >
+                                                        <strong class="text-[15px] leading-5"
+                                                            >{videoTitle(videoId)}</strong
+                                                        >
+                                                        <span class="text-xs text-ink-3"
+                                                            >TiConnect Labs · 18:42</span
+                                                        >
+                                                        <span
+                                                            class="text-xs tracking-[0.05em] text-ink-2 uppercase"
+                                                            >Playing in overlay · 2 in queue</span
+                                                        >
+                                                        <button
+                                                            class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
+                                                            onclick={() =>
+                                                                void app.startParty(videoId, [
+                                                                    selectedUser.id,
+                                                                ])}
+                                                        >
+                                                            Watch party
+                                                            <Icon name="chevron-right" size={12} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            {/if}
                                         {/if}
                                     {/if}
-                                    {#if firstVideoId(message.body)}
-                                        {@const videoId = firstVideoId(message.body) ?? ''}
-                                        <div
-                                            class="flex w-full gap-4 rounded-md border border-line bg-surface p-3"
-                                        >
-                                            <div
-                                                class="relative h-[94px] w-[166px] shrink-0 overflow-hidden rounded-sm bg-surface-2"
-                                            >
-                                                <img
-                                                    class="h-full w-full object-cover opacity-[0.82]"
-                                                    src={`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`}
-                                                    alt=""
-                                                />
-                                                <span
-                                                    class="absolute inset-0 flex items-center justify-center"
+                                    <div
+                                        class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
+                                    >
+                                        <span>{clock(message.sent_at || message.received_at)}</span>
+                                        {#if message.edited_at > 0}
+                                            <span>· edited</span>
+                                        {/if}
+                                        {#if message.local_sender}
+                                            {#if message.state === 'read'}
+                                                <span class="inline-flex text-accent"
                                                     ><Icon
-                                                        name="play"
-                                                        size={18}
-                                                        color="var(--color-base)"
+                                                        name="checks"
+                                                        size={14}
+                                                        color="var(--color-accent)"
                                                     /></span
                                                 >
-                                            </div>
-                                            <div class="flex min-w-0 flex-col items-start gap-1">
-                                                <strong class="text-[15px] leading-5"
-                                                    >{videoTitle(videoId)}</strong
+                                            {:else if message.state === 'delivered'}
+                                                <span class="inline-flex"
+                                                    ><Icon
+                                                        name="checks"
+                                                        size={14}
+                                                        color="var(--color-ink-3)"
+                                                    /></span
                                                 >
-                                                <span class="text-xs text-ink-3"
-                                                    >TiConnect Labs · 18:42</span
+                                            {:else if message.state === 'failed' || message.state === 'expired'}
+                                                <span class="inline-flex text-error"
+                                                    ><Icon
+                                                        name="alert"
+                                                        size={13}
+                                                        color="var(--color-error)"
+                                                    /></span
                                                 >
-                                                <span
-                                                    class="text-xs tracking-[0.05em] text-ink-2 uppercase"
-                                                    >Playing in overlay · 2 in queue</span
+                                            {:else}
+                                                <span class="inline-flex"
+                                                    ><Icon
+                                                        name="check"
+                                                        size={13}
+                                                        color="var(--color-ink-3)"
+                                                    /></span
                                                 >
-                                                <button
-                                                    class="mt-1 inline-flex min-h-8 items-center justify-center gap-1.5 rounded-pill border border-line bg-transparent px-3.5 text-step-xs leading-none font-bold text-ink transition-[background-color,border-color,color] duration-150 ease-soft hover:border-line-strong hover:bg-surface"
-                                                    onclick={() =>
-                                                        void app.startParty(videoId, [
-                                                            selectedUser.id,
-                                                        ])}
-                                                >
-                                                    Watch party
-                                                    <Icon name="chevron-right" size={12} />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    {/if}
-                                {/if}
-                                <div
-                                    class="flex items-center justify-start gap-[5px] text-xs leading-4 text-ink-3 tabular-nums group-data-local:justify-end"
-                                >
-                                    <span>{clock(message.sent_at || message.received_at)}</span>
-                                    {#if message.edited_at > 0}
-                                        <span>· edited</span>
-                                    {/if}
-                                    {#if message.local_sender}
-                                        {#if message.state === 'read'}
-                                            <span class="inline-flex text-accent"
-                                                ><Icon
-                                                    name="checks"
-                                                    size={14}
-                                                    color="var(--color-accent)"
-                                                /></span
-                                            >
-                                        {:else if message.state === 'delivered'}
-                                            <span class="inline-flex"
-                                                ><Icon
-                                                    name="checks"
-                                                    size={14}
-                                                    color="var(--color-ink-3)"
-                                                /></span
-                                            >
-                                        {:else if message.state === 'failed' || message.state === 'expired'}
-                                            <span class="inline-flex text-error"
-                                                ><Icon
-                                                    name="alert"
-                                                    size={13}
-                                                    color="var(--color-error)"
-                                                /></span
-                                            >
-                                        {:else}
-                                            <span class="inline-flex"
-                                                ><Icon
-                                                    name="check"
-                                                    size={13}
-                                                    color="var(--color-ink-3)"
-                                                /></span
-                                            >
+                                            {/if}
                                         {/if}
-                                    {/if}
-                                </div>
-                                {#if message.local_sender && message.deleted_at === 0}
-                                    <div
-                                        class="flex justify-start gap-1.5 group-data-local:justify-end"
-                                    >
-                                        {#if message.state === 'failed' || message.state === 'expired'}
+                                    </div>
+                                    {#if message.local_sender && message.deleted_at === 0 && (message.state === 'failed' || message.state === 'expired')}
+                                        <div
+                                            class="flex justify-start gap-1.5 group-data-local:justify-end"
+                                        >
                                             <button
                                                 class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-ink-2 transition-colors duration-150 ease-soft hover:border-line-strong hover:bg-surface hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                                                 disabled={app.messageRetryPending === message.id}
@@ -648,21 +993,9 @@
                                                     ? 'Retrying…'
                                                     : 'Retry'}
                                             </button>
-                                        {:else if message.body !== '' && message.attachment_hash === ''}
-                                            <button
-                                                class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-ink-2 transition-colors duration-150 ease-soft hover:border-line-strong hover:bg-surface hover:text-ink"
-                                                onclick={() => openEdit(message)}>Edit</button
-                                            >
-                                        {/if}
-                                        <button
-                                            class="inline-flex min-h-7 items-center justify-center rounded-pill border border-line bg-transparent px-3 text-xs leading-none font-bold text-error transition-colors duration-150 ease-soft hover:border-error hover:bg-error/10"
-                                            onclick={() => {
-                                                deleteTarget = message;
-                                                deleteError = '';
-                                            }}>Delete</button
-                                        >
-                                    </div>
-                                {/if}
+                                        </div>
+                                    {/if}
+                                </div>
                             </article>
                         {/if}
                     {/if}
@@ -700,6 +1033,28 @@
             </div>
         {/if}
         <div class="mx-5 mb-5 shrink-0">
+            {#if replyTarget !== null}
+                <div
+                    class="mb-2 flex items-center gap-2 rounded-md border border-line bg-surface px-3 py-2"
+                >
+                    <div class="min-w-0 flex-1 border-l-2 border-accent pl-2">
+                        <p class="m-0 truncate text-xs font-bold text-accent">
+                            Replying to {replyLabel(replyTarget)}
+                        </p>
+                        <p class="m-0 truncate text-xs text-ink-3">
+                            {replySnippet(replyTarget)}
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex size-7 shrink-0 items-center justify-center rounded-pill text-ink-2 hover:bg-surface-2 hover:text-ink"
+                        onclick={cancelReply}
+                        aria-label="Cancel reply"
+                    >
+                        <Icon name="close" size={14} />
+                    </button>
+                </div>
+            {/if}
             <MessageComposer {app} />
         </div>
     {:else}
@@ -743,7 +1098,7 @@
     <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete message"
-        body="Delete this message for you? This cannot be undone."
+        body="Delete this message for everyone? This cannot be undone."
         confirmLabel="Delete message"
         cancelLabel="Cancel"
         tone="error"
@@ -752,12 +1107,19 @@
         onconfirm={() => void confirmDelete()}
         oncancel={closeDelete}
     />
-    <EditMessageDialog
-        open={editingMessage !== null}
-        initial={editingBody}
-        pending={app.messageActionPending !== ''}
-        error={editError}
-        onsave={(body) => void saveEdit(body)}
-        oncancel={closeEdit}
-    />
 </section>
+
+<style>
+    .reply-flash {
+        animation: reply-flash 1.6s ease-out forwards;
+    }
+
+    @keyframes reply-flash {
+        from {
+            background-color: color-mix(in srgb, var(--color-accent) 16%, transparent);
+        }
+        to {
+            background-color: transparent;
+        }
+    }
+</style>

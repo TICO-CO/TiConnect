@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Fix message edit/delete in the web UI: the bridge now forwards the
+  `MessageEdited` and `MessageDeleted` daemon signals it was subscribed to
+  but never listened for.
+- Add message replies with quoted originals and jump-to-original, for text,
+  image, audio, and file messages (message protocol v2, dev bump).
+- Limit message edits to five minutes after sending; deletes stay as
+  tombstones.
+- Make edit/delete work in the web UI demo with local state updates.
+
 - Add group watch parties with host-authoritative sync, participant rosters,
   late invites, and per-guest leave.
 - Make the watch party page a group composer: select people, paste a YouTube

@@ -35,6 +35,7 @@ use ticonnect_net::transport::TransportError;
 
 const RECEIPT_TICK: Duration = Duration::from_millis(100);
 const OUTBOX_TICK: Duration = Duration::from_secs(1);
+const EDIT_WINDOW_MS: i64 = 5 * 60 * 1000;
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
@@ -255,6 +256,7 @@ impl MessagingService {
         &self,
         user_id: &str,
         body: &str,
+        reply_to: Option<String>,
     ) -> Result<MessageId, MessagingError> {
         if body.is_empty() {
             return Err(MessagingError::EmptyBody);
@@ -269,16 +271,22 @@ impl MessagingService {
             .parse()
             .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
         let now = now_unix_ms();
+        let conversation = ticonnect_core::message::conversation_id(self.inner.local, user_node);
         self.inner
             .database
-            .ensure_conversation(
-                &ticonnect_core::message::conversation_id(self.inner.local, user_node),
-                user_id,
-                now,
-            )
+            .ensure_conversation(&conversation, user_id, now)
+            .await?;
+        self.validate_reply_target(&conversation, reply_to.as_deref())
             .await?;
         let seq = self.inner.database.allocate_seq(user_id).await?;
-        let record = store::text(self.inner.local, user_node, seq, now, body.to_owned());
+        let record = store::text(
+            self.inner.local,
+            user_node,
+            seq,
+            now,
+            body.to_owned(),
+            reply_to,
+        );
         let envelope = record.signed(&self.inner.identity)?;
         let state = MessageState::Queued;
         self.inner
@@ -421,8 +429,14 @@ impl MessagingService {
         if stored.deleted_at.is_some() {
             return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
         }
-        if kind == MessageKind::Edit && stored.record.kind != MessageKind::Text {
-            return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+        if kind == MessageKind::Edit {
+            if stored.record.kind != MessageKind::Text {
+                return Err(MessagingError::MessageNotEditable(message_id.to_owned()));
+            }
+            let now = now_unix_ms();
+            if now.saturating_sub(stored.record.sent_at) > EDIT_WINDOW_MS {
+                return Err(MessagingError::EditWindowExpired(message_id.to_owned()));
+            }
         }
         if stored.record.kind == MessageKind::Ack
             || stored.record.kind == MessageKind::Edit
@@ -456,10 +470,35 @@ impl MessagingService {
         Ok((record, user_id))
     }
 
+    async fn validate_reply_target(
+        &self,
+        conversation_id: &str,
+        reply_to: Option<&str>,
+    ) -> Result<(), MessagingError> {
+        let Some(reply_id) = reply_to else {
+            return Ok(());
+        };
+        let stored = self
+            .inner
+            .database
+            .get_message(reply_id)
+            .await?
+            .ok_or_else(|| MessagingError::InvalidReplyTarget(reply_id.to_owned()))?;
+        if stored.record.conversation_id != conversation_id {
+            return Err(MessagingError::InvalidReplyTarget(reply_id.to_owned()));
+        }
+        match stored.record.kind {
+            MessageKind::Text | MessageKind::Image | MessageKind::Audio | MessageKind::File => {}
+            _ => return Err(MessagingError::InvalidReplyTarget(reply_id.to_owned())),
+        }
+        Ok(())
+    }
+
     pub async fn send_attachment(
         &self,
         user_id: &str,
         attachment: &AttachmentRef,
+        reply_to: Option<String>,
     ) -> Result<MessageId, MessagingError> {
         attachment
             .validate(ticonnect_core::attachment::DEFAULT_MAX_ATTACHMENT_SIZE)
@@ -470,16 +509,16 @@ impl MessagingService {
             .parse()
             .map_err(|_| MessagingError::InvalidUserId(user.id.clone()))?;
         let now = now_unix_ms();
+        let conversation = ticonnect_core::message::conversation_id(self.inner.local, user_node);
         self.inner
             .database
-            .ensure_conversation(
-                &ticonnect_core::message::conversation_id(self.inner.local, user_node),
-                user_id,
-                now,
-            )
+            .ensure_conversation(&conversation, user_id, now)
+            .await?;
+        self.validate_reply_target(&conversation, reply_to.as_deref())
             .await?;
         let seq = self.inner.database.allocate_seq(user_id).await?;
-        let record = store::attachment(self.inner.local, user_node, seq, now, attachment)?;
+        let record =
+            store::attachment(self.inner.local, user_node, seq, now, attachment, reply_to)?;
         let envelope = record.signed(&self.inner.identity)?;
         let state = MessageState::Queued;
         self.inner
@@ -1347,6 +1386,12 @@ pub enum MessagingError {
 
     #[error("message cannot be edited or deleted: {0}")]
     MessageNotEditable(String),
+
+    #[error("message can no longer be edited (5 minute window expired): {0}")]
+    EditWindowExpired(String),
+
+    #[error("cannot reply to message: {0}")]
+    InvalidReplyTarget(String),
 
     #[error("attachment is invalid: {0}")]
     InvalidAttachment(String),

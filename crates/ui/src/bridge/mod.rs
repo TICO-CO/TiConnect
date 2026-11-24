@@ -398,6 +398,8 @@ struct UploadQuery {
     name: Option<String>,
     #[serde(default)]
     mime: Option<String>,
+    #[serde(default)]
+    reply_to: String,
 }
 
 async fn upload_attachment(
@@ -419,14 +421,26 @@ async fn upload_attachment(
         let _ = tokio::fs::remove_dir_all(&directory).await;
         return http_error(StatusCode::INTERNAL_SERVER_ERROR, error.to_string());
     }
-    let result = state
-        .link
-        .send_attachment(
-            query.user_id,
-            path.to_string_lossy().into_owned(),
-            query.mime.unwrap_or_default(),
-        )
-        .await;
+    let result = if query.reply_to.is_empty() {
+        state
+            .link
+            .send_attachment(
+                query.user_id,
+                path.to_string_lossy().into_owned(),
+                query.mime.unwrap_or_default(),
+            )
+            .await
+    } else {
+        state
+            .link
+            .send_attachment_reply(
+                query.user_id,
+                path.to_string_lossy().into_owned(),
+                query.mime.unwrap_or_default(),
+                query.reply_to,
+            )
+            .await
+    };
     let _ = tokio::fs::remove_dir_all(&directory).await;
     match result {
         Ok(message_id) => Json(json!({ "message_id": message_id })).into_response(),

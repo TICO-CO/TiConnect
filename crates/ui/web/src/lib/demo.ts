@@ -179,6 +179,7 @@ function demoMessage(
         sent_at: now - offsetMinutes * minute,
         received_at: now - offsetMinutes * minute,
         body,
+        reply_to: '',
         attachment_hash: '',
         attachment_name: '',
         attachment_size: 0,

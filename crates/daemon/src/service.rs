@@ -662,11 +662,21 @@ impl DaemonService {
             .map_err(trust_service_error)
     }
 
-    async fn send_message(&self, user_id: &str, body: &str) -> Result<String, ServiceError> {
+    async fn send_message(
+        &self,
+        user_id: &str,
+        body: &str,
+        reply_to: &str,
+    ) -> Result<String, ServiceError> {
+        let reply_to = if reply_to.is_empty() {
+            None
+        } else {
+            Some(reply_to.to_owned())
+        };
         let message_id = self
             .state
             .messaging()
-            .send_message(user_id, body)
+            .send_message(user_id, body, reply_to)
             .await
             .map_err(messaging_error)?;
         Ok(message_id.to_string())
@@ -1113,6 +1123,7 @@ impl DaemonService {
         user_id: &str,
         path: &str,
         mime: &str,
+        reply_to: &str,
     ) -> Result<String, ServiceError> {
         let attachment = self
             .state
@@ -1125,10 +1136,15 @@ impl DaemonService {
             .record_local(&attachment)
             .await
             .map_err(attachment_error)?;
+        let reply_to = if reply_to.is_empty() {
+            None
+        } else {
+            Some(reply_to.to_owned())
+        };
         let message_id = self
             .state
             .messaging()
-            .send_attachment(user_id, &attachment)
+            .send_attachment(user_id, &attachment, reply_to)
             .await
             .map_err(messaging_error)?;
         Ok(message_id.to_string())
@@ -1502,6 +1518,10 @@ fn stored_message_variant_with(
         (
             ipc::MESSAGE_BODY.to_owned(),
             string_variant(record.body.unwrap_or_default()),
+        ),
+        (
+            ipc::MESSAGE_REPLY_TO.to_owned(),
+            string_variant(record.reply_to.unwrap_or_default()),
         ),
         (
             ipc::MESSAGE_ATTACHMENT_HASH.to_owned(),

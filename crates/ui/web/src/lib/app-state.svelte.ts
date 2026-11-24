@@ -128,6 +128,7 @@ export class AppState {
     errorMessage = $state('');
     messageRetryPending = $state('');
     messageActionPending = $state('');
+    replyToId = $state('');
     notice = $state('');
     toasts = $state<Toast[]>([]);
     transfers = $state<Record<string, TransferState>>({});
@@ -1398,6 +1399,21 @@ export class AppState {
         if (this.messageActionPending !== '' || body.trim() === '') {
             return false;
         }
+        if (this.demo) {
+            const index = this.messages.findIndex((message) => message.id === messageId);
+            if (index < 0) {
+                return false;
+            }
+            const message = this.messages[index];
+            if (message === undefined || message.deleted_at !== 0) {
+                return false;
+            }
+            const next = this.messages.slice();
+            next[index] = { ...message, body, edited_at: Date.now() };
+            this.messages = next;
+            this.scheduleRefresh();
+            return true;
+        }
         if (this.client === null) {
             this.notice = 'Message editing is not available in the demo.';
             return false;
@@ -1418,6 +1434,21 @@ export class AppState {
     async deleteMessage(messageId: string): Promise<boolean> {
         if (this.messageActionPending !== '') {
             return false;
+        }
+        if (this.demo) {
+            const index = this.messages.findIndex((message) => message.id === messageId);
+            if (index < 0) {
+                return false;
+            }
+            const message = this.messages[index];
+            if (message === undefined || message.deleted_at !== 0) {
+                return false;
+            }
+            const next = this.messages.slice();
+            next[index] = { ...message, deleted_at: Date.now() };
+            this.messages = next;
+            this.scheduleRefresh();
+            return true;
         }
         if (this.client === null) {
             this.notice = 'Message deletion is not available in the demo.';
@@ -1452,6 +1483,7 @@ export class AppState {
         }
         const body = this.draft;
         const userId = this.route.id;
+        const replyTo = this.replyToId;
         const blocked = this.sendBlockedReason(userId);
         if (blocked !== '') {
             this.notice = blocked;
@@ -1474,6 +1506,7 @@ export class AppState {
                 sent_at: Date.now(),
                 received_at: Date.now(),
                 body,
+                reply_to: replyTo,
                 attachment_hash: '',
                 attachment_name: '',
                 attachment_size: 0,
@@ -1484,6 +1517,7 @@ export class AppState {
                 deleted_at: 0,
                 notify: false,
             };
+            this.replyToId = '';
             this.appendMessage(message);
             this.updateSummary(message);
             return;
@@ -1494,11 +1528,13 @@ export class AppState {
         const messageResult = await this.client.request<string>('send_message', {
             user_id: userId,
             body,
+            reply_to: replyTo,
         });
         if (!messageResult.ok) {
             this.notice = messageResult.error.message;
             return;
         }
+        this.replyToId = '';
         const messageId = messageResult.value;
         if (messageId === null) {
             this.notice = 'send message returned no message id';
@@ -1512,6 +1548,7 @@ export class AppState {
             return;
         }
         const userId = this.route.id;
+        const replyTo = this.replyToId;
         const blocked = this.sendBlockedReason(userId);
         if (blocked !== '') {
             this.notice = blocked;
@@ -1528,6 +1565,7 @@ export class AppState {
                 sent_at: Date.now(),
                 received_at: Date.now(),
                 body: '',
+                reply_to: replyTo,
                 attachment_hash: 'demo',
                 attachment_name: file.name,
                 attachment_size: file.size,
@@ -1538,6 +1576,7 @@ export class AppState {
                 deleted_at: 0,
                 notify: false,
             };
+            this.replyToId = '';
             this.appendMessage(message);
             this.updateSummary(message);
             this.notice = 'Attachment preview added for this demo.';
@@ -1546,7 +1585,7 @@ export class AppState {
         if (this.client === null) {
             return;
         }
-        const attachmentResult = await this.client.uploadAttachment(userId, file);
+        const attachmentResult = await this.client.uploadAttachment(userId, file, replyTo);
         if (!attachmentResult.ok) {
             this.notice = attachmentResult.error.message;
             return;

@@ -207,9 +207,13 @@ export class BridgeClient {
         );
     }
 
-    async uploadAttachment(userId: string, file: File): Promise<Result<string, BridgeFailure>> {
+    async uploadAttachment(
+        userId: string,
+        file: File,
+        replyTo = '',
+    ): Promise<Result<string, BridgeFailure>> {
         const mime = effectiveMimeType(file.type, file.name);
-        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(mime)}`;
+        const path = `/attachment?user_id=${encodeURIComponent(userId)}&name=${encodeURIComponent(file.name)}&mime=${encodeURIComponent(mime)}&reply_to=${encodeURIComponent(replyTo)}`;
         const uploadResult = await this.upload(path, file);
         if (!uploadResult.ok) {
             return err(uploadResult.error);

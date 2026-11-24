@@ -285,7 +285,7 @@ async fn run_command(command: Command) -> Result<()> {
         Command::Send { user_id, body } => {
             let proxy = connect().await?;
             let message_id = proxy
-                .send_message(&user_id, &body)
+                .send_message(&user_id, &body, "")
                 .await
                 .context("send message")?;
             println!("{message_id}");
@@ -297,7 +297,7 @@ async fn run_command(command: Command) -> Result<()> {
         } => {
             let proxy = connect().await?;
             let message_id = proxy
-                .send_attachment(&user_id, &path, &mime)
+                .send_attachment(&user_id, &path, &mime, "")
                 .await
                 .context("send attachment")?;
             println!("{message_id}");

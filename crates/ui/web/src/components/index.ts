@@ -3,7 +3,6 @@ export { default as Avatar } from './Avatar.svelte';
 export { default as CallView } from './CallView.svelte';
 export { default as ChatView } from './ChatView.svelte';
 export { default as ConfirmDialog } from './ConfirmDialog.svelte';
-export { default as EditMessageDialog } from './EditMessageDialog.svelte';
 export { default as EmptyState } from './EmptyState.svelte';
 export { default as Icon } from './Icon.svelte';
 export { default as OverlayLayer } from './OverlayLayer.svelte';
