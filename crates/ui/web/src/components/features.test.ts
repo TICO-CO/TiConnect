@@ -483,7 +483,7 @@ describe('feature surfaces', () => {
         app.draft = 'a'.repeat(32_769);
         render(ChatView, { app });
         expect(screen.getByText('Message is too long')).toBeTruthy();
-        expect(screen.getByText('32769 / 32768')).toBeTruthy();
+        expect(screen.getByText(/32769 of 32768 bytes/)).toBeTruthy();
         expect(screen.getByRole('button', { name: 'Send message' })).toHaveProperty(
             'disabled',
             true,

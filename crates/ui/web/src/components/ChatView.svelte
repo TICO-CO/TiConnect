@@ -16,6 +16,7 @@
     import ConfirmDialog from './ConfirmDialog.svelte';
     import EditMessageDialog from './EditMessageDialog.svelte';
     import Icon from './Icon.svelte';
+    import MessageComposer from './MessageComposer.svelte';
     import SkeletonBlock from './SkeletonBlock.svelte';
     import StateBanner from './StateBanner.svelte';
     import VoiceMessage from './VoiceMessage.svelte';
@@ -30,10 +31,6 @@
 
     let { app }: Props = $props();
     let stream: HTMLDivElement | null = $state(null);
-    let fileInput: HTMLInputElement | null = $state(null);
-    let composer: HTMLTextAreaElement | null = $state(null);
-    let recordingTrack: HTMLElement | null = $state(null);
-    let recordingTrackWidth = $state(0);
     let imageUrls = $state<Record<string, string>>({});
     let imageLoading = $state<Record<string, boolean>>({});
     let imageErrors = $state<Record<string, string>>({});
@@ -45,10 +42,6 @@
     let deleteError = $state('');
     let prependingOlderMessages = false;
     const loadingTimelineRows = [0, 1, 2, 3, 4];
-    const recordingBarCount = $derived(
-        recordingTrackWidth > 0 ? Math.max(1, Math.floor(recordingTrackWidth / 6)) : 24,
-    );
-    const recordingLevels = $derived(app.recordingWaveform.slice(-recordingBarCount));
 
     const selectedUser = $derived(app.userById(app.selectedUserId));
     const draftBytes = $derived(new TextEncoder().encode(app.draft).length);
@@ -136,42 +129,6 @@
             return 'How we built TiConnect for the LAN';
         }
         return `YouTube video ${videoId}`;
-    }
-
-    function canSend(): boolean {
-        return (
-            composerBlocked === '' &&
-            !overLimit &&
-            app.draft.trim() !== '' &&
-            app.connection === 'online'
-        );
-    }
-
-    function send(event: SubmitEvent) {
-        event.preventDefault();
-        if (!canSend()) {
-            return;
-        }
-        void app.sendMessage();
-    }
-
-    function onComposerKey(event: KeyboardEvent) {
-        if (event.key !== 'Enter' || event.shiftKey || event.isComposing) {
-            return;
-        }
-        event.preventDefault();
-        if (canSend()) {
-            void app.sendMessage();
-        }
-    }
-
-    function attach(event: Event) {
-        const input = event.currentTarget as HTMLInputElement;
-        const file = input.files?.[0];
-        if (file) {
-            void app.sendFile(file);
-        }
-        input.value = '';
     }
 
     function openEdit(message: Message): void {
@@ -292,17 +249,6 @@
             }
             void loadImage(message.id, message.attachment_hash);
         }
-    });
-
-    $effect(() => {
-        if (recordingTrack === null || typeof ResizeObserver === 'undefined') {
-            return;
-        }
-        const observer = new ResizeObserver((entries) => {
-            recordingTrackWidth = entries[0]?.contentRect.width ?? 0;
-        });
-        observer.observe(recordingTrack);
-        return () => observer.disconnect();
     });
 
     async function loadOlderMessages(): Promise<void> {
@@ -510,10 +456,6 @@
                         {:else}
                             <article
                                 class="group flex max-w-[min(760px,78%)] flex-col gap-1.5 self-start pb-3 text-ink data-local:self-end"
-                                class:w-full={attachmentKind(
-                                    message.attachment_mime,
-                                    message.attachment_name,
-                                ) === 'audio'}
                                 data-local={message.local_sender ? '' : undefined}
                             >
                                 {#if message.deleted_at > 0}
@@ -757,99 +699,9 @@
                 />
             </div>
         {/if}
-        <form
-            class="mx-5 mb-5 flex shrink-0 flex-col rounded-md border border-line bg-surface px-4 pt-3.5 pb-2.5"
-            onsubmit={send}
-        >
-            {#if app.recording}
-                <div class="flex items-center gap-3" role="status">
-                    <span class="size-2.5 shrink-0 animate-pulse rounded-full bg-error"></span>
-                    <span class="text-sm font-bold text-ink tabular-nums"
-                        >{sessionClock(app.recordingSeconds)}</span
-                    >
-                    <span
-                        bind:this={recordingTrack}
-                        class="flex h-8 min-w-0 flex-1 items-center justify-start gap-[3px]"
-                        aria-hidden="true"
-                    >
-                        {#each recordingLevels as level, index (index)}
-                            <span
-                                class="w-[3px] shrink-0 rounded-full bg-ink-2"
-                                style="height: {6 + Math.min(1, Math.max(0, level)) * 26}px;"
-                            ></span>
-                        {/each}
-                    </span>
-                    <button
-                        type="button"
-                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-error hover:bg-error/10"
-                        onclick={() => app.cancelRecording()}
-                        aria-label="Cancel voice message"
-                    >
-                        <Icon name="close" size={16} color="var(--color-error)" />
-                    </button>
-                    <button
-                        type="button"
-                        class="flex size-8 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent"
-                        onclick={() => void app.stopRecording()}
-                        aria-label="Stop and send voice message"
-                    >
-                        <Icon name="check" size={16} color="var(--color-base)" />
-                    </button>
-                </div>
-            {:else}
-                <label class="sr-only" for="message-body">Message</label>
-                <textarea
-                    id="message-body"
-                    class="max-h-[120px] min-h-9 w-full resize-none border-0 bg-transparent text-step-0 leading-[1.45] text-ink outline-none placeholder:text-ink-3"
-                    bind:this={composer}
-                    value={app.draft}
-                    disabled={composerBlocked !== ''}
-                    oninput={(event) =>
-                        app.updateDraft((event.currentTarget as HTMLTextAreaElement).value)}
-                    onkeydown={onComposerKey}
-                    placeholder={composerBlocked === '' ? 'Write a message' : composerBlocked}
-                    rows="1"></textarea>
-                <div class="flex items-center gap-1.5">
-                    <input class="sr-only" type="file" bind:this={fileInput} onchange={attach} />
-                    <button
-                        type="button"
-                        class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={composerBlocked !== ''}
-                        onclick={() => fileInput?.click()}
-                        aria-label="Attach file"
-                    >
-                        <Icon name="paperclip" size={16} color="var(--color-ink-2)" />
-                    </button>
-                    <span
-                        class="ml-auto text-xs tabular-nums {overLimit
-                            ? 'text-error'
-                            : 'text-ink-3'}"
-                    >
-                        {app.draft === '' ? '' : `${draftBytes} / 32768`}
-                    </span>
-                    {#if app.draft.trim() === ''}
-                        <button
-                            type="button"
-                            class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={composerBlocked !== ''}
-                            onclick={() => void app.startRecording()}
-                            aria-label="Record voice message"
-                        >
-                            <Icon name="mic" size={16} color="var(--color-ink-2)" />
-                        </button>
-                    {:else}
-                        <button
-                            type="submit"
-                            class="flex h-8 w-10 shrink-0 items-center justify-center rounded-pill border border-accent bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-                            aria-label="Send message"
-                            disabled={!canSend()}
-                        >
-                            <Icon name="send" size={18} color="var(--color-base)" />
-                        </button>
-                    {/if}
-                </div>
-            {/if}
-        </form>
+        <div class="mx-5 mb-5 shrink-0">
+            <MessageComposer {app} />
+        </div>
     {:else}
         <div class="flex min-h-full flex-col items-center justify-center gap-2 text-center">
             <p

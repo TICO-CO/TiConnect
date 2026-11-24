@@ -17,6 +17,7 @@
             | 'paperclip'
             | 'mic'
             | 'send'
+            | 'trash'
             | 'close'
             | 'check'
             | 'checks'
@@ -122,6 +123,14 @@
     {:else if name === 'send'}
         <path
             d="M5 12h13M13 6l6 6-6 6"
+            stroke={color}
+            stroke-width="1.7"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+        />
+    {:else if name === 'trash'}
+        <path
+            d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m3 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7"
             stroke={color}
             stroke-width="1.7"
             stroke-linecap="round"

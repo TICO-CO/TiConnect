@@ -217,7 +217,7 @@
 
 {#if voiceFailed}
     <div
-        class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3"
+        class="flex w-[340px] max-w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3"
     >
         <button
             class="flex size-9 shrink-0 items-center justify-center rounded-pill border border-error"
@@ -233,7 +233,7 @@
     </div>
 {:else}
     <div
-        class="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3"
+        class="flex w-[340px] max-w-full items-center gap-3 rounded-md border border-line bg-surface px-3.5 py-3"
     >
         <button
             class="flex size-9 shrink-0 items-center justify-center rounded-pill border border-line-strong disabled:opacity-50"
@@ -251,7 +251,7 @@
                         class="shrink-0 rounded-full {played
                             ? 'bg-accent'
                             : ready
-                              ? 'bg-ink-3/60'
+                              ? 'bg-ink-3 opacity-[0.55]'
                               : 'bg-surface-2'}"
                         style="width: 3px; height: {height}px;"
                     ></span>
