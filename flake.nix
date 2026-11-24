@@ -50,7 +50,7 @@
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.ticonnect;
         ticonnect = pkgs.rustPlatform.buildRustPackage {
           pname = "ticonnect";
-          version = "0.0.6";
+          version = "0.1.0";
 
           src = self;
 

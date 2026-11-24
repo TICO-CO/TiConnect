@@ -174,7 +174,7 @@ Flatpak is the recommended tester path. Download
 it:
 
 ```sh
-flatpak install --user ./org.ticonnect.TiConnect-v0.0.6.flatpak
+flatpak install --user ./org.ticonnect.TiConnect-v0.1.0.flatpak
 flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
@@ -187,7 +187,7 @@ access must still be provided by the host desktop. See
 Developers can build the bundle locally:
 
 ```sh
-scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.0.6 dist
+scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.1.0 dist
 ```
 
 ## From source

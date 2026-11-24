@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.0 — 2026-11-24
 
 - Fix message edit/delete in the web UI: the bridge now forwards the
   `MessageEdited` and `MessageDeleted` daemon signals it was subscribed to
