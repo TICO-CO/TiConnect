@@ -115,7 +115,7 @@ describe('BridgeClient downloads', () => {
         const fetchMock = vi
             .fn()
             .mockResolvedValueOnce(new Response('', { status: 502 }))
-            .mockResolvedValueOnce(new Response(new Blob(['image']), { status: 200 }));
+            .mockResolvedValueOnce(new Response('image', { status: 200 }));
         vi.stubGlobal('fetch', fetchMock);
 
         const result = await client.downloadAttachment('hash');
