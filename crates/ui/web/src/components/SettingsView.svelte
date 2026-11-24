@@ -200,7 +200,7 @@
         <nav class="mt-3.5 flex flex-col gap-0.5" aria-label="Settings sections">
             {#each SETTINGS_SECTIONS as item (item.id)}
                 <button
-                    class="flex h-[42px] shrink-0 items-center rounded-sm px-3.5 text-left text-[15px] font-bold text-ink-2 hover:bg-surface hover:text-ink aria-[current=page]:-mx-3 aria-[current=page]:w-80 aria-[current=page]:rounded-none aria-[current=page]:bg-ink aria-[current=page]:px-[26px] aria-[current=page]:text-base aria-[current=page]:hover:bg-ink aria-[current=page]:hover:text-base"
+                    class="-mx-3 flex h-[42px] w-80 shrink-0 items-center rounded-none px-[26px] text-left text-[15px] font-bold text-ink-2 hover:bg-surface hover:text-ink aria-[current=page]:bg-ink aria-[current=page]:text-base aria-[current=page]:hover:bg-ink aria-[current=page]:hover:text-base"
                     onclick={() => app.navigate({ kind: 'settings', section: item.id })}
                     aria-current={section === item.id ? 'page' : undefined}
                 >
