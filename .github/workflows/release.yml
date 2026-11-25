@@ -181,7 +181,7 @@ jobs:
             archlinux:latest -c '
               set -euo pipefail
               export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-              pacman -Syu --noconfirm --needed fakeroot binutils debugedit gtk4 webkit2gtk-6.0 gtk4-layer-shell alsa-lib glib2
+              pacman -Syu --noconfirm --needed fakeroot binutils debugedit gtk4 webkitgtk-6.0 gtk4-layer-shell alsa-lib glib2
               useradd -m builder
               su builder -c "cd /tmp && mkdir -p /home/builder/out && /src/scripts/package-arch.sh /src/dist/ticonnect-${TAG}-linux-x86_64.tar.gz \"${TAG}\" /home/builder/out"
               cp /home/builder/out/*.pkg.tar.zst /out/
