@@ -113,6 +113,8 @@ jobs:
         run: scripts/package-appimage.sh target/release/ticonnect "${TAG_NAME}" dist
 
       - name: Validate AppImage
+        env:
+          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
         run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
 
       - name: AppImage install smoke
