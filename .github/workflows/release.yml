@@ -147,7 +147,6 @@ jobs:
           flatpak install --user -y flathub \
             org.gnome.Platform//48 \
             org.gnome.Sdk//48 \
-            org.freedesktop.Sdk.Extension.rust-stable//24.08 \
             org.freedesktop.Platform.ffmpeg-full//24.08
 
       - name: Build Flatpak bundle
