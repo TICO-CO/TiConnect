@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
   workflow_call:
     inputs:
       tag:
@@ -11,7 +14,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,15 +22,34 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  TAG_NAME: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
+
+      - name: Resolve tag
+        id: release
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            VERSION="$(sed -nE 's|^version = "([^"]+)"$|\1|p' Cargo.toml | head -n1)"
+            TAG="v${VERSION}"
+          else
+            TAG="$GITHUB_REF_NAME"
+          fi
+          echo "TAG_NAME=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release tag: $TAG"
 
       - name: Install GTK dependencies
         run: |
@@ -144,7 +166,7 @@ jobs:
 
       - name: Build and validate Arch package
         env:
-          TAG: ${{ inputs.tag || github.ref_name }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
           docker run --rm --entrypoint /bin/bash \
             -e TAG="$TAG" \
@@ -168,31 +190,38 @@ jobs:
       - name: Drop internal tarball
         run: rm -f dist/*.tar.gz
 
+      - name: Checksums
+        run: |
+          (cd dist && sha256sum ./*.AppImage ./*.flatpak ./*.pkg.tar.zst > SHA256SUMS.txt && cat SHA256SUMS.txt)
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ticonnect-${{ inputs.tag || github.ref_name }}-linux
+          name: ticonnect-${{ steps.release.outputs.tag }}-linux
           path: |
             dist/*.AppImage
             dist/*.flatpak
             dist/*.pkg.tar.zst
+            dist/SHA256SUMS.txt
           if-no-files-found: error
 
   release:
     needs: [build]
+    if: inputs.tag != '' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG_NAME: ${{ needs.build.outputs.tag }}
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: dist
-          pattern: ticonnect-${{ inputs.tag || github.ref_name }}-linux
+          pattern: ticonnect-${{ needs.build.outputs.tag }}-linux
           merge-multiple: true
-
-      - name: Checksums
-        run: |
-          (cd dist && sha256sum *.AppImage *.flatpak *.pkg.tar.zst > SHA256SUMS.txt && cat SHA256SUMS.txt)
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.build.outputs.tag }}
           files: |
             dist/*.AppImage
             dist/*.flatpak
