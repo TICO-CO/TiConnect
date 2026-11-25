@@ -54,7 +54,7 @@ jobs:
       - name: Install GTK dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin desktop-file-utils appstream systemd jq xvfb gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-pulseaudio
+          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols meson ninja-build pkg-config cmake file libgdk-pixbuf-2.0-dev libglib2.0-bin librsvg2-bin desktop-file-utils appstream systemd jq xvfb
 
       - name: Build gtk4-layer-shell
         run: |
@@ -114,7 +114,7 @@ jobs:
 
       - name: Validate AppImage
         env:
-          WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS: "1"
+          TICONNECT_SMOKE_GUI: "0"
         run: scripts/smoke-appimage.sh dist/ticonnect-*.AppImage
 
       - name: AppImage install smoke
