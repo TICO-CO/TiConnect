@@ -26,6 +26,9 @@ LAB_CARGO_VERBOSE ?= 0
 
 MAKEFLAGS += --no-print-directory
 
+unexport CARGO_BUILD_RUSTFLAGS
+export CARGO_ENCODED_RUSTFLAGS =
+
 .PHONY: install-user install-dev uninstall-user uninstall-dev release-bin check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check
 
 install-user: target/release/ticonnect

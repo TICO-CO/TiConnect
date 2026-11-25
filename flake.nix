@@ -133,6 +133,8 @@
           ];
 
           shellHook = ''
+            unset CARGO_BUILD_RUSTFLAGS
+            export CARGO_ENCODED_RUSTFLAGS=""
             export GST_PLUGIN_SYSTEM_PATH_1_0="${gstPluginPath}"
             export GST_PLUGIN_SYSTEM_PATH="$GST_PLUGIN_SYSTEM_PATH_1_0"
             export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"
