@@ -90,8 +90,8 @@ Download `ticonnect-<tag>-x86_64.AppImage`, then install the per-user app
 integration:
 
 ```sh
-chmod +x ticonnect-v0.1.0-x86_64.AppImage
-./ticonnect-v0.1.0-x86_64.AppImage --install-user
+chmod +x ticonnect-v0.1.1-x86_64.AppImage
+./ticonnect-v0.1.1-x86_64.AppImage --install-user
 ```
 
 Launch TiConnect from the app menu. `--uninstall-user` removes the app
@@ -204,7 +204,7 @@ Paths are overridable with `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`,
 ## Release
 
 Every push to `main` compiles and tests the workspace. Merging a `v*` branch
-(for example `v0.1.0`) into `main` creates the matching tag automatically, then
+(for example `v0.1.1`) into `main` creates the matching tag automatically, then
 builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the Flatpak bundle, the
 Arch package, and `SHA256SUMS.txt`. The tag must match the `version` in
 `Cargo.toml`. The binary tarball is an internal Arch build input and is not
@@ -212,15 +212,15 @@ published. See `docs/install.md` for Flatpak, AppImage, `pacman -U`, and Nix
 instructions.
 
 ```sh
-git switch -c v0.1.0
+git switch -c v0.1.1
 # bump Cargo.toml version, commit, push, open PR, merge into main
 ```
 
 Pushing a tag manually still works:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## UI

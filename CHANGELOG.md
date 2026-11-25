@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 — 2026-11-25
+
+- Ignore stale inherited Cargo rustflags in Makefile and Nix development
+  builds.
+- Find the Nix D-Bus session configuration when starting the private bus for
+  `ticonnect-dev`.
+
 ## 0.1.0 — 2026-11-24
 
 - Fix message edit/delete in the web UI: the bridge now forwards the

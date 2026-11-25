@@ -24,7 +24,7 @@ Download the latest release bundle:
 flatpak install --user ./org.ticonnect.TiConnect-<tag>.flatpak
 ```
 
-Replace `<tag>` with the release tag, for example `v0.1.0`.
+Replace `<tag>` with the release tag, for example `v0.1.1`.
 
 Check the installation and local prerequisites:
 
