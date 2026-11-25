@@ -44,6 +44,7 @@ modules:
   - name: gtk4-layer-shell
     buildsystem: meson
     config-opts:
+      - -Dlibdir=lib
       - -Dintrospection=false
       - -Dvapi=false
       - -Dexamples=false
@@ -56,11 +57,14 @@ modules:
   - name: ticonnect
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/rust-stable/bin
+      build-args:
+        - --share=network
       env:
         CARGO_HOME: /run/build/ticonnect/cargo
+        RUSTUP_HOME: /run/build/ticonnect/rustup
     build-commands:
-      - cargo build --release --bin ticonnect
+      - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.95.0
+      - $CARGO_HOME/bin/cargo build --locked --release --bin ticonnect
       - install -Dm755 target/release/ticonnect /app/bin/ticonnect
       - install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.desktop /app/share/applications/org.ticonnect.TiConnect.desktop
       - install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.svg /app/share/icons/hicolor/scalable/apps/org.ticonnect.TiConnect.svg
