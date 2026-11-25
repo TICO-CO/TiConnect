@@ -1,21 +1,20 @@
-pub mod consent;
 pub mod session;
 pub mod state;
 
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
 use thiserror::Error;
+use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::remote::{InputKind, InputPacket, RemoteSignalFrame};
 use ticonnect_desktop::input::{InputEvent, InputRouter};
-use ticonnect_net::transport::{PeerInfo, Transport, TransportError};
+use ticonnect_net::transport::{Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
 
 use crate::messaging::now_unix_ms;
-use crate::storage::PeerPolicy;
+use crate::storage::UserPolicy;
 use crate::trust::{TrustError, TrustStore};
 
-use consent::{generate_pin, verify_pin};
 use state::{
     RemoteEvent, RemoteRole, RemoteSession, RemoteSessionId, RemoteState, RemoteStateError,
 };
@@ -23,12 +22,12 @@ use state::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteSnapshot {
     pub session_id: String,
-    pub peer_id: String,
+    pub user_id: String,
     pub fingerprint: String,
     pub role: String,
     pub state: String,
-    pub pin: String,
     pub indicator: bool,
+    pub input_allowed: bool,
     pub expires_at: i64,
 }
 
@@ -38,11 +37,12 @@ pub enum RemoteEventMessage {
     Started(RemoteSnapshot),
     Ended { session_id: String, reason: String },
     Indicator { session_id: String, visible: bool },
+    InputChanged { session_id: String, allowed: bool },
 }
 
 #[derive(Debug)]
 pub struct InboundRemoteFrame {
-    pub peer: PeerInfo,
+    pub user: UserInfo,
     pub frame: ticonnect_core::wire::Frame,
 }
 
@@ -243,41 +243,47 @@ impl RemoteService {
             .map(snapshot)
     }
 
-    pub async fn request_session(&self, peer_id: &str) -> Result<RemoteSnapshot, RemoteError> {
-        let peer = self
+    pub async fn request_session(&self, user_id: &str) -> Result<RemoteSnapshot, RemoteError> {
+        let user = self
             .inner
             .trust
-            .peer(peer_id)
+            .user(user_id)
             .await?
-            .ok_or_else(|| RemoteError::UnknownPeer(peer_id.to_owned()))?;
-        if peer.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| RemoteError::UnknownUser(user_id.to_owned()))?;
+        if user.policy == UserPolicy::Ignore {
             return Err(RemoteError::Rejected);
         }
-        let peer_node = peer_id
+        let fingerprint: Fingerprint = user
+            .fingerprint
             .parse()
-            .map_err(|_| RemoteError::InvalidPeer(peer_id.to_owned()))?;
-        if self.inner.transport.session_by_node_id(peer_node).is_none() {
-            return Err(RemoteError::PeerOffline);
+            .map_err(|_| RemoteError::InvalidUser(user.fingerprint.clone()))?;
+        if self
+            .inner
+            .transport
+            .session_by_fingerprint(&fingerprint)
+            .is_none()
+        {
+            return Err(RemoteError::UserOffline);
         }
         let settings = self.settings();
         let now = (self.inner.clock)();
         let mut session = RemoteSession {
             id: RemoteSessionId::generate(),
-            peer_id: peer_id.to_owned(),
-            fingerprint: peer.fingerprint.clone(),
+            user_id: user.id.clone(),
+            fingerprint: user.fingerprint.clone(),
             role: RemoteRole::Viewer,
             state: RemoteState::Idle,
-            pin: None,
-            attempts: 0,
-            max_attempts: settings.remote_pin_attempts(),
-            expires_at: now.saturating_add(i64::from(settings.remote_pin_ttl_secs()) * 1000),
+            expires_at: now
+                .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
             indicator_visible: false,
+            input_allowed: true,
         };
         session.transition(RemoteEvent::Request)?;
         let frame = RemoteSignalFrame::Request {
             session_id: session.id.as_bytes(),
         };
-        self.send_signal(peer_node, &frame).await?;
+        let fingerprint = user.fingerprint.clone();
+        self.send_signal(&fingerprint, &frame).await?;
         let snapshot = snapshot(&session);
         *self
             .inner
@@ -288,11 +294,7 @@ impl RemoteService {
         Ok(snapshot)
     }
 
-    pub async fn accept_session(
-        &self,
-        session_id: &str,
-        pin: &str,
-    ) -> Result<RemoteSnapshot, RemoteError> {
+    pub async fn accept_session(&self, session_id: &str) -> Result<RemoteSnapshot, RemoteError> {
         let id: RemoteSessionId = session_id.parse()?;
         let expired = {
             let mut guard = self
@@ -305,18 +307,16 @@ impl RemoteService {
                 .filter(|session| session.id == id)
                 .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
             if (self.inner.clock)() > session.expires_at {
-                Some((snapshot(session), session.role, session.peer_id.clone()))
+                Some((snapshot(session), session.role, session.fingerprint.clone()))
             } else {
                 None
             }
         };
-        if let Some((snapshot, role, peer_id)) = expired {
-            if role == RemoteRole::Host
-                && let Ok(peer) = peer_id.parse()
-            {
+        if let Some((snapshot, role, fingerprint)) = expired {
+            if role == RemoteRole::Host {
                 let _ = self
                     .send_signal(
-                        peer,
+                        &fingerprint,
                         &RemoteSignalFrame::Deny {
                             session_id: id_bytes(id),
                         },
@@ -330,7 +330,7 @@ impl RemoteService {
             });
             return Err(RemoteError::Expired);
         }
-        let (role, snapshot, signal) = {
+        let snapshot = {
             let mut guard = self
                 .inner
                 .session
@@ -340,51 +340,44 @@ impl RemoteService {
                 .as_mut()
                 .filter(|session| session.id == id)
                 .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-            match session.role {
-                RemoteRole::Host => {
-                    if session.state != RemoteState::Requested {
-                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
-                    }
-                    let generated = session.pin.clone().unwrap_or_else(generate_pin);
-                    session.pin = Some(generated.clone());
-                    session.transition(RemoteEvent::Consent)?;
-                    let snapshot = snapshot(session);
-                    (
-                        RemoteRole::Host,
-                        snapshot,
-                        Some(RemoteSignalFrame::Consent {
-                            session_id: id_bytes(id),
-                        }),
-                    )
-                }
-                RemoteRole::Viewer => {
-                    if session.state != RemoteState::Requested
-                        && session.state != RemoteState::Consented
-                    {
-                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
-                    }
-                    session.pin = Some(pin.to_owned());
-                    let snapshot = snapshot(session);
-                    (
-                        RemoteRole::Viewer,
-                        snapshot,
-                        Some(RemoteSignalFrame::Pin {
-                            session_id: id_bytes(id),
-                            pin: pin.to_owned(),
-                        }),
-                    )
-                }
+            if session.role != RemoteRole::Host {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
             }
+            if session.state != RemoteState::Requested {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
+            }
+            session.transition(RemoteEvent::Consent)?;
+            snapshot(session)
         };
-        let peer_node = snapshot
-            .peer_id
-            .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
-        if let Some(signal) = signal {
-            self.send_signal(peer_node, &signal).await?;
+        if let Err(error) = self.inner.host.start(1920, 1080) {
+            self.cleanup();
+            self.emit(RemoteEventMessage::Ended {
+                session_id: snapshot.session_id.clone(),
+                reason: "start-failed".to_owned(),
+            });
+            return Err(error);
         }
-        self.emit(RemoteEventMessage::Requested(snapshot.clone()));
-        let _ = role;
+        if let Err(error) = self
+            .send_signal(
+                &snapshot.fingerprint,
+                &RemoteSignalFrame::Start {
+                    session_id: id_bytes(id),
+                },
+            )
+            .await
+        {
+            self.cleanup();
+            self.emit(RemoteEventMessage::Ended {
+                session_id: snapshot.session_id.clone(),
+                reason: "unreachable".to_owned(),
+            });
+            return Err(error);
+        }
+        self.emit(RemoteEventMessage::Started(snapshot.clone()));
+        self.emit(RemoteEventMessage::Indicator {
+            session_id: snapshot.session_id.clone(),
+            visible: true,
+        });
         Ok(snapshot)
     }
 
@@ -403,13 +396,9 @@ impl RemoteService {
             session.transition(RemoteEvent::Deny)?;
             snapshot(session)
         };
-        let peer_node = snapshot
-            .peer_id
-            .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
         let _ = self
             .send_signal(
-                peer_node,
+                &snapshot.fingerprint,
                 &RemoteSignalFrame::Deny {
                     session_id: id_bytes(id),
                 },
@@ -421,6 +410,44 @@ impl RemoteService {
             reason: "denied".to_owned(),
         });
         Ok(())
+    }
+
+    pub async fn set_input_allowed(
+        &self,
+        session_id: &str,
+        allowed: bool,
+    ) -> Result<RemoteSnapshot, RemoteError> {
+        let id: RemoteSessionId = session_id.parse()?;
+        let snapshot = {
+            let mut guard = self
+                .inner
+                .session
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let session = guard
+                .as_mut()
+                .filter(|session| session.id == id)
+                .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
+            if session.role != RemoteRole::Host || session.state != RemoteState::Active {
+                return Err(RemoteError::State(RemoteStateError::InvalidTransition));
+            }
+            session.input_allowed = allowed;
+            snapshot(session)
+        };
+        let _ = self
+            .send_signal(
+                &snapshot.fingerprint,
+                &RemoteSignalFrame::InputPolicy {
+                    session_id: id_bytes(id),
+                    allowed,
+                },
+            )
+            .await;
+        self.emit(RemoteEventMessage::InputChanged {
+            session_id: snapshot.session_id.clone(),
+            allowed,
+        });
+        Ok(snapshot)
     }
 
     pub async fn end_session(&self, session_id: &str) -> Result<(), RemoteError> {
@@ -438,13 +465,9 @@ impl RemoteService {
             session.transition(RemoteEvent::KillSwitch)?;
             snapshot(session)
         };
-        let peer_node = snapshot
-            .peer_id
-            .parse()
-            .map_err(|_| RemoteError::InvalidPeer(snapshot.peer_id.clone()))?;
         let _ = self
             .send_signal(
-                peer_node,
+                &snapshot.fingerprint,
                 &RemoteSignalFrame::KillSwitch {
                     session_id: id_bytes(id),
                 },
@@ -460,19 +483,23 @@ impl RemoteService {
 
     pub async fn handle_signal(
         &self,
-        peer: PeerInfo,
+        user: UserInfo,
         frame: RemoteSignalFrame,
     ) -> Result<(), RemoteError> {
-        let peer_id = peer.node_id.to_string();
+        let fingerprint = user.fingerprint.to_hex();
         let stored = self
             .inner
             .trust
-            .peer_by_fingerprint(&peer.fingerprint.to_hex())
+            .user_by_fingerprint(&fingerprint)
             .await?
-            .ok_or_else(|| RemoteError::UnknownPeer(peer_id.clone()))?;
-        if stored.policy == PeerPolicy::Ignore {
+            .ok_or_else(|| RemoteError::UnknownUser(user.node_id.to_string()))?;
+        if stored.policy == UserPolicy::Ignore {
             return Ok(());
         }
+        if stored.id != user.node_id.to_string() || stored.fingerprint != fingerprint {
+            return Err(RemoteError::IdentityMismatch);
+        }
+        let user_id = stored.id;
         let id = RemoteSessionId::from_bytes(frame.session_id());
         match frame {
             RemoteSignalFrame::Request { .. } => {
@@ -485,7 +512,7 @@ impl RemoteService {
                 {
                     let _ = self
                         .send_signal(
-                            peer.node_id,
+                            &fingerprint,
                             &RemoteSignalFrame::Deny {
                                 session_id: id_bytes(id),
                             },
@@ -496,16 +523,14 @@ impl RemoteService {
                 let settings = self.settings();
                 let mut session = RemoteSession {
                     id,
-                    peer_id: peer_id.clone(),
-                    fingerprint: peer.fingerprint.to_hex(),
+                    user_id: user_id.clone(),
+                    fingerprint: fingerprint.clone(),
                     role: RemoteRole::Host,
                     state: RemoteState::Idle,
-                    pin: Some(generate_pin()),
-                    attempts: 0,
-                    max_attempts: settings.remote_pin_attempts(),
                     expires_at: (self.inner.clock)()
-                        .saturating_add(i64::from(settings.remote_pin_ttl_secs()) * 1000),
+                        .saturating_add(i64::from(settings.remote_request_timeout_secs()) * 1000),
                     indicator_visible: false,
+                    input_allowed: true,
                 };
                 session.transition(RemoteEvent::Request)?;
                 let snapshot = snapshot(&session);
@@ -517,100 +542,8 @@ impl RemoteService {
                 self.emit(RemoteEventMessage::Requested(snapshot));
                 Ok(())
             }
-            RemoteSignalFrame::Consent { .. } => {
-                let mut guard = self
-                    .inner
-                    .session
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner);
-                let session = guard
-                    .as_mut()
-                    .filter(|session| session.id == id && session.peer_id == peer_id)
-                    .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                if session.state == RemoteState::Requested {
-                    session.transition(RemoteEvent::Consent)?;
-                    let snapshot = snapshot(session);
-                    drop(guard);
-                    self.emit(RemoteEventMessage::Requested(snapshot));
-                }
-                Ok(())
-            }
-            RemoteSignalFrame::Pin { pin, .. } => {
-                enum PinOutcome {
-                    Expired(RemoteSnapshot),
-                    Verified(RemoteState, RemoteSnapshot, bool),
-                }
-                let outcome = {
-                    let mut guard = self
-                        .inner
-                        .session
-                        .lock()
-                        .unwrap_or_else(PoisonError::into_inner);
-                    let session = guard
-                        .as_mut()
-                        .filter(|session| session.id == id && session.peer_id == peer_id)
-                        .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                    if (self.inner.clock)() > session.expires_at {
-                        session.transition(RemoteEvent::Deny)?;
-                        PinOutcome::Expired(snapshot(session))
-                    } else {
-                        let verified = verify_pin(session, &pin)?;
-                        PinOutcome::Verified(verified.state, snapshot(session), verified.pin_failed)
-                    }
-                };
-                let (verified, snapshot, denied) = match outcome {
-                    PinOutcome::Expired(snapshot) => {
-                        let _ = self
-                            .send_signal(
-                                peer.node_id,
-                                &RemoteSignalFrame::Deny {
-                                    session_id: id_bytes(id),
-                                },
-                            )
-                            .await;
-                        self.cleanup();
-                        self.emit(RemoteEventMessage::Ended {
-                            session_id: snapshot.session_id,
-                            reason: "expired".to_owned(),
-                        });
-                        return Err(RemoteError::Expired);
-                    }
-                    PinOutcome::Verified(state, snapshot, denied) => (state, snapshot, denied),
-                };
-                if verified == RemoteState::Active {
-                    self.inner.host.start(1920, 1080)?;
-                    let _ = self
-                        .send_signal(
-                            peer.node_id,
-                            &RemoteSignalFrame::Start {
-                                session_id: id_bytes(id),
-                            },
-                        )
-                        .await;
-                    self.emit(RemoteEventMessage::Started(snapshot.clone()));
-                    self.emit(RemoteEventMessage::Indicator {
-                        session_id: snapshot.session_id,
-                        visible: true,
-                    });
-                } else if denied {
-                    let _ = self
-                        .send_signal(
-                            peer.node_id,
-                            &RemoteSignalFrame::Deny {
-                                session_id: id_bytes(id),
-                            },
-                        )
-                        .await;
-                    self.cleanup();
-                    self.emit(RemoteEventMessage::Ended {
-                        session_id: snapshot.session_id,
-                        reason: "pin".to_owned(),
-                    });
-                }
-                Ok(())
-            }
             RemoteSignalFrame::Deny { .. } => {
-                self.finish_remote(&peer_id, id, "denied").await;
+                self.finish_remote(&fingerprint, id, "denied").await;
                 Ok(())
             }
             RemoteSignalFrame::Start { .. } => {
@@ -622,12 +555,17 @@ impl RemoteService {
                         .unwrap_or_else(PoisonError::into_inner);
                     let session = guard
                         .as_mut()
-                        .filter(|session| session.id == id && session.peer_id == peer_id)
+                        .filter(|session| {
+                            session.id == id
+                                && session.user_id == user_id
+                                && session.fingerprint == fingerprint
+                                && session.role == RemoteRole::Viewer
+                        })
                         .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
-                    if session.state == RemoteState::Requested {
-                        session.transition(RemoteEvent::Consent)?;
+                    if session.state != RemoteState::Requested {
+                        return Err(RemoteError::State(RemoteStateError::InvalidTransition));
                     }
-                    session.transition(RemoteEvent::PinOk)?;
+                    session.transition(RemoteEvent::Consent)?;
                     snapshot(session)
                 };
                 self.emit(RemoteEventMessage::Started(snapshot.clone()));
@@ -638,15 +576,40 @@ impl RemoteService {
                 Ok(())
             }
             RemoteSignalFrame::Hangup { .. } | RemoteSignalFrame::KillSwitch { .. } => {
-                self.finish_remote(&peer_id, id, "hangup").await;
+                self.finish_remote(&fingerprint, id, "hangup").await;
                 Ok(())
             }
             RemoteSignalFrame::KeyframeRequest { .. } => Ok(()),
+            RemoteSignalFrame::InputPolicy { allowed, .. } => {
+                let changed = {
+                    let mut guard = self
+                        .inner
+                        .session
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner);
+                    let session = guard
+                        .as_mut()
+                        .filter(|session| {
+                            session.id == id
+                                && session.user_id == user_id
+                                && session.fingerprint == fingerprint
+                                && session.role == RemoteRole::Viewer
+                        })
+                        .ok_or(RemoteError::State(RemoteStateError::InvalidSession))?;
+                    session.input_allowed = allowed;
+                    snapshot(session)
+                };
+                self.emit(RemoteEventMessage::InputChanged {
+                    session_id: changed.session_id,
+                    allowed,
+                });
+                Ok(())
+            }
         }
     }
 
-    pub fn inject_input(&self, peer: PeerInfo, packet: InputPacket) -> Result<(), RemoteError> {
-        let peer_id = peer.node_id.to_string();
+    pub fn inject_input(&self, user: UserInfo, packet: InputPacket) -> Result<(), RemoteError> {
+        let fingerprint = user.fingerprint.to_hex();
         let guard = self
             .inner
             .session
@@ -655,7 +618,7 @@ impl RemoteService {
         let session = guard
             .as_ref()
             .filter(|session| {
-                session.peer_id == peer_id
+                session.fingerprint == fingerprint
                     && session.state == RemoteState::Active
                     && session.role == RemoteRole::Host
             })
@@ -663,13 +626,18 @@ impl RemoteService {
         if packet.session_id != id_bytes(session.id) {
             return Err(RemoteError::Inactive);
         }
+        if !session.input_allowed {
+            return Err(RemoteError::InputDenied);
+        }
         let event = match packet.kind {
             InputKind::Motion => InputEvent::PointerMotion {
                 x: packet.x,
                 y: packet.y,
             },
             InputKind::Button => InputEvent::PointerButton {
-                button: u8::try_from(packet.x).unwrap_or(u8::MAX),
+                button: u8::try_from(packet.x).map_err(|_| {
+                    RemoteError::Input(format!("button code out of range: {}", packet.x))
+                })?,
                 pressed: packet.pressed,
             },
             InputKind::Axis => InputEvent::PointerAxis {
@@ -677,15 +645,17 @@ impl RemoteService {
                 vertical: packet.y,
             },
             InputKind::Key => InputEvent::Key {
-                keysym: u32::try_from(packet.x).unwrap_or_default(),
+                keysym: u32::try_from(packet.x).map_err(|_| {
+                    RemoteError::Input(format!("keysym out of range: {}", packet.x))
+                })?,
                 pressed: packet.pressed,
             },
         };
         self.inner.host.inject(event)
     }
 
-    pub fn handle_disconnect(&self, peer: &PeerInfo) {
-        let peer_id = peer.node_id.to_string();
+    pub fn handle_disconnect(&self, user: &UserInfo) {
+        let fingerprint = user.fingerprint.to_hex();
         let ended = {
             let mut guard = self
                 .inner
@@ -693,11 +663,8 @@ impl RemoteService {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner);
             if let Some(session) = guard.as_mut()
-                && session.peer_id == peer_id
-                && matches!(
-                    session.state,
-                    RemoteState::Active | RemoteState::Consented | RemoteState::Requested
-                )
+                && session.fingerprint == fingerprint
+                && matches!(session.state, RemoteState::Active | RemoteState::Requested)
             {
                 let _ = session.transition(RemoteEvent::Disconnect);
                 Some(session.id)
@@ -714,14 +681,14 @@ impl RemoteService {
         }
     }
 
-    async fn finish_remote(&self, peer_id: &str, id: RemoteSessionId, reason: &str) {
+    async fn finish_remote(&self, fingerprint: &str, id: RemoteSessionId, reason: &str) {
         let matches = self
             .inner
             .session
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .as_ref()
-            .is_some_and(|session| session.id == id && session.peer_id == peer_id);
+            .is_some_and(|session| session.id == id && session.fingerprint == fingerprint);
         if !matches {
             return;
         }
@@ -732,8 +699,57 @@ impl RemoteService {
         });
     }
 
+    pub async fn expire_sessions(&self) {
+        let now = (self.inner.clock)();
+        let expired = {
+            let mut guard = self
+                .inner
+                .session
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let Some(session) = guard.as_mut() else {
+                return;
+            };
+            if session.state == RemoteState::Requested && now > session.expires_at {
+                let id = session.id;
+                let snapshot = snapshot(session);
+                let _ = session.transition(RemoteEvent::KillSwitch);
+                Some((id, snapshot))
+            } else {
+                None
+            }
+        };
+        let Some((id, snapshot)) = expired else {
+            return;
+        };
+        if snapshot.role == "host" {
+            let _ = self
+                .send_signal(
+                    &snapshot.fingerprint,
+                    &RemoteSignalFrame::Deny {
+                        session_id: id_bytes(id),
+                    },
+                )
+                .await;
+        }
+        self.cleanup();
+        self.emit(RemoteEventMessage::Ended {
+            session_id: snapshot.session_id,
+            reason: "expired".to_owned(),
+        });
+    }
+
     fn cleanup(&self) {
-        self.inner.host.stop();
+        let host = self
+            .inner
+            .session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .is_some_and(|session| session.role == RemoteRole::Host);
+        if host {
+            self.inner.host.stop();
+        }
         if let Some(session) = self
             .inner
             .session
@@ -753,14 +769,17 @@ impl RemoteService {
 
     async fn send_signal(
         &self,
-        peer_id: ticonnect_core::id::NodeId,
+        fingerprint: &str,
         frame: &RemoteSignalFrame,
     ) -> Result<(), RemoteError> {
+        let fingerprint = fingerprint
+            .parse()
+            .map_err(|_| RemoteError::InvalidUser(fingerprint.to_owned()))?;
         let session = self
             .inner
             .transport
-            .session_by_node_id(peer_id)
-            .ok_or(RemoteError::PeerOffline)?;
+            .session_by_fingerprint(&fingerprint)
+            .ok_or(RemoteError::UserOffline)?;
         let mut send = session.open_uni().await?;
         ticonnect_net::transport::session::write_frame(&mut send, &frame.to_wire()?).await?;
         Ok(())
@@ -776,21 +795,25 @@ pub fn spawn(
     mut frames: tokio::sync::mpsc::UnboundedReceiver<InboundRemoteFrame>,
 ) -> JoinHandle<()> {
     let mut transport_events = service.inner.transport.subscribe();
+    let mut expiry = tokio::time::interval(std::time::Duration::from_secs(1));
     tokio::spawn(async move {
         loop {
             tokio::select! {
+                _ = expiry.tick() => {
+                    service.expire_sessions().await;
+                }
                 frame = frames.recv() => {
                     let Some(frame) = frame else { break };
                     let result = match frame.frame.kind() {
                         ticonnect_core::wire::FrameKind::Remote => {
                             match ticonnect_core::remote::RemoteSignalFrame::from_wire(&frame.frame) {
-                                Ok(signal) => service.handle_signal(frame.peer, signal).await,
+                                Ok(signal) => service.handle_signal(frame.user, signal).await,
                                 Err(error) => Err(RemoteError::Protocol(error.to_string())),
                             }
                         }
                         ticonnect_core::wire::FrameKind::Input => {
                             match ticonnect_core::remote::InputPacket::decode(frame.frame.payload()) {
-                                Ok(packet) => service.inject_input(frame.peer, packet),
+                                Ok(packet) => service.inject_input(frame.user, packet),
                                 Err(error) => Err(RemoteError::Protocol(error.to_string())),
                             }
                         }
@@ -802,8 +825,8 @@ pub fn spawn(
                 }
                 event = transport_events.recv() => {
                     match event {
-                        Ok(ticonnect_net::transport::TransportEvent::PeerDisconnected(peer)) => {
-                            service.handle_disconnect(&peer);
+                        Ok(ticonnect_net::transport::TransportEvent::UserDisconnected(user)) => {
+                            service.handle_disconnect(&user);
                         }
                         Ok(_) => {}
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
@@ -822,7 +845,7 @@ fn id_bytes(id: RemoteSessionId) -> [u8; 16] {
 fn snapshot(session: &RemoteSession) -> RemoteSnapshot {
     RemoteSnapshot {
         session_id: session.id.to_string(),
-        peer_id: session.peer_id.clone(),
+        user_id: session.user_id.clone(),
         fingerprint: session.fingerprint.clone(),
         role: match session.role {
             RemoteRole::Host => "host",
@@ -830,8 +853,8 @@ fn snapshot(session: &RemoteSession) -> RemoteSnapshot {
         }
         .to_owned(),
         state: session.state.as_str().to_owned(),
-        pin: session.pin.clone().unwrap_or_default(),
         indicator: session.indicator_visible,
+        input_allowed: session.input_allowed,
         expires_at: session.expires_at,
     }
 }
@@ -850,14 +873,17 @@ pub enum RemoteError {
     #[error(transparent)]
     Signal(#[from] ticonnect_core::remote::RemoteError),
 
-    #[error("unknown peer: {0}")]
-    UnknownPeer(String),
+    #[error("unknown user: {0}")]
+    UnknownUser(String),
 
-    #[error("invalid peer id: {0}")]
-    InvalidPeer(String),
+    #[error("invalid user id: {0}")]
+    InvalidUser(String),
 
-    #[error("peer is offline")]
-    PeerOffline,
+    #[error("user is offline")]
+    UserOffline,
+
+    #[error("user identity does not match the trusted identity")]
+    IdentityMismatch,
 
     #[error("remote access was rejected by policy")]
     Rejected,
@@ -870,6 +896,9 @@ pub enum RemoteError {
 
     #[error("remote host failed: {0}")]
     Host(String),
+
+    #[error("input is not allowed for this session")]
+    InputDenied,
 
     #[error("input failed: {0}")]
     Input(String),

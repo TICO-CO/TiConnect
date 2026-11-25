@@ -64,7 +64,7 @@ Daemon domain service. Uses storage and transport. Policy gates inbound and noti
 | `MSG.outbox` | `calls` | `sync` | `MSG.signer` | sign outbound record |  |  |
 | `MSG.outbox` | `calls` | `sync` | `DB.outbox` | queue outbound record |  |  |
 | `MSG.outbox` | `invokes` | `async` | `TX.streams` | send message frame |  |  |
-| `MSG.sync-planner` | `calls` | `sync` | `DB.peer-state` | read peer state |  |  |
+| `MSG.sync-planner` | `calls` | `sync` | `DB.user-state` | read user state |  |  |
 | `MSG.sync-executor` | `calls` | `sync` | `MSG.sync-planner` | plan missing ranges |  |  |
 | `MSG.sync-executor` | `invokes` | `async` | `TX.streams` | request missing records |  |  |
 | `MSG.sync-executor` | `calls` | `sync` | `DB.messages` | insert synced records |  |  |
@@ -77,7 +77,7 @@ Daemon domain service. Uses storage and transport. Policy gates inbound and noti
 | `MSG.outbox` | `emits` | `event` | `MSG.events` | outbox state changed |  |  |
 | `MSG.sync-executor` | `emits` | `event` | `MSG.events` | SyncCompleted |  |  |
 | `MSG.receipts` | `calls` | `sync` | `POL.receipts` | receipt suppression | POL.receipts |  |
-| `MSG.ingest` | `calls` | `sync` | `DB.peer-state` | update last_recv_seq |  |  |
+| `MSG.ingest` | `calls` | `sync` | `DB.user-state` | update last_recv_seq |  |  |
 | `ATT.link` | `calls` | `sync` | `MSG.ingest` | attachment message |  |  |
 
 ## Invariants
@@ -88,7 +88,7 @@ Daemon domain service. Uses storage and transport. Policy gates inbound and noti
 - `INV-POL-1` — Ignore policy is enforced before storage; DND suppresses notifications but not storage. Test: planned: crates/daemon/tests/policy.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 
@@ -99,6 +99,6 @@ Daemon domain service. Uses storage and transport. Policy gates inbound and noti
 
 ## Open decisions
 
-- ignore peer send semantics
+- ignore user send semantics
 - sync batch limits
 - clock skew rendering fallback

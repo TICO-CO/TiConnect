@@ -15,13 +15,10 @@ flowchart LR
     n_aud_metrics["AUD.metrics<br/>Audio metrics"]
     n_aud_playback["AUD.playback<br/>Playback"]
     n_aud_resample["AUD.resample<br/>Resampler"]
-    n_aud_ringtone["AUD.ringtone<br/>Ringtone player"]
   end
   subgraph ext["External"]
     n_call_cleanup["CALL.cleanup<br/>CALL"]
     n_call_media["CALL.media<br/>CALL"]
-    n_call_ringtone["CALL.ringtone<br/>CALL"]
-    n_cfg_file_store["CFG.file-store<br/>CFG"]
     n_tx_datagrams["TX.datagrams<br/>TX"]
   end
   n_tx_datagrams -.->|emits / event gate:CALL.policy: audio datagram| n_aud_decode
@@ -33,17 +30,13 @@ flowchart LR
   n_aud_decode -->|calls / sync: decoded frames| n_aud_jitter
   n_aud_jitter -->|calls / sync: ordered frames| n_aud_playback
   n_aud_playback -->|calls / sync: playback metrics| n_aud_metrics
-  n_aud_ringtone -->|calls / sync: ringtone sink| n_aud_playback
-  n_aud_ringtone -->|calls / sync: ringtone metrics| n_aud_metrics
   n_aud_encode -.->|invokes / async gate:CALL.policy: send audio datagram| n_tx_datagrams
-  n_aud_ringtone -.->|config-read / sync: ringtone path| n_cfg_file_store
   n_call_media -->|calls / sync gate:CALL.policy: audio devices| n_aud_devices
   n_call_media -->|calls / sync: encode call audio| n_aud_encode
   n_call_media -->|calls / sync: decode call audio| n_aud_decode
-  n_call_ringtone -->|calls / sync: ringtone playback| n_aud_ringtone
   n_call_cleanup -->|calls / sync: release audio devices| n_aud_devices
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_call_cleanup, n_call_media, n_call_ringtone, n_cfg_file_store, n_tx_datagrams external;
+  class n_call_cleanup, n_call_media, n_tx_datagrams external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -57,12 +50,8 @@ flowchart LR
 | `AUD.decode` | calls | sync | `AUD.jitter` | decoded frames |  |  | 10 |
 | `AUD.jitter` | calls | sync | `AUD.playback` | ordered frames |  |  | 10 |
 | `AUD.playback` | calls | sync | `AUD.metrics` | playback metrics |  |  | 10 |
-| `AUD.ringtone` | calls | sync | `AUD.playback` | ringtone sink |  |  | 10 |
-| `AUD.ringtone` | calls | sync | `AUD.metrics` | ringtone metrics |  |  | 10 |
 | `AUD.encode` | invokes | async | `TX.datagrams` | send audio datagram | CALL.policy |  | 10 |
-| `AUD.ringtone` | config-read | sync | `CFG.file-store` | ringtone path |  |  | 10 |
 | `CALL.media` | calls | sync | `AUD.devices` | audio devices | CALL.policy |  | 10 |
 | `CALL.media` | calls | sync | `AUD.encode` | encode call audio |  |  | 10 |
 | `CALL.media` | calls | sync | `AUD.decode` | decode call audio |  |  | 10 |
-| `CALL.ringtone` | calls | sync | `AUD.ringtone` | ringtone playback |  |  | 10 |
 | `CALL.cleanup` | calls | sync | `AUD.devices` | release audio devices |  |  | 10 |

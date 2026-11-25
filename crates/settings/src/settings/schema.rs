@@ -32,18 +32,6 @@ impl Default for DiscoverySettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct TrustSettings {
-    pub open_lan: bool,
-}
-
-impl Default for TrustSettings {
-    fn default() -> Self {
-        Self { open_lan: true }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default)]
 pub struct TransportSettings {
     pub port: u16,
 }
@@ -130,6 +118,8 @@ pub struct CallsSettings {
     pub input_device: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_device: Option<String>,
+    pub mute_shortcut: String,
+    pub output_mute_shortcut: String,
 }
 
 impl Default for CallsSettings {
@@ -138,6 +128,8 @@ impl Default for CallsSettings {
             timeout_secs: DEFAULT_CALL_TIMEOUT_SECS,
             input_device: None,
             output_device: None,
+            mute_shortcut: DEFAULT_CALL_MUTE_SHORTCUT.to_owned(),
+            output_mute_shortcut: DEFAULT_CALL_OUTPUT_MUTE_SHORTCUT.to_owned(),
         }
     }
 }
@@ -146,16 +138,14 @@ impl Default for CallsSettings {
 #[serde(default)]
 pub struct RemoteSettings {
     pub session_timeout_secs: u32,
-    pub pin_attempts: u32,
-    pub pin_ttl_secs: u32,
+    pub request_timeout_secs: u32,
 }
 
 impl Default for RemoteSettings {
     fn default() -> Self {
         Self {
             session_timeout_secs: 0,
-            pin_attempts: DEFAULT_REMOTE_PIN_ATTEMPTS,
-            pin_ttl_secs: DEFAULT_REMOTE_PIN_TTL_SECS,
+            request_timeout_secs: DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS,
         }
     }
 }
@@ -176,13 +166,6 @@ impl Default for VideoSettings {
             keyframe_interval: DEFAULT_VIDEO_KEYFRAME_INTERVAL,
         }
     }
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
-#[serde(default)]
-pub struct RingtoneSettings {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
@@ -257,7 +240,6 @@ pub const SETTING_KEYS: &[&str] = &[
     "discovery.mdns",
     "discovery.broadcast",
     "discovery.beacon_interval_secs",
-    "trust.open_lan",
     "transport.port",
     "overlay.enabled",
     "overlay.timeout_secs",
@@ -268,13 +250,13 @@ pub const SETTING_KEYS: &[&str] = &[
     "calls.timeout_secs",
     "calls.input_device",
     "calls.output_device",
+    "calls.mute_shortcut",
+    "calls.output_mute_shortcut",
     "remote.session_timeout_secs",
-    "remote.pin_attempts",
-    "remote.pin_ttl_secs",
+    "remote.request_timeout_secs",
     "video.bitrate_kbps",
     "video.fps",
     "video.keyframe_interval",
-    "ringtone.path",
     "dnd.enabled",
     "appearance.color_scheme",
 ];
@@ -292,12 +274,11 @@ pub const ATTACHMENT_MAX_MIB_MAX: u32 = 102_400;
 pub const DEFAULT_CALL_TIMEOUT_SECS: u32 = 30;
 pub const CALL_TIMEOUT_MIN_SECS: u32 = 5;
 pub const CALL_TIMEOUT_MAX_SECS: u32 = 300;
-pub const DEFAULT_REMOTE_PIN_ATTEMPTS: u32 = 3;
-pub const REMOTE_PIN_ATTEMPTS_MIN: u32 = 1;
-pub const REMOTE_PIN_ATTEMPTS_MAX: u32 = 10;
-pub const DEFAULT_REMOTE_PIN_TTL_SECS: u32 = 300;
-pub const REMOTE_PIN_TTL_MIN_SECS: u32 = 30;
-pub const REMOTE_PIN_TTL_MAX_SECS: u32 = 3600;
+pub const DEFAULT_CALL_MUTE_SHORTCUT: &str = "Ctrl+M";
+pub const DEFAULT_CALL_OUTPUT_MUTE_SHORTCUT: &str = "Ctrl+Shift+M";
+pub const DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS: u32 = 300;
+pub const REMOTE_REQUEST_TIMEOUT_MIN_SECS: u32 = 30;
+pub const REMOTE_REQUEST_TIMEOUT_MAX_SECS: u32 = 3600;
 pub const DEFAULT_VIDEO_BITRATE_KBPS: u32 = 2500;
 pub const VIDEO_BITRATE_MIN_KBPS: u32 = 256;
 pub const VIDEO_BITRATE_MAX_KBPS: u32 = 20_000;
@@ -367,16 +348,6 @@ settings_schema! {
         };
         set(&mut self, value: DiscoverySettings) -> set_discovery as active {
             active.discovery = value;
-        };
-    };
-
-    #[serde(default)]
-    trust: TrustSettings = TrustSettings::default() => {
-        get(&self) -> &TrustSettings as active {
-            &active.trust
-        };
-        set(&mut self, value: TrustSettings) -> set_trust as active {
-            active.trust = value;
         };
     };
 
@@ -471,16 +442,6 @@ settings_schema! {
     };
 
     #[serde(default)]
-    ringtone: RingtoneSettings = RingtoneSettings::default() => {
-        get(&self) -> &RingtoneSettings as active {
-            &active.ringtone
-        };
-        set(&mut self, value: RingtoneSettings) -> set_ringtone as active {
-            active.ringtone = value;
-        };
-    };
-
-    #[serde(default)]
     dnd: DndSettings = DndSettings::default() => {
         get(&self) -> &DndSettings as active {
             &active.dnd
@@ -551,15 +512,6 @@ impl Settings {
     pub fn set_discovery_beacon_interval_secs(&mut self, secs: u32) {
         self.changes.discovery = true;
         self.active.discovery.beacon_interval_secs = secs;
-    }
-
-    pub fn trust_open_lan(&self) -> bool {
-        self.active.trust.open_lan
-    }
-
-    pub fn set_trust_open_lan(&mut self, enabled: bool) {
-        self.changes.trust = true;
-        self.active.trust.open_lan = enabled;
     }
 
     pub fn transport_port(&self) -> u16 {
@@ -652,6 +604,24 @@ impl Settings {
         self.active.calls.output_device = value;
     }
 
+    pub fn call_mute_shortcut(&self) -> &str {
+        &self.active.calls.mute_shortcut
+    }
+
+    pub fn call_output_mute_shortcut(&self) -> &str {
+        &self.active.calls.output_mute_shortcut
+    }
+
+    pub fn set_call_mute_shortcut(&mut self, value: String) {
+        self.changes.calls = true;
+        self.active.calls.mute_shortcut = value;
+    }
+
+    pub fn set_call_output_mute_shortcut(&mut self, value: String) {
+        self.changes.calls = true;
+        self.active.calls.output_mute_shortcut = value;
+    }
+
     pub fn remote_session_timeout_secs(&self) -> u32 {
         self.active.remote.session_timeout_secs
     }
@@ -661,22 +631,13 @@ impl Settings {
         self.active.remote.session_timeout_secs = value;
     }
 
-    pub fn remote_pin_attempts(&self) -> u32 {
-        self.active.remote.pin_attempts
+    pub fn remote_request_timeout_secs(&self) -> u32 {
+        self.active.remote.request_timeout_secs
     }
 
-    pub fn remote_pin_ttl_secs(&self) -> u32 {
-        self.active.remote.pin_ttl_secs
-    }
-
-    pub fn set_remote_pin_attempts(&mut self, value: u32) {
+    pub fn set_remote_request_timeout_secs(&mut self, value: u32) {
         self.changes.remote = true;
-        self.active.remote.pin_attempts = value;
-    }
-
-    pub fn set_remote_pin_ttl_secs(&mut self, value: u32) {
-        self.changes.remote = true;
-        self.active.remote.pin_ttl_secs = value;
+        self.active.remote.request_timeout_secs = value;
     }
 
     pub fn video_bitrate_kbps(&self) -> u32 {
@@ -704,15 +665,6 @@ impl Settings {
     pub fn set_video_keyframe_interval(&mut self, value: u32) {
         self.changes.video = true;
         self.active.video.keyframe_interval = value;
-    }
-
-    pub fn ringtone_path(&self) -> Option<&Path> {
-        self.active.ringtone.path.as_deref()
-    }
-
-    pub fn set_ringtone_path(&mut self, path: Option<PathBuf>) {
-        self.changes.ringtone = true;
-        self.active.ringtone.path = path;
     }
 
     pub fn dnd_enabled(&self) -> bool {
@@ -746,7 +698,6 @@ impl Settings {
             "discovery.beacon_interval_secs" => {
                 Ok(SettingValue::Integer(self.discovery_beacon_interval_secs()))
             }
-            "trust.open_lan" => Ok(SettingValue::Bool(self.trust_open_lan())),
             "transport.port" => Ok(SettingValue::Integer(u32::from(self.transport_port()))),
             "overlay.enabled" => Ok(SettingValue::Bool(self.overlay_enabled())),
             "overlay.timeout_secs" => Ok(SettingValue::Integer(self.overlay_timeout_secs())),
@@ -761,17 +712,19 @@ impl Settings {
             "calls.output_device" => Ok(SettingValue::String(
                 self.call_output_device().unwrap_or_default().to_owned(),
             )),
+            "calls.mute_shortcut" => Ok(SettingValue::String(self.call_mute_shortcut().to_owned())),
+            "calls.output_mute_shortcut" => Ok(SettingValue::String(
+                self.call_output_mute_shortcut().to_owned(),
+            )),
             "remote.session_timeout_secs" => {
                 Ok(SettingValue::Integer(self.remote_session_timeout_secs()))
             }
-            "remote.pin_attempts" => Ok(SettingValue::Integer(self.remote_pin_attempts())),
-            "remote.pin_ttl_secs" => Ok(SettingValue::Integer(self.remote_pin_ttl_secs())),
+            "remote.request_timeout_secs" => {
+                Ok(SettingValue::Integer(self.remote_request_timeout_secs()))
+            }
             "video.bitrate_kbps" => Ok(SettingValue::Integer(self.video_bitrate_kbps())),
             "video.fps" => Ok(SettingValue::Integer(self.video_fps())),
             "video.keyframe_interval" => Ok(SettingValue::Integer(self.video_keyframe_interval())),
-            "ringtone.path" => Ok(SettingValue::Path(
-                self.ringtone_path().map(Path::to_path_buf),
-            )),
             "dnd.enabled" => Ok(SettingValue::Bool(self.dnd_enabled())),
             "appearance.color_scheme" => {
                 Ok(SettingValue::String(self.appearance().as_str().to_owned()))
@@ -812,9 +765,6 @@ impl Settings {
                     });
                 }
                 self.set_discovery_beacon_interval_secs(secs);
-            }
-            "trust.open_lan" => {
-                self.set_trust_open_lan(parse_bool(key, value)?);
             }
             "transport.port" => {
                 let port = value.parse::<u16>().map_err(|_| Error::InvalidSetting {
@@ -884,27 +834,22 @@ impl Settings {
             }
             "calls.input_device" => self.set_call_input_device(parse_optional_string(value)),
             "calls.output_device" => self.set_call_output_device(parse_optional_string(value)),
+            "calls.mute_shortcut" => self.set_call_mute_shortcut(value.trim().to_owned()),
+            "calls.output_mute_shortcut" => {
+                self.set_call_output_mute_shortcut(value.trim().to_owned());
+            }
             "remote.session_timeout_secs" => {
                 let secs = parse_u32(key, value)?;
                 self.set_remote_session_timeout_secs(secs);
             }
-            "remote.pin_attempts" => {
-                let attempts = parse_bounded_u32(
-                    key,
-                    value,
-                    REMOTE_PIN_ATTEMPTS_MIN,
-                    REMOTE_PIN_ATTEMPTS_MAX,
-                )?;
-                self.set_remote_pin_attempts(attempts);
-            }
-            "remote.pin_ttl_secs" => {
+            "remote.request_timeout_secs" => {
                 let secs = parse_bounded_u32(
                     key,
                     value,
-                    REMOTE_PIN_TTL_MIN_SECS,
-                    REMOTE_PIN_TTL_MAX_SECS,
+                    REMOTE_REQUEST_TIMEOUT_MIN_SECS,
+                    REMOTE_REQUEST_TIMEOUT_MAX_SECS,
                 )?;
-                self.set_remote_pin_ttl_secs(secs);
+                self.set_remote_request_timeout_secs(secs);
             }
             "video.bitrate_kbps" => {
                 let kbps =
@@ -920,7 +865,6 @@ impl Settings {
                     parse_bounded_u32(key, value, VIDEO_KEYFRAME_MIN, VIDEO_KEYFRAME_MAX)?;
                 self.set_video_keyframe_interval(interval);
             }
-            "ringtone.path" => self.set_ringtone_path(parse_optional_path(value)),
             "dnd.enabled" => self.set_dnd_enabled(parse_bool(key, value)?),
             "appearance.color_scheme" => {
                 let appearance = Appearance::parse(value).ok_or_else(|| Error::InvalidSetting {
@@ -995,25 +939,14 @@ impl Settings {
                 ),
             });
         }
-        if !(REMOTE_PIN_ATTEMPTS_MIN..=REMOTE_PIN_ATTEMPTS_MAX)
-            .contains(&self.remote_pin_attempts())
+        if !(REMOTE_REQUEST_TIMEOUT_MIN_SECS..=REMOTE_REQUEST_TIMEOUT_MAX_SECS)
+            .contains(&self.remote_request_timeout_secs())
         {
             return Err(Error::InvalidSetting {
-                key: "remote.pin_attempts".to_owned(),
-                value: self.remote_pin_attempts().to_string(),
+                key: "remote.request_timeout_secs".to_owned(),
+                value: self.remote_request_timeout_secs().to_string(),
                 reason: format!(
-                    "expected a value between {REMOTE_PIN_ATTEMPTS_MIN} and {REMOTE_PIN_ATTEMPTS_MAX}"
-                ),
-            });
-        }
-        if !(REMOTE_PIN_TTL_MIN_SECS..=REMOTE_PIN_TTL_MAX_SECS)
-            .contains(&self.remote_pin_ttl_secs())
-        {
-            return Err(Error::InvalidSetting {
-                key: "remote.pin_ttl_secs".to_owned(),
-                value: self.remote_pin_ttl_secs().to_string(),
-                reason: format!(
-                    "expected a value between {REMOTE_PIN_TTL_MIN_SECS} and {REMOTE_PIN_TTL_MAX_SECS}"
+                    "expected a value between {REMOTE_REQUEST_TIMEOUT_MIN_SECS} and {REMOTE_REQUEST_TIMEOUT_MAX_SECS}"
                 ),
             });
         }

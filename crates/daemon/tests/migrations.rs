@@ -10,7 +10,7 @@ fn migrations_apply_from_empty_and_are_idempotent() {
 
     migrations::run(&mut connection).expect("first migration");
     assert_eq!(schema_version(&connection), migrations::latest_version());
-    assert_eq!(table_count(&connection), 10);
+    assert_eq!(table_count(&connection), 11);
     let settings_table: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'settings'",
@@ -22,7 +22,7 @@ fn migrations_apply_from_empty_and_are_idempotent() {
 
     migrations::run(&mut connection).expect("second migration");
     assert_eq!(schema_version(&connection), migrations::latest_version());
-    assert_eq!(table_count(&connection), 10);
+    assert_eq!(table_count(&connection), 11);
 
     let _ = std::fs::remove_file(path);
 }
@@ -36,21 +36,23 @@ fn required_indexes_exist() {
     let count: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM sqlite_master
-             WHERE type = 'index' AND name IN (?, ?)",
+             WHERE type = 'index' AND name IN (?, ?, ?, ?)",
             rusqlite::params![
                 "messages_conversation_sent_at",
-                "messages_conversation_sender_seq"
+                "messages_conversation_sender_seq",
+                "messages_conversation_sort",
+                "messages_conversation_unread"
             ],
             |row| row.get(0),
         )
         .expect("index count");
-    assert_eq!(count, 2);
+    assert_eq!(count, 4);
 
     let _ = std::fs::remove_file(path);
 }
 
 #[test]
-fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
+fn user_state_rename_preserves_rows_and_removes_user_fk() {
     let path = temp_db();
     let mut connection = Connection::open(&path).expect("open db");
     connection
@@ -69,9 +71,9 @@ fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
         .execute_batch(
             "INSERT INTO peers
                  (id, fingerprint, public_key, display_name, policy, trusted_at, last_seen)
-             VALUES ('peer-1', 'fingerprint-1', NULL, NULL, 'accept', 1, NULL);
+             VALUES ('user-1', 'fingerprint-1', NULL, NULL, 'accept', 1, NULL);
              INSERT INTO peer_state (peer_id, last_sent_seq, last_recv_seq)
-             VALUES ('peer-1', 7, 3);",
+             VALUES ('user-1', 7, 3);",
         )
         .expect("seed data");
 
@@ -80,16 +82,16 @@ fn peer_state_migration_preserves_rows_and_removes_peer_fk() {
 
     let state: (i64, i64) = connection
         .query_row(
-            "SELECT last_sent_seq, last_recv_seq FROM peer_state WHERE peer_id = 'peer-1'",
+            "SELECT last_sent_seq, last_recv_seq FROM user_state WHERE user_id = 'user-1'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
-        .expect("peer state");
+        .expect("user state");
     assert_eq!(state, (7, 3));
 
     let foreign_keys: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM pragma_foreign_key_list('peer_state')",
+            "SELECT COUNT(*) FROM pragma_foreign_key_list('user_state')",
             [],
             |row| row.get(0),
         )

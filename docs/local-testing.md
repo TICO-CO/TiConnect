@@ -32,18 +32,26 @@ make lab
 ```
 
 This adds a `ticonnect-lab-*` tab with two panes. Each pane is a separate node
-with its own private D-Bus, daemon, config, data directory, transport port, and
-daemon log. The original pane stays attached to the lab supervisor. Closing the
-lab tab, running `lab-stop` in either pane, or pressing Ctrl-C in the supervisor
-pane stops both nodes.
+with its own private IPC bus, daemon, config, data directory, transport port, and
+daemon log. The UI and overlay keep using the host session bus for GTK, WebKit,
+portals, and notifications. The original pane stays attached to the lab
+supervisor. Closing the lab tab, running `lab-stop` in either pane, or pressing
+Ctrl-C in the supervisor pane stops both nodes.
+
+Interactive labs start the Vite dev server at `http://127.0.0.1:5173` and point
+both UIs at it. Edits under `crates/ui/web` hot-reload without rebuilding the
+Rust binary. The Vite log is `$LAB_DIR/vite.log`. An existing TiConnect dev
+server on port `5173` is restarted automatically. Use `LAB_HOT_RELOAD=0 make lab`
+to load the embedded bundle instead. Automated `make lab-smoke` always uses the
+embedded bundle.
 
 Pane commands:
 
 ```text
 ticonnect status      talk to this node's daemon
-peer                  print the peer node id
-send "hello"          send to the peer
-inbox                 show messages from the peer
+user                  print the user node id
+send "hello"          send to the user
+inbox                 show messages from the user
 ui                    start this node's UI
 stop-ui               stop this node's UI
 ovl                   start this node's overlay
@@ -56,23 +64,35 @@ The `ui` and `ovl` helpers call the hidden internal `ticonnect ui` and
 `ticonnect overlay` entries. The rest use the same unified `ticonnect` binary as
 a normal install.
 
-Open LAN mode is enabled by default, so the two nodes trust each other
-automatically and the peer list populates without pairing. Set
-`LAB_OPEN_LAN=0 make lab` to test manual pairing instead; the `pair` helper is
-still available in that mode.
-
-Manual pairing remains available:
-
-```sh
-# node-a pane
-ticonnect pair start
-# copy the PIN, then in node-b
-ticonnect pair with-pin <node-a-id> <pin>
-```
+Automatic LAN trust is always enabled, so the two nodes trust each other
+automatically and the user list populates without manual pairing.
 
 The lab sets distinct display names and UI window titles for the two nodes.
 Both UIs can run at the same time against their separate buses. Both overlays
-anchor bottom-right and overlap, so run one `ovl` at a time for clear testing.
+anchor top-right and overlap, so run one `ovl` at a time for clear testing.
+
+Call audio uses null devices by default because two nodes on one host share the
+same microphone and speakers. Real devices create an acoustic feedback loop.
+For real call audio, use headphones and run `call-audio hardware` in both lab
+panes, or start the lab with `LAB_CALL_AUDIO=hardware make lab`. Use
+`call-audio silent` to return to null devices.
+
+Group watch parties need at least three nodes. The daemon integration test
+starts three nodes itself:
+
+```sh
+cargo test -p ticonnect-daemon --test watch_party_group
+```
+
+For manual group testing, run `make lab` twice from the same workspace only
+after stopping the first lab, or use the integration test. Voice recording and
+YouTube playback need the GStreamer plugins exported by `nix develop`
+(`GST_PLUGIN_SYSTEM_PATH_1_0`). Check with:
+
+```sh
+nix develop -c gst-inspect-1.0 appsink
+nix develop -c gst-inspect-1.0 pulsesrc
+```
 
 Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
 stops. Run the automated harness check with:
@@ -81,14 +101,18 @@ stops. Run the automated harness check with:
 make lab-smoke
 ```
 
-On Nix, `nix develop` supplies the ALSA, GTK, and libadwaita development
-outputs together with `pkg-config`, while keeping the Rust toolchain selected
-by `rust-toolchain.toml`:
+On Nix, `nix develop` supplies the Rust toolchain, ALSA, GTK, WebKitGTK, Bun,
+Node, and local integration test tools together with `pkg-config`. The shell uses
+the Rust toolchain from nixpkgs; outside the shell, `rust-toolchain.toml` still
+selects the host toolchain:
 
 ```sh
 nix develop
 make lab
 ```
+
+Lab binary builds disable `sccache` by default. Set
+`LAB_RUSTC_WRAPPER=sccache` if you want the wrapper back.
 
 On Nix hosts that mix a host Rust toolchain with Nix GTK libraries, the link
 step can report unresolved `GLIBC_2.43` math symbols from `graphene`. `make
@@ -102,15 +126,24 @@ nix build .#ticonnect
 TICONNECT_BIN="$PWD/result/bin/ticonnect" make lab-smoke
 ```
 
+## Cross-host dev install
+
+For two real machines, run `make install-dev` on each peer and launch
+`ticonnect-dev` there. Each install has its own config, data, state, and private
+IPC bus, so it can run beside a normal installation. The dev transport port
+defaults to UDP `45881`; allow UDP `5353` and `45870` for discovery plus `45881`
+for transport between peers. Stop the normal app on both peers for a clean
+two-node test.
+
 ## What is checked
 
 - private per-node D-Bus; no global daemon name collision
-- discovery, PIN pairing, trusted session
+- discovery, automatic trust, trusted session
 - text round trip
 - attachment transfer and content storage on disk
 - UI and overlay process under X11 and Wayland
 - call signaling and two-way Opus frame counters through real PipeWire devices
-- remote consent, PIN, active state, indicator, kill switch
+- remote consent, active state, indicator, kill switch
 - build and run with real `gtk4-layer-shell`
 
 ## Real portal gate

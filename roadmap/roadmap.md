@@ -25,7 +25,7 @@ be split.
 - One transport: QUIC for messages, files, audio, and video. No WebRTC.
 - Pure-Rust media. Software H.264. No GStreamer.
 - No root. Portals for capture and input injection.
-- Nothing is reachable before pairing. Certificates are pinned.
+- Nothing is reachable before trust. Certificates are pinned.
 - Secrets live in the user config directory with restrictive permissions.
 - Lightweight while idle. The daemon stays small and headless.
 - X11 and Wayland are both first-class.
@@ -37,14 +37,14 @@ be split.
 | 1 | Foundation | Workspace builds, config/logging ready, typed errors, CI green | — | Scope creep into features |
 | 1.5 | Architecture contracts & graph | Component registry, canonical relations, generated graphs, architecture CI | 1 | Graph drift |
 | 2 | Daemon & IPC | Headless daemon on D-Bus, CLI, systemd unit, autostart | 1, 1.5 | D-Bus API churn |
-| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, peers | 1, 1.5, 2 | Key handling mistakes |
+| 3 | Identity & storage | Ed25519 identity, SQLite data schema, TOML settings, users | 1, 1.5, 2 | Key handling mistakes |
 | 4 | Discovery | mDNS + UDP fallback candidate discovery | 1, 1.5, 3 | mDNS availability on LANs |
-| 5 | Pairing & transport | SPAKE2 pairing, QUIC/TLS with pinning, trust table | 1, 1.5, 3, 4 | Cryptographic correctness |
+| 5 | Automatic trust & transport | SPAKE2 trust, QUIC/TLS with pinning, trust table | 1, 1.5, 3, 4 | Cryptographic correctness |
 | 6 | Messaging | Signed replica messages, outbox, gap sync, receipts, policy, tray | 1, 1.5, 3, 5 | Ordering and expiry edge cases |
-| 7 | GTK4 UI | Main window: peers, threads, settings, pairing dialog | 1, 1.5, 2, 6 | UI/daemon coupling |
+| 7 | GTK4 UI | Main window: users, threads, settings, trust dialog | 1, 1.5, 2, 6 | UI/daemon coupling |
 | 8 | Overlay & notifications | Message cards, X11 fallback, activation, system notifications | 1, 1.5, 2, 6 | layer-shell portability |
 | 9 | Attachments | Content-addressed store, resumable transfer, media rendering | 1, 1.5, 3, 5, 6, 7 | Large-file and resume state |
-| 10 | Voice calls | Call state machine, ringtone, Opus over datagrams, jitter buffer | 1, 1.5, 3, 5, 6 | Audio latency and device quirks |
+| 10 | Voice calls | Call state machine, Opus over datagrams, jitter buffer | 1, 1.5, 3, 5, 6 | Audio latency and device quirks |
 | 11 | Remote desktop | Portal capture, H.264, input injection, consent and kill switch | 1, 1.5, 3, 5, 7 | Portal/desktop variance |
 | 12 | Packaging & performance | Flatpak, hardened units, idle/perf pass, security review | 1–11 | Release polish time |
 
@@ -63,7 +63,7 @@ and logging dependencies. Errors stay crate-local; `core` never depends on
     └── 2 Daemon & IPC
         ├── 3 Identity & storage
         │   ├── 4 Discovery
-        │   │   └── 5 Pairing & transport
+        │   │   └── 5 Automatic trust & transport
         │   │       ├── 6 Messaging
         │   │       │   ├── 7 GTK4 UI
         │   │       │   │   ├── 8 Overlay & notifications (message cards)
@@ -128,9 +128,9 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 ### Security
 
 - [x] Threat model documented before Stage 5 and updated for attachments, calls, and remote desktop.
-- [x] Pairing, pinning, and trust-table behavior covered by tests.
+- [x] Automatic trust, pinning, and trust-table behavior covered by tests.
 - [x] Key files created with mode `0600`; directory `0700`.
-- [x] No feature reachable before pairing.
+- [x] No feature reachable before trust.
 - [ ] Remote desktop consent, indicator, and kill switch manual review pending.
 - [x] Dependency audit (`cargo audit`) runs in CI from Stage 1.
 
@@ -146,7 +146,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 
 - [ ] Structured `tracing` spans across D-Bus, transport, and media.
 - [ ] Log levels configurable; default quiet while idle.
-- [ ] `ticonnect-cli status` reports daemon health, peers, and queue depth.
+- [ ] `ticonnect-cli status` reports daemon health, users, and queue depth.
 - [ ] No message bodies or keys in logs by default.
 
 ### Performance
@@ -164,7 +164,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 2. [Daemon & IPC](stages/02-daemon-ipc.md)
 3. [Identity & storage](stages/03-identity-storage.md)
 4. [Discovery](stages/04-discovery.md)
-5. [Pairing & transport](stages/05-pairing-transport.md)
+5. [Automatic trust & transport](stages/05-trust-transport.md)
 6. [Messaging](stages/06-messaging.md)
 7. [GTK4 UI](stages/07-gtk4-ui.md)
 8. [Overlay & notifications](stages/08-overlay-notifications.md)
@@ -180,7 +180,7 @@ Stage 8 ships message cards only so it remains demoable with earlier stages.
 - [x] Stage 2 — Daemon & IPC (automation complete; manual systemd/logout verification pending)
 - [x] Stage 3 — Identity & storage
 - [x] Stage 4 — Discovery
-- [x] Stage 5 — Pairing & transport
+- [x] Stage 5 — Automatic trust & transport
 - [x] Stage 6 — Messaging
 - [ ] Stage 7 — GTK4 UI (automation complete; manual X11/Wayland and accessibility checks pending)
 - [ ] Stage 8 — Overlay & notifications (automation complete; manual Wayland/X11, notification, and focus checks pending)

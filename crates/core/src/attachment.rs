@@ -113,6 +113,12 @@ pub fn validate_name(name: &str) -> Result<(), AttachmentError> {
     Ok(())
 }
 
+pub fn base_mime(mime: &str) -> &str {
+    mime.split_once(';')
+        .map_or(mime, |(essence, _parameters)| essence)
+        .trim()
+}
+
 pub fn validate_mime(mime: &str) -> Result<(), AttachmentError> {
     if mime.is_empty() || mime.len() > MAX_MIME_LEN || mime.bytes().any(|byte| !byte.is_ascii()) {
         return Err(AttachmentError::InvalidMime);
@@ -165,6 +171,7 @@ pub fn mime_from_name(name: &str) -> &'static str {
         Some("opus") => "audio/opus",
         Some("wav") => "audio/wav",
         Some("flac") => "audio/flac",
+        Some("webm") => "audio/webm",
         Some("mp4" | "m4a") => "audio/mp4",
         Some("txt") => "text/plain",
         Some("pdf") => "application/pdf",
@@ -227,6 +234,14 @@ mod tests {
     }
 
     #[test]
+    fn base_mime_strips_parameters() {
+        assert_eq!(base_mime("audio/webm;codecs=opus"), "audio/webm");
+        assert_eq!(base_mime(" audio/webm ; codecs=opus"), "audio/webm");
+        assert_eq!(base_mime("audio/webm"), "audio/webm");
+        assert_eq!(base_mime(""), "");
+    }
+
+    #[test]
     fn mime_requires_type_and_subtype() {
         assert!(validate_mime("image/png").is_ok());
         assert!(validate_mime("application/octet-stream").is_ok());
@@ -277,6 +292,7 @@ mod tests {
     fn extension_mime_is_stable() {
         assert_eq!(mime_from_name("photo.PNG"), "image/png");
         assert_eq!(mime_from_name("clip.opus"), "audio/opus");
+        assert_eq!(mime_from_name("voice.webm"), "audio/webm");
         assert_eq!(mime_from_name("unknown"), "application/octet-stream");
     }
 }

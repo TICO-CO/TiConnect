@@ -1,37 +1,144 @@
-window.ticonnect-overlay {
+window.ticonnect-overlay,
+window.ticonnect-x11-overlay {
   background-color: transparent;
+}
+
+window.ticonnect-player {
+  background-color: #213639;
+  border-radius: 20px;
 }
 
 .ticonnect-card {
-  min-width: 300px;
+  min-width: 360px;
   max-width: 360px;
-  padding: 0;
-  border-radius: 12px;
-  background-color: rgba(32, 32, 32, 0.94);
-  color: #ffffff;
-  box-shadow: 0 4px 18px alpha(black, 0.22);
-  transition: background-color 150ms ease, box-shadow 150ms ease;
+  background-color: #213639;
+  color: #FFE5B0;
+  border: 1px solid #3F5A52;
+  border-radius: 20px;
+  box-shadow: 0 14px 32px rgba(6, 18, 18, 0.28);
+  transition: background-color 150ms ease;
 }
 
 .ticonnect-card:hover {
-  background-color: rgba(58, 58, 58, 0.96);
-  box-shadow: 0 6px 22px alpha(black, 0.28);
+  background-color: #2A403C;
 }
 
-.ticonnect-card-sender {
-  font-weight: 600;
+.ticonnect-toast {
+  min-width: 420px;
+  max-width: 420px;
+  background-color: #2A403C;
+}
+
+.ticonnect-card-active {
+  border-color: #577E46;
+}
+
+.ticonnect-card-pill {
+  min-width: 360px;
+  max-width: 360px;
+  background-color: #2A403C;
+  border-radius: 999px;
+}
+
+.ticonnect-monogram {
+  min-width: 32px;
+  min-height: 32px;
+  border-radius: 999px;
+  background-color: #2A403C;
+  color: #FFE5B0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ticonnect-card-kind {
+  color: #A9A78A;
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .ticonnect-card-time {
-  font-size: 0.8em;
-  opacity: 0.6;
+  color: #A9A78A;
+  font-size: 11px;
+}
+
+.ticonnect-card-title {
+  font-family: "Konkhmer Sleokchher", sans-serif;
+  font-size: 19px;
+  font-weight: 400;
+  color: #FFE5B0;
 }
 
 .ticonnect-card-preview {
-  font-size: 0.95em;
-  opacity: 0.85;
+  color: #FFE5B0;
+  font-size: 14px;
 }
 
-window.ticonnect-x11-overlay {
+.ticonnect-card-subtitle {
+  color: #EDB483;
+  font-size: 13px;
+}
+
+.ticonnect-card-action {
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid #3F5A52;
+  border-radius: 999px;
   background-color: transparent;
+  color: #FFE5B0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.ticonnect-card-action:hover {
+  background-color: #2A403C;
+  border-color: #FFE5B0;
+}
+
+.ticonnect-card-action.accent {
+  background-color: #EDB483;
+  border-color: #EDB483;
+  color: #182B2F;
+}
+
+.ticonnect-card-action.accent:hover {
+  background-color: #FFE5B0;
+  border-color: #FFE5B0;
+}
+
+.ticonnect-card-action.danger {
+  border-color: #E08A66;
+  color: #E08A66;
+}
+
+.ticonnect-card-action.danger:hover {
+  background-color: rgba(224, 138, 102, 0.14);
+}
+
+.ticonnect-card-active .ticonnect-card-kind {
+  color: #7FAE63;
+}
+
+.ticonnect-card-pill .ticonnect-card-title,
+.ticonnect-card-pill .ticonnect-card-subtitle {
+  font-size: 13px;
+}
+
+.ticonnect-card-pill .ticonnect-card-action.accent {
+  min-height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.ticonnect-card-fingerprint {
+  font-family: monospace;
+  font-size: 12px;
+  color: #A9A78A;
+}
+
+.ticonnect-card-warning {
+  border-color: #D9B26A;
+}
+
+.ticonnect-card-warning .ticonnect-card-kind {
+  color: #D9B26A;
 }

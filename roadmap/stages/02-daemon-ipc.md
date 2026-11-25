@@ -23,10 +23,10 @@ Component graphs: [RT](../../docs/systems/generated/components/rt.md), [IPC](../
 
 ## Non-goals
 
-- No identity, discovery, pairing, or messaging yet.
+- No identity, discovery, trust, or messaging yet.
 - No tray icon.
 - No GTK4 code.
-- No real peers; peer methods may return empty results.
+- No real users; user methods may return empty results.
 
 ## Prerequisites
 
@@ -52,7 +52,7 @@ Stages 1 and 1.5 complete.
 - [x] Interface `org.ticonnect.Daemon`.
 - [x] Method `Ping() -> s` returns `pong`.
 - [x] Method `GetVersion() -> s`.
-- [x] Method `GetStatus() -> a{sv}` with `uptime_seconds`, `peer_count`,
+- [x] Method `GetStatus() -> a{sv}` with `uptime_seconds`, `user_count`,
   `outbox_depth`, `transport_state`.
 - [x] Method `Shutdown()` stops the daemon cleanly.
 - [x] Property `Version` (read).
@@ -139,4 +139,4 @@ Stages 1 and 1.5 complete.
 
 ## Works without later stages
 
-The daemon answers status and ping with no peers, transport, or UI present.
+The daemon answers status and ping with no users, transport, or UI present.

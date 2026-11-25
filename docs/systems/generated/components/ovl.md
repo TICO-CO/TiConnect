@@ -18,13 +18,8 @@ flowchart LR
   subgraph ext["External"]
     n_cfg_file_store["CFG.file-store<br/>CFG"]
     n_cfg_watch["CFG.watch<br/>CFG"]
-    n_ipc_client["IPC.client<br/>IPC"]
     n_ui_activate["UI.activate<br/>UI"]
   end
-  n_ovl_client -->|calls / sync: daemon signal proxy| n_ipc_client
-  n_ovl_wayland -->|calls / sync: render card| n_ovl_card
-  n_ovl_x11 -->|calls / sync: render fallback card| n_ovl_card
-  n_ovl_card -->|calls / sync: card activation| n_ovl_activate
   n_ovl_activate -->|calls / sync: Activate view| n_ui_activate
   n_ovl_client -.->|emits / event: daemon event| n_ovl_router
   n_ovl_router -.->|emits / event: system notification| n_ovl_notify
@@ -33,15 +28,11 @@ flowchart LR
   n_ovl_client -.->|config-read / sync: overlay enabled and timeout| n_cfg_file_store
   n_ovl_client -.->|consumes / event: SettingsChanged| n_cfg_watch
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_cfg_watch, n_ipc_client, n_ui_activate external;
+  class n_cfg_file_store, n_cfg_watch, n_ui_activate external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
 |---|---|---|---|---|---|---|---|
-| `OVL.client` | calls | sync | `IPC.client` | daemon signal proxy |  |  | 8 |
-| `OVL.wayland` | calls | sync | `OVL.card` | render card |  |  | 8 |
-| `OVL.x11` | calls | sync | `OVL.card` | render fallback card |  |  | 8 |
-| `OVL.card` | calls | sync | `OVL.activate` | card activation |  |  | 8 |
 | `OVL.activate` | calls | sync | `UI.activate` | Activate view |  |  | 8 |
 | `OVL.client` | emits | event | `OVL.router` | daemon event |  |  | 8 |
 | `OVL.router` | emits | event | `OVL.notify` | system notification |  |  | 8 |

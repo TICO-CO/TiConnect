@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Own per-peer accept, mute, ignore, global DND, notification decisions, and receipt suppression.
+Own per-user accept, mute, ignore, global DND, notification decisions, and receipt suppression.
 
 ## Boundary
 
@@ -17,7 +17,7 @@ Daemon-only decision service. UI, overlay, and tray present decisions but do not
 
 ## Owned state
 
-- peer policy
+- user policy
 - DND state
 
 ## Components
@@ -28,7 +28,7 @@ Daemon-only decision service. UI, overlay, and tray present decisions but do not
 | `POL.inbound` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `POL.notify` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `POL.receipts` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
-| `POL.store` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | peer policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.store` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | user policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 
 ## Interfaces
 
@@ -43,16 +43,16 @@ Daemon-only decision service. UI, overlay, and tray present decisions but do not
 |---|---|---|---|---|---|---|
 | `MSG.ingest` | `calls` | `sync` | `POL.inbound` | inbound policy decision | POL.inbound |  |
 | `MSG.receipts` | `calls` | `sync` | `POL.receipts` | receipt suppression | POL.receipts |  |
-| `POL.store` | `calls` | `sync` | `DB.peers` | peer policy rows |  |  |
+| `POL.store` | `calls` | `sync` | `DB.users` | user policy rows |  |  |
 | `POL.dnd` | `config-read` | `sync` | `CFG.file-store` | DND setting |  |  |
-| `POL.inbound` | `calls` | `sync` | `POL.store` | peer policy |  |  |
+| `POL.inbound` | `calls` | `sync` | `POL.store` | user policy |  |  |
 | `POL.inbound` | `calls` | `sync` | `POL.dnd` | DND decision |  |  |
 | `POL.inbound` | `calls` | `sync` | `POL.notify` | notification decision |  |  |
 | `POL.notify` | `emits` | `event` | `IPC.signal-bus` | notification event |  |  |
 | `POL.receipts` | `calls` | `sync` | `POL.store` | receipt policy |  |  |
 | `POL.store` | `emits` | `event` | `IPC.signal-bus` | PolicyChanged |  |  |
 | `CALL.policy` | `calls` | `sync` | `POL.inbound` | call policy decision | POL.inbound |  |
-| `TRAY.policy` | `calls` | `sync` | `POL.store` | set peer policy | POL.store |  |
+| `TRAY.policy` | `calls` | `sync` | `POL.store` | set user policy | POL.store |  |
 
 ## Invariants
 
@@ -62,7 +62,7 @@ Daemon-only decision service. UI, overlay, and tray present decisions but do not
 - `INV-POL-1` — Ignore policy is enforced before storage; DND suppresses notifications but not storage. Test: planned: crates/daemon/tests/policy.rs
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 

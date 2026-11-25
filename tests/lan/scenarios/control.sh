@@ -9,6 +9,11 @@ display_name_is() {
 }
 
 begin_scenario control
+
+export LAN_TEST_DISCOVERY_ENABLED=false
+export LAN_TEST_DISCOVERY_MDNS=
+export LAN_TEST_DISCOVERY_BROADCAST=
+
 start_nodes
 
 log "checking control surface"
@@ -18,13 +23,13 @@ VERSION="$(cli node-a version)"
 
 STATUS="$(cli node-a status)"
 assert_contains "$STATUS" "version: $VERSION" "human status version"
-assert_contains "$STATUS" "peer_count: 0" "human status peer count"
+assert_contains "$STATUS" "user_count: 0" "human status user count"
 assert_contains "$STATUS" "outbox_depth: 0" "human status outbox"
 assert_contains "$STATUS" "transport_state: idle" "human status transport"
 assert_contains "$STATUS" "active_sessions: 0" "human status sessions"
 
 assert_eq "$(status_json_value node-a version)" "$VERSION" "json version"
-assert_eq "$(status_json_value node-a peer_count)" "0" "json peer count"
+assert_eq "$(status_json_value node-a user_count)" "0" "json user count"
 assert_eq "$(status_json_value node-a outbox_depth)" "0" "json outbox"
 assert_eq "$(status_json_value node-a transport_state)" "idle" "json transport"
 assert_eq "$(status_json_value node-a active_sessions)" "0" "json sessions"
@@ -65,7 +70,7 @@ assert_mode node-a /data/config/identity.key 600
 assert_mode node-a /data/config/identity.toml 600
 assert_mode node-a /data/config/config.toml 600
 assert_mode node-a /data/data/ticonnect.db 600
-assert_eq "$(sqlite_query node-a 'SELECT MAX(version) FROM schema_version;')" "6" \
+assert_eq "$(sqlite_query node-a 'SELECT MAX(version) FROM schema_version;')" "11" \
     "schema version"
 
 log "checking graceful shutdown and restart"

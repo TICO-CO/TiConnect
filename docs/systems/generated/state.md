@@ -10,10 +10,10 @@ flowchart LR
   s_n_db_conversations["DB.conversations"] -->|owns| st_n_db_conversations_store[("DB.conversations-store")]
   s_n_db_messages["DB.messages"] -->|owns| st_n_db_messages_store[("DB.messages-store")]
   s_n_db_outbox["DB.outbox"] -->|owns| st_n_db_outbox_store[("DB.outbox-store")]
-  s_n_db_peer_state["DB.peer-state"] -->|owns| st_n_db_peer_state_store[("DB.peer-state-store")]
-  s_n_db_peers["DB.peers"] -->|owns| st_n_db_peers_store[("DB.peers-store")]
   s_n_db_migrations["DB.migrations"] -->|owns| st_n_db_schema_store[("DB.schema-store")]
   s_n_db_transfer_partials["DB.transfer-partials"] -->|owns| st_n_db_transfer_partials_store[("DB.transfer-partials-store")]
+  s_n_db_user_state["DB.user-state"] -->|owns| st_n_db_user_state_store[("DB.user-state-store")]
+  s_n_db_users["DB.users"] -->|owns| st_n_db_users_store[("DB.users-store")]
   s_n_id_key_load["ID.key-load"] -->|owns| st_n_id_key_store[("ID.key-store")]
   s_n_id_key_load["ID.key-load"] -->|owns| st_n_id_meta_store[("ID.meta-store")]
 ```
@@ -26,9 +26,9 @@ flowchart LR
 | `DB.conversations-store` | sqlite-table | `DB.conversations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#conversations |
 | `DB.messages-store` | sqlite-table | `DB.messages` | $XDG_DATA_HOME/ticonnect/ticonnect.db#messages |
 | `DB.outbox-store` | sqlite-table | `DB.outbox` | $XDG_DATA_HOME/ticonnect/ticonnect.db#outbox |
-| `DB.peer-state-store` | sqlite-table | `DB.peer-state` | $XDG_DATA_HOME/ticonnect/ticonnect.db#peer_state |
-| `DB.peers-store` | sqlite-table | `DB.peers` | $XDG_DATA_HOME/ticonnect/ticonnect.db#peers |
 | `DB.schema-store` | sqlite-table | `DB.migrations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version |
 | `DB.transfer-partials-store` | sqlite-table | `DB.transfer-partials` | $XDG_DATA_HOME/ticonnect/ticonnect.db#transfer_partials |
+| `DB.user-state-store` | sqlite-table | `DB.user-state` | $XDG_DATA_HOME/ticonnect/ticonnect.db#user_state |
+| `DB.users-store` | sqlite-table | `DB.users` | $XDG_DATA_HOME/ticonnect/ticonnect.db#users |
 | `ID.key-store` | key-file | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.key |
 | `ID.meta-store` | toml-file | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.toml |

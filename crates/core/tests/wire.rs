@@ -1,16 +1,16 @@
 use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::id::NodeId;
 use ticonnect_core::identity::IdentityKeyPair;
-use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_PAIRING_FRAME, WireError};
+use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_TRUST_FRAME, WireError};
 
 #[test]
 fn frames_round_trip_and_enforce_kind_limits() {
-    let frame = Frame::new(FrameKind::Pairing, b"pairing-frame").expect("frame");
+    let frame = Frame::new(FrameKind::Trust, b"trust-frame").expect("frame");
     let decoded = Frame::decode(&frame.encode()).expect("decode");
     assert_eq!(decoded, frame);
 
     assert!(matches!(
-        Frame::new(FrameKind::Pairing, vec![0_u8; MAX_PAIRING_FRAME + 1]),
+        Frame::new(FrameKind::Trust, vec![0_u8; MAX_TRUST_FRAME + 1]),
         Err(WireError::FrameTooLarge)
     ));
 }
@@ -41,10 +41,10 @@ fn frame_decode_rejects_every_malformed_shape() {
     ));
 
     let mut bad_kind = valid.clone();
-    bad_kind[5] = 13;
+    bad_kind[5] = 14;
     assert!(matches!(
         Frame::decode(&bad_kind),
-        Err(WireError::UnsupportedKind(13))
+        Err(WireError::UnsupportedKind(14))
     ));
 
     let mut trailing = valid;

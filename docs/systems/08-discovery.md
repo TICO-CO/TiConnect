@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Advertise this node and produce candidate peers over mDNS with UDP broadcast fallback. Candidates are hints, not trust.
+Advertise this node and produce candidate users over mDNS with UDP broadcast fallback. Candidates are hints, not trust.
 
 ## Boundary
 

@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::CallMetricsHandle;
 
@@ -16,6 +17,8 @@ pub struct MediaSession {
     capture: CaptureHandle,
     playback: PlaybackHandle,
     output_resampler: Resampler,
+    input_muted: Arc<AtomicBool>,
+    output_muted: Arc<AtomicBool>,
     encoder_task: JoinHandle<()>,
 }
 
@@ -25,6 +28,8 @@ impl MediaSession {
         session: Session,
         input_device: Option<&str>,
         output_device: Option<&str>,
+        input_muted: bool,
+        output_muted: bool,
         metrics: Arc<CallMetricsHandle>,
     ) -> Result<Self, MediaError> {
         let playback = start_playback(output_device)?;
@@ -33,7 +38,11 @@ impl MediaSession {
         let capture = start_capture(input_device, move |samples| {
             let _ = sender.send(samples);
         })?;
+        capture.set_muted(input_muted);
         let input_rate = capture.sample_rate();
+        let input_muted_flag = Arc::new(AtomicBool::new(input_muted));
+        let output_muted_flag = Arc::new(AtomicBool::new(output_muted));
+        let encoder_muted = input_muted_flag.clone();
         let encoder_task = tokio::spawn(async move {
             let mut encoder = match OpusEncoder::default_voip() {
                 Ok(encoder) => encoder,
@@ -46,6 +55,9 @@ impl MediaSession {
             let mut sequence = 0_u32;
             let mut timestamp = 0_u32;
             while let Some(samples) = receiver.recv().await {
+                if encoder_muted.load(Ordering::Relaxed) {
+                    continue;
+                }
                 let samples = resampler.process(&samples);
                 let frames = match encoder.push_samples(&samples) {
                     Ok(frames) => frames,
@@ -71,13 +83,37 @@ impl MediaSession {
                 }
             }
         });
+        tracing::info!(
+            call_id = %call_id,
+            input_rate = input_rate,
+            input_channels = capture.channels(),
+            input_format = ?capture.sample_format(),
+            output_rate = output_rate,
+            output_channels = playback.channels(),
+            output_format = ?playback.sample_format(),
+            "call media session started"
+        );
         Ok(Self {
             call_id,
             capture,
             playback,
             output_resampler: Resampler::new(OPUS_SAMPLE_RATE, output_rate),
+            input_muted: input_muted_flag,
+            output_muted: output_muted_flag,
             encoder_task,
         })
+    }
+
+    pub fn set_input_muted(&self, muted: bool) {
+        self.input_muted.store(muted, Ordering::Relaxed);
+        self.capture.set_muted(muted);
+    }
+
+    pub fn set_output_muted(&self, muted: bool) {
+        self.output_muted.store(muted, Ordering::Relaxed);
+        if muted {
+            self.playback.clear();
+        }
     }
 
     pub fn call_id(&self) -> CallId {
@@ -85,6 +121,9 @@ impl MediaSession {
     }
 
     pub fn push_audio(&mut self, samples: &[f32]) {
+        if self.output_muted.load(Ordering::Relaxed) {
+            return;
+        }
         let samples = self.output_resampler.process(samples);
         self.playback.push(&samples);
     }
@@ -94,6 +133,7 @@ impl MediaSession {
     }
 
     pub fn stop(&self) {
+        tracing::info!(call_id = %self.call_id, "call media session stopped");
         self.capture.stop();
         self.playback.stop();
         self.encoder_task.abort();

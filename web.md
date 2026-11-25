@@ -3,8 +3,30 @@
 Migration of the TiConnect desktop interface from GTK4/libadwaita/relm4 widgets
 to a WebKitGTK webview with a Svelte frontend.
 
-Status: planned. This document is the implementation plan; check items off as
-they land and keep the file current.
+Status: in progress. The Rust host, bridge, and old-GTK removal are landed; the
+Svelte frontend is in progress. Check items off as they land and keep the file
+current.
+
+Progress:
+
+- [x] Core serde derives and JSON shape tests.
+- [x] `LinkHandle` moved to tokio tasks; relm4 removed from the UI crate.
+- [x] Loopback HTTP + WebSocket bridge with token, origin, and host checks.
+- [x] JSON-RPC dispatch, event fanout, upload and ticket download endpoints.
+- [x] GTK4 WebKitGTK host, activation service, and single-instance forwarding.
+- [x] Old GTK views, libadwaita, relm4, qrcodegen, and UI stylesheet removed.
+- [x] Svelte 5 + TypeScript + Vite scaffold with typed bridge client.
+- [x] Svelte routes, stores, and components (`crates/ui/web`).
+- [x] Committed Vite dist and CI freshness gate.
+- [x] Quiet Grove screens: chat, collapsed rail, profile, settings, watch party, call, sharing.
+- [x] In-app request/active cards, message toasts and YouTube player.
+- [x] Remote desktop consent without a PIN.
+- [x] Native overlay request and toast surfaces restyled; active session cards added.
+- [x] Frontend tests; manual desktop matrix remains pending.
+- [x] Voice recording, inline audio playback, history clearing, storage usage,
+  identity creation date, editable discovery, and appearance selection.
+- [x] Group watch parties with participant selection, late invites, real YouTube
+  playback sync, image attachment previews, and scoped dev-bridge CORS.
 
 ## Decision
 
@@ -35,8 +57,8 @@ ticonnect-ui process
     ├─ bridge: axum on 127.0.0.1:<ephemeral> + token
     │    ├─ GET /            embedded Svelte dist
     │    ├─ GET /assets/*    embedded assets
-    │    ├─ GET /ws?token=   bidirectional JSON-RPC + server events
-    │    └─ GET /attachment/{hash}?token=  download endpoint
+    │    ├─ GET /ws           bidirectional JSON-RPC + server events
+    │    └─ GET /attachment/{hash}?ticket=  ticketed download endpoint
     └─ event fanout: DaemonEvent → WS; ActivationEvent → WS + window raise
 ```
 
@@ -48,7 +70,7 @@ a separate process that never reads keys, SQLite, or the network directly.
 Request:
 
 ```json
-{"id": 1, "method": "send_message", "params": {"peer_id": "...", "body": "hi"}}
+{"id": 1, "method": "send_message", "params": {"user_id": "...", "body": "hi"}}
 ```
 
 Reply:
@@ -66,12 +88,16 @@ Server event:
 
 Methods mirror `LinkHandle` plus host-only operations:
 
-- every current `crates/ui/src/client.rs` command
+- every current `crates/ui/src/client.rs` command, including `clear_history` and
+  `storage_usage`
 - `settings_save`, `autostart_get`, `autostart_set`
-- `send_attachment_bytes` (browser `<input type=file>` provides bytes, not paths)
-- `save_attachment` via the HTTP download endpoint, not JSON
+- `POST /attachment?user_id=` uploads browser `<input type=file>` bytes and
+  returns the message id
+- `POST /avatar` uploads avatar bytes
+- `GET /attachment/{hash}?ticket=` and `GET /avatar/{fingerprint}?ticket=`
+  download bytes; tickets are minted over JSON-RPC
 - `bootstrap` (identity, settings, appearance, version, connection state)
-- `activate` event push (`peers|chat|settings|pairing|chat:<node-id>`)
+- `activate` event push (`users|chat|settings|remote|chat:<node-id>`)
 
 Serialization: derive `serde::Serialize` and `serde::Deserialize` on the data
 types in `crates/core/src/ipc/events.rs`. Map `DaemonEvent` to an explicit
@@ -99,10 +125,10 @@ Rewrite/remove:
   forwarding currently near lines 1830–1930.
 - `crates/ui/src/client.rs` — replace `relm4::spawn` with a tokio `Handle`; keep
   the command set and reconnect/backoff behavior.
-- `crates/ui/src/model.rs` — keep `SettingsForm`, `BlockedPeer`, and `Backoff`;
+- `crates/ui/src/model.rs` — keep `SettingsForm`, `BlockedUser`, and `Backoff`;
   move presentation, sorting, and label logic to TypeScript.
-- Delete `crates/ui/src/views/*`, the GTK texture parts of `avatar.rs` (keep PNG
-  normalization), and `crates/ui/resources/style.css` (port its tokens to CSS).
+- Delete `crates/ui/src/views/*`, `crates/ui/resources/`, and the GTK texture
+  parts of `avatar.rs` (keep PNG normalization).
 - `crates/ui/Cargo.toml` — add `webkit6 = "0.6"`,
   `axum = { version = "0.8", features = ["ws"] }`, `serde_json`, and
   `include_dir`; remove `relm4`, `libadwaita`, and `qrcodegen`. Verify that
@@ -110,20 +136,20 @@ Rewrite/remove:
 
 ## Frontend structure
 
-Routes/stores: `shell`, `peers`, `chat`, `pairing`, `settings`, `call`, `remote`.
+Routes/stores: `shell`, `users`, `chat`, `user`, `settings`, `call`, `remote`, `watch-party`.
 
 Port in this order:
 
 1. shell: header, connection banner, toasts, appearance
-2. peers: list, presence, unread count, mute badge, policy menu
+2. users: list, presence, unread count, mute badge, policy menu
 3. chat: messages, state badges, composer (Enter sends, Shift+Enter newline),
    scroll pagination, mark-read, typing indicator
 4. avatars and attachments (upload/download, progress)
-5. pairing: PIN countdown, PIN entry, QR rendered in JavaScript with a `qrcode`
-   library (drops `qrcodegen`)
-6. settings: every current field, blocked peers, DND, outbox TTL, autostart,
-   read receipts, discovery, ringtone path, appearance
-7. call/remote: current behavior parity; no video frame path exists today
+5. user page: fingerprint, current addresses, optional MAC, OS, desktop,
+   display server, app version, policy, block/forget
+6. settings: every current field, blocked users, DND, outbox TTL, autostart,
+   read receipts, discovery, appearance
+7. call/remote/watch-party: overlay notifications and YouTube player
 
 Webview hardening:
 
@@ -150,7 +176,7 @@ allowed only when `TICONNECT_DEV_URL` is set and the origin is
 - Make targets: `web-install`, `web-dev`, `web-build`, `web-check`.
 - CI:
   - `bun install --frozen-lockfile`, `bun run check`, `bun run test`,
-    `bun run build`
+    `bun run test:features`, `bun run build`
   - `git diff --exit-code crates/ui/assets`
   - add `libwebkitgtk-6.0-dev` to the apt install steps
   - headless runs set `WEBKIT_DISABLE_DMABUF_RENDERER=1`
@@ -178,6 +204,9 @@ Frontend:
 
 - Vitest: bridge reconnect/backoff, message ordering and state, settings
   parsing, composer behavior
+- feature suites: MediaRecorder voice upload/cancel, history clearing,
+  storage usage, discovery/appearance settings, first-seen date, inline audio
+- component suites: Settings, Profile, and Chat feature controls
 - axe-core accessibility smoke
 - optional Playwright smoke against a mock bridge
 
@@ -186,7 +215,7 @@ Integration:
 - update `tests/local/run.sh scenario_ui` for webview startup and
   `Activate` raising the window
 - manual matrix: X11, Weston, KWin, Hyprland, HiDPI, dark/light, IME,
-  keyboard-only, pairing PIN+QR, attachments, daemon restart
+  keyboard-only, automatic trust, attachments, daemon restart
 
 Verification:
 
@@ -208,7 +237,7 @@ tests/local/run.sh x11 ui
 3. Core serde derives, bridge command parity, attachments, settings, activation.
 4. Svelte scaffold: tokens from `style.css`, typed bridge client,
    reconnect/backoff.
-5. Port views: shell → peers → chat → avatars/attachments → pairing → settings
+5. Port views: shell → users → chat → avatars/attachments → user page → settings
    → call/remote.
 6. Rewrite `app.rs` host, harden the WebView, preserve activation and
    single-instance behavior, delete GTK views.

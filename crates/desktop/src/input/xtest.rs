@@ -42,7 +42,8 @@ impl XtestBackend {
         let per = u16::from(mapping.keysyms_per_keycode);
         for (index, chunk) in mapping.keysyms.chunks(per as usize).enumerate() {
             if chunk.contains(&keysym) {
-                let code = min + u8::try_from(index).unwrap_or(0);
+                let offset = u8::try_from(index).map_err(|_| InputError::InvalidKey)?;
+                let code = min + offset;
                 self.keycodes.insert(keysym, code);
                 return Ok(code);
             }
@@ -67,8 +68,8 @@ impl XtestBackend {
                 0,
                 0,
                 root,
-                i16::try_from(x).unwrap_or(i16::MAX),
-                i16::try_from(y).unwrap_or(i16::MAX),
+                i16::try_from(x).map_err(|_| InputError::OutOfBounds)?,
+                i16::try_from(y).map_err(|_| InputError::OutOfBounds)?,
                 0,
             )
             .map_err(|error| InputError::Backend(error.to_string()))?;

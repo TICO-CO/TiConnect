@@ -53,6 +53,7 @@ pub enum CallDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallState {
     Idle,
+    Connecting,
     Ringing,
     InCall,
     Ended,
@@ -62,6 +63,7 @@ impl CallState {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Idle => "idle",
+            Self::Connecting => "connecting",
             Self::Ringing => "ringing",
             Self::InCall => "in-call",
             Self::Ended => "ended",

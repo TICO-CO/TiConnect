@@ -12,6 +12,7 @@ blake3.workspace = true
 rand_core.workspace = true
 uuid.workspace = true
 ed25519-dalek.workspace = true
+futures-util.workspace = true
 ticonnect-core.workspace = true
 ticonnect-settings.workspace = true
 ticonnect-net.workspace = true

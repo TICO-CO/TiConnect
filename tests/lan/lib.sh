@@ -12,11 +12,6 @@ COMPOSE=()
 A_ID=""
 B_ID=""
 LAST_OUTPUT=""
-PAIR_START=""
-PAIR_PIN=""
-PAIR_QR=""
-PAIR_EXPIRES=""
-PAIR_PORT=""
 
 log() {
     printf '%s\n' "$*"
@@ -75,8 +70,8 @@ dump_state() {
         dbus_call "$node" GetDiscoveryStatus || true
         log "--- $node candidates ---"
         cli "$node" discover list || true
-        log "--- $node peers ---"
-        cli "$node" peers list || true
+        log "--- $node users ---"
+        cli "$node" users list || true
         log "--- $node interfaces ---"
         "${COMPOSE[@]}" exec -T "$node" ip -4 addr show eth0 || true
         log "--- $node sockets ---"
@@ -253,13 +248,13 @@ status_json_value() {
 candidate_visible() {
     local output
     output="$(cli "$1" discover list 2>/dev/null || true)"
-    printf '%s\n' "$output" | awk -v peer="$2" '$1 == peer { found = 1 } END { exit !found }'
+    printf '%s\n' "$output" | awk -v user="$2" '$1 == user { found = 1 } END { exit !found }'
 }
 
 candidate_source() {
     local output
     output="$(cli "$1" discover list 2>/dev/null || true)"
-    printf '%s\n' "$output" | awk -v peer="$2" '$1 == peer { print $3; exit }'
+    printf '%s\n' "$output" | awk -v user="$2" '$1 == user { print $3; exit }'
 }
 
 candidate_gone() {
@@ -289,25 +284,25 @@ candidate_has_field() {
     printf '%s\n' "$output" | grep -Fq "$2"
 }
 
-peer_known() {
+user_known() {
     local output
-    output="$(cli "$1" peers list 2>/dev/null || true)"
-    printf '%s\n' "$output" | awk -v peer="$2" '$1 == peer { found = 1 } END { exit !found }'
+    output="$(cli "$1" users list 2>/dev/null || true)"
+    printf '%s\n' "$output" | awk -v user="$2" '$1 == user { found = 1 } END { exit !found }'
 }
 
-peer_policy() {
+user_policy() {
     local output
-    output="$(cli "$1" peers list 2>/dev/null || true)"
-    printf '%s\n' "$output" | awk -v peer="$2" '$1 == peer { print $3; exit }'
+    output="$(cli "$1" users list 2>/dev/null || true)"
+    printf '%s\n' "$output" | awk -v user="$2" '$1 == user { print $3; exit }'
 }
 
-peer_policy_is() {
-    [ "$(peer_policy "$1" "$2")" = "$3" ]
+user_policy_is() {
+    [ "$(user_policy "$1" "$2")" = "$3" ]
 }
 
-peer_field_contains() {
+user_field_contains() {
     local output
-    output="$(dbus_call "$1" ListPeers 2>/dev/null || true)"
+    output="$(dbus_call "$1" ListUsers 2>/dev/null || true)"
     printf '%s\n' "$output" | grep -Fq "$2"
 }
 
@@ -380,21 +375,9 @@ history_lacks_token() {
     ! history_has_token "$1" "$2" "$3"
 }
 
-start_pairing() {
-    PAIR_START="$(cli node-a pair start)"
-    PAIR_PIN="$(printf '%s\n' "$PAIR_START" | sed -n 's/^pin: //p' | head -n 1)"
-    PAIR_QR="$(printf '%s\n' "$PAIR_START" | sed -n 's/^qr: //p' | head -n 1)"
-    PAIR_EXPIRES="$(printf '%s\n' "$PAIR_START" | sed -n 's/^expires_at: //p' | head -n 1)"
-    PAIR_PORT="$(printf '%s\n' "$PAIR_START" | sed -n 's/^port: //p' | head -n 1)"
-    [ -n "$PAIR_PIN" ] || fail "pair start returned an empty PIN"
-    [ -n "$PAIR_QR" ] || fail "pair start returned an empty QR payload"
-    [ -n "$PAIR_EXPIRES" ] || fail "pair start returned an empty expiry"
-    [ -n "$PAIR_PORT" ] || fail "pair start returned an empty port"
-}
-
 wait_trusted() {
-    wait_for 60 peer_known node-a "$B_ID" || fail "node-a did not trust node-b"
-    wait_for 60 peer_known node-b "$A_ID" || fail "node-b did not trust node-a"
+    wait_for 60 user_known node-a "$B_ID" || fail "node-a did not trust node-b"
+    wait_for 60 user_known node-b "$A_ID" || fail "node-b did not trust node-a"
 }
 
 wait_online() {
@@ -408,28 +391,24 @@ wait_idle() {
 }
 
 pair_with_pin() {
-    start_pairing
-    cli node-b pair with-pin "$A_ID" "$PAIR_PIN" >/dev/null
     wait_trusted
     wait_online
 }
 
 pair_with_qr() {
-    start_pairing
-    cli node-b pair with-qr "$PAIR_QR" >/dev/null
     wait_trusted
     wait_online
 }
 
-forget_peer() {
+forget_user() {
     local node="$1"
-    local peer="$2"
-    cli "$node" pair forget "$peer" >/dev/null
+    local user="$2"
+    cli "$node" users forget "$user" >/dev/null
 }
 
 forget_both() {
-    forget_peer node-a "$B_ID" || true
-    forget_peer node-b "$A_ID" || true
+    forget_user node-a "$B_ID" || true
+    forget_user node-b "$A_ID" || true
     wait_idle
 }
 
@@ -633,8 +612,8 @@ message_seq() {
     sqlite_query "$1" "SELECT seq FROM messages WHERE id='$2' LIMIT 1;"
 }
 
-peer_public_key_len() {
-    sqlite_query "$1" "SELECT length(public_key) FROM peers WHERE id='$2' LIMIT 1;"
+user_public_key_len() {
+    sqlite_query "$1" "SELECT length(public_key) FROM users WHERE id='$2' LIMIT 1;"
 }
 
 node_ip() {

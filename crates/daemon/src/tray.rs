@@ -7,22 +7,22 @@ use tokio::task::JoinHandle;
 
 use crate::messaging::MessagingService;
 use crate::runtime::Shutdown;
-use crate::storage::PeerPolicy;
+use crate::storage::UserPolicy;
 
 const REFRESH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[derive(Debug, Clone)]
-struct PeerMenu {
+struct UserMenu {
     id: String,
     label: String,
-    policy: PeerPolicy,
+    policy: UserPolicy,
 }
 
 struct Tray {
     messaging: MessagingService,
     shutdown: Arc<Shutdown>,
     connection: zbus::Connection,
-    peers: Vec<PeerMenu>,
+    users: Vec<UserMenu>,
     dnd: bool,
 }
 
@@ -36,7 +36,7 @@ pub fn spawn(
             messaging: messaging.clone(),
             shutdown,
             connection,
-            peers: Vec::new(),
+            users: Vec::new(),
             dnd: messaging.dnd_enabled(),
         };
         let handle = match tray.assume_sni_available(true).spawn().await {
@@ -51,28 +51,28 @@ pub fn spawn(
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
         loop {
             interval.tick().await;
-            let peers = match messaging.database().list_peers().await {
-                Ok(peers) => peers
+            let users = match messaging.database().list_users().await {
+                Ok(users) => users
                     .into_iter()
-                    .map(|peer| PeerMenu {
-                        label: peer
+                    .map(|user| UserMenu {
+                        label: user
                             .display_name
                             .clone()
                             .filter(|name| !name.is_empty())
-                            .unwrap_or_else(|| peer.id.clone()),
-                        id: peer.id,
-                        policy: peer.policy,
+                            .unwrap_or_else(|| user.id.clone()),
+                        id: user.id,
+                        policy: user.policy,
                     })
                     .collect::<Vec<_>>(),
                 Err(error) => {
-                    tracing::debug!(%error, "failed to refresh tray peers");
+                    tracing::debug!(%error, "failed to refresh tray users");
                     continue;
                 }
             };
             let dnd = messaging.dnd_enabled();
             let _ = handle
                 .update(move |tray: &mut Tray| {
-                    tray.peers = peers;
+                    tray.users = users;
                     tray.dnd = dnd;
                 })
                 .await;
@@ -133,12 +133,12 @@ impl ksni::Tray for Tray {
             .into(),
         ];
 
-        if !self.peers.is_empty() {
+        if !self.users.is_empty() {
             items.push(MenuItem::Separator);
             items.push(
                 SubMenu {
-                    label: "Peer policy".to_owned(),
-                    submenu: self.peers.iter().map(peer_menu).collect(),
+                    label: "User policy".to_owned(),
+                    submenu: self.users.iter().map(user_menu).collect(),
                     ..Default::default()
                 }
                 .into(),
@@ -161,29 +161,29 @@ impl ksni::Tray for Tray {
     }
 }
 
-fn peer_menu(peer: &PeerMenu) -> MenuItem<Tray> {
-    let id = peer.id.clone();
-    let selected = match peer.policy {
-        PeerPolicy::Accept => 0,
-        PeerPolicy::Mute => 1,
-        PeerPolicy::Ignore => 2,
+fn user_menu(user: &UserMenu) -> MenuItem<Tray> {
+    let id = user.id.clone();
+    let selected = match user.policy {
+        UserPolicy::Accept => 0,
+        UserPolicy::Mute => 1,
+        UserPolicy::Ignore => 2,
     };
     SubMenu {
-        label: peer.label.clone(),
+        label: user.label.clone(),
         submenu: vec![
             RadioGroup {
                 selected,
                 select: Box::new(move |tray: &mut Tray, index| {
                     let policy = match index {
-                        1 => PeerPolicy::Mute,
-                        2 => PeerPolicy::Ignore,
-                        _ => PeerPolicy::Accept,
+                        1 => UserPolicy::Mute,
+                        2 => UserPolicy::Ignore,
+                        _ => UserPolicy::Accept,
                     };
                     let messaging = tray.messaging.clone();
-                    let peer_id = id.clone();
+                    let user_id = id.clone();
                     tokio::spawn(async move {
-                        if let Err(error) = messaging.set_peer_policy(&peer_id, policy).await {
-                            tracing::warn!(%error, "failed to set peer policy from tray");
+                        if let Err(error) = messaging.set_user_policy(&user_id, policy).await {
+                            tracing::warn!(%error, "failed to set user policy from tray");
                         }
                     });
                 }),
@@ -220,16 +220,16 @@ mod tests {
     #[test]
     fn policy_index_matches_tray_order() {
         for (policy, selected) in [
-            (PeerPolicy::Accept, 0),
-            (PeerPolicy::Mute, 1),
-            (PeerPolicy::Ignore, 2),
+            (UserPolicy::Accept, 0),
+            (UserPolicy::Mute, 1),
+            (UserPolicy::Ignore, 2),
         ] {
-            let peer = PeerMenu {
-                id: "peer".to_owned(),
-                label: "Peer".to_owned(),
+            let user = UserMenu {
+                id: "user".to_owned(),
+                label: "User".to_owned(),
                 policy,
             };
-            let menu = peer_menu(&peer);
+            let menu = user_menu(&user);
             let MenuItem::SubMenu(submenu) = menu else {
                 panic!("expected submenu");
             };

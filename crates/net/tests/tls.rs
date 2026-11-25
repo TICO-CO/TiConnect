@@ -36,15 +36,15 @@ fn pinned_certificate_requires_the_expected_fingerprint() {
 }
 
 #[test]
-fn tls_configs_offer_session_pairing_and_profile_alpn() {
+fn tls_configs_offer_session_trust_and_profile_alpn() {
     let identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
     let certificate = IdentityCertificate::from_identity(&identity).expect("certificate");
 
     server_config(&certificate).expect("server config");
     client_config(&certificate, certificate.fingerprint(), ClientAlpn::Session)
         .expect("session config");
-    client_config(&certificate, certificate.fingerprint(), ClientAlpn::Pairing)
-        .expect("pairing config");
+    client_config(&certificate, certificate.fingerprint(), ClientAlpn::Trust)
+        .expect("trust config");
     client_config(&certificate, certificate.fingerprint(), ClientAlpn::Profile)
         .expect("profile config");
 }

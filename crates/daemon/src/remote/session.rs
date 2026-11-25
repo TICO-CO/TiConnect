@@ -23,7 +23,7 @@ impl RemoteCaptureState {
     pub fn new(session_id: RemoteSessionId, width: u32, height: u32) -> Self {
         Self {
             session_id,
-            state: RemoteState::Consented,
+            state: RemoteState::Requested,
             width,
             height,
             metrics: RemoteMetrics::default(),

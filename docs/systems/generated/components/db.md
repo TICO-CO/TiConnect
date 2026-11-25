@@ -14,18 +14,18 @@ flowchart LR
     n_db_migrations["DB.migrations<br/>Migration runner"]
     n_db_open["DB.open<br/>Database open"]
     n_db_outbox["DB.outbox<br/>Outbox repository"]
-    n_db_peer_state["DB.peer-state<br/>Peer state repository"]
-    n_db_peers["DB.peers<br/>Peers repository"]
     n_db_transfer_partials["DB.transfer-partials<br/>Transfer partials repository"]
     n_db_tx["DB.tx<br/>Transaction boundary"]
+    n_db_user_state["DB.user-state<br/>User state repository"]
+    n_db_users["DB.users<br/>Users repository"]
     n_db_attachments_store[("DB.attachments-store (sqlite-table)")]
     n_db_conversations_store[("DB.conversations-store (sqlite-table)")]
     n_db_messages_store[("DB.messages-store (sqlite-table)")]
     n_db_outbox_store[("DB.outbox-store (sqlite-table)")]
-    n_db_peer_state_store[("DB.peer-state-store (sqlite-table)")]
-    n_db_peers_store[("DB.peers-store (sqlite-table)")]
     n_db_schema_store[("DB.schema-store (sqlite-table)")]
     n_db_transfer_partials_store[("DB.transfer-partials-store (sqlite-table)")]
+    n_db_user_state_store[("DB.user-state-store (sqlite-table)")]
+    n_db_users_store[("DB.users-store (sqlite-table)")]
   end
   subgraph ext["External"]
     n_att_recv_verify["ATT.recv-verify<br/>ATT"]
@@ -39,33 +39,33 @@ flowchart LR
     n_msg_sync_planner["MSG.sync-planner<br/>MSG"]
     n_pol_store["POL.store<br/>POL"]
   end
-  n_id_trust_store -->|calls / sync: trusted peer rows| n_db_peers
+  n_id_trust_store -->|calls / sync: trusted user rows| n_db_users
   n_db_open -->|calls / sync: migrate on open| n_db_migrations
   n_db_migrations -->|calls / sync: migration transaction| n_db_tx
-  n_db_peers -->|calls / sync: peer transaction| n_db_tx
+  n_db_users -->|calls / sync: user transaction| n_db_tx
   n_db_conversations -->|calls / sync: conversation transaction| n_db_tx
   n_db_messages -->|calls / sync: message transaction| n_db_tx
   n_db_outbox -->|calls / sync: outbox transaction| n_db_tx
   n_db_attachments -->|calls / sync: attachment transaction| n_db_tx
-  n_db_peer_state -->|calls / sync: peer state transaction| n_db_tx
+  n_db_user_state -->|calls / sync: user state transaction| n_db_tx
   n_db_transfer_partials -->|calls / sync: transfer transaction| n_db_tx
   n_db_integrity -->|calls / sync: integrity check| n_db_open
   n_db_migrations -->|owns / sync: schema version ownership| n_db_schema_store
-  n_db_peers -->|owns / sync: peers ownership| n_db_peers_store
+  n_db_users -->|owns / sync: users ownership| n_db_users_store
   n_db_conversations -->|owns / sync: conversations ownership| n_db_conversations_store
   n_db_messages -->|owns / sync: messages ownership| n_db_messages_store
   n_db_outbox -->|owns / sync: outbox ownership| n_db_outbox_store
   n_db_attachments -->|owns / sync: attachments ownership| n_db_attachments_store
-  n_db_peer_state -->|owns / sync: peer state ownership| n_db_peer_state_store
+  n_db_user_state -->|owns / sync: user state ownership| n_db_user_state_store
   n_db_transfer_partials -->|owns / sync: transfer partials ownership| n_db_transfer_partials_store
   n_msg_ingest -->|calls / sync: insert message| n_db_messages
   n_msg_history -->|calls / sync: list messages| n_db_messages
   n_msg_outbox -->|calls / sync: queue outbound record| n_db_outbox
-  n_msg_sync_planner -->|calls / sync: read peer state| n_db_peer_state
+  n_msg_sync_planner -->|calls / sync: read user state| n_db_user_state
   n_msg_sync_executor -->|calls / sync: insert synced records| n_db_messages
   n_msg_state -->|calls / sync: read message state| n_db_messages
-  n_msg_ingest -->|calls / sync: update last_recv_seq| n_db_peer_state
-  n_pol_store -->|calls / sync: peer policy rows| n_db_peers
+  n_msg_ingest -->|calls / sync: update last_recv_seq| n_db_user_state
+  n_pol_store -->|calls / sync: user policy rows| n_db_users
   n_att_resume -->|calls / sync: partial transfer state| n_db_transfer_partials
   n_att_recv_verify -->|calls / sync: attachment metadata| n_db_attachments
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
@@ -74,32 +74,32 @@ flowchart LR
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
 |---|---|---|---|---|---|---|---|
-| `ID.trust-store` | calls | sync | `DB.peers` | trusted peer rows |  |  | 5 |
+| `ID.trust-store` | calls | sync | `DB.users` | trusted user rows |  |  | 5 |
 | `DB.open` | calls | sync | `DB.migrations` | migrate on open |  |  | 3 |
 | `DB.migrations` | calls | sync | `DB.tx` | migration transaction |  |  | 3 |
-| `DB.peers` | calls | sync | `DB.tx` | peer transaction |  |  | 3 |
+| `DB.users` | calls | sync | `DB.tx` | user transaction |  |  | 3 |
 | `DB.conversations` | calls | sync | `DB.tx` | conversation transaction |  |  | 6 |
 | `DB.messages` | calls | sync | `DB.tx` | message transaction |  |  | 6 |
 | `DB.outbox` | calls | sync | `DB.tx` | outbox transaction |  |  | 6 |
 | `DB.attachments` | calls | sync | `DB.tx` | attachment transaction |  |  | 9 |
-| `DB.peer-state` | calls | sync | `DB.tx` | peer state transaction |  |  | 6 |
+| `DB.user-state` | calls | sync | `DB.tx` | user state transaction |  |  | 6 |
 | `DB.transfer-partials` | calls | sync | `DB.tx` | transfer transaction |  |  | 9 |
 | `DB.integrity` | calls | sync | `DB.open` | integrity check |  |  | 3 |
 | `DB.migrations` | owns | sync | `DB.schema-store` | schema version ownership |  |  | 3 |
-| `DB.peers` | owns | sync | `DB.peers-store` | peers ownership |  |  | 3 |
+| `DB.users` | owns | sync | `DB.users-store` | users ownership |  |  | 3 |
 | `DB.conversations` | owns | sync | `DB.conversations-store` | conversations ownership |  |  | 6 |
 | `DB.messages` | owns | sync | `DB.messages-store` | messages ownership |  |  | 6 |
 | `DB.outbox` | owns | sync | `DB.outbox-store` | outbox ownership |  |  | 6 |
 | `DB.attachments` | owns | sync | `DB.attachments-store` | attachments ownership |  |  | 9 |
-| `DB.peer-state` | owns | sync | `DB.peer-state-store` | peer state ownership |  |  | 6 |
+| `DB.user-state` | owns | sync | `DB.user-state-store` | user state ownership |  |  | 6 |
 | `DB.transfer-partials` | owns | sync | `DB.transfer-partials-store` | transfer partials ownership |  |  | 9 |
 | `MSG.ingest` | calls | sync | `DB.messages` | insert message |  |  | 6 |
 | `MSG.history` | calls | sync | `DB.messages` | list messages |  |  | 6 |
 | `MSG.outbox` | calls | sync | `DB.outbox` | queue outbound record |  |  | 6 |
-| `MSG.sync-planner` | calls | sync | `DB.peer-state` | read peer state |  |  | 6 |
+| `MSG.sync-planner` | calls | sync | `DB.user-state` | read user state |  |  | 6 |
 | `MSG.sync-executor` | calls | sync | `DB.messages` | insert synced records |  |  | 6 |
 | `MSG.state` | calls | sync | `DB.messages` | read message state |  |  | 6 |
-| `MSG.ingest` | calls | sync | `DB.peer-state` | update last_recv_seq |  |  | 6 |
-| `POL.store` | calls | sync | `DB.peers` | peer policy rows |  |  | 6 |
+| `MSG.ingest` | calls | sync | `DB.user-state` | update last_recv_seq |  |  | 6 |
+| `POL.store` | calls | sync | `DB.users` | user policy rows |  |  | 6 |
 | `ATT.resume` | calls | sync | `DB.transfer-partials` | partial transfer state |  |  | 9 |
 | `ATT.recv-verify` | calls | sync | `DB.attachments` | attachment metadata |  |  | 9 |

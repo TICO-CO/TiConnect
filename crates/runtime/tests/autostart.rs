@@ -49,8 +49,10 @@ fn absent_daemon_spawns_once_and_reports_log_path() {
 #[test]
 fn existing_daemon_is_not_spawned() {
     let _guard = lock();
-    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
-        eprintln!("skipping: DBUS_SESSION_BUS_ADDRESS is not set");
+    if ticonnect_core::ipc::ipc_bus_address().is_none()
+        && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none()
+    {
+        eprintln!("skipping: no D-Bus address is configured");
         return;
     }
     let dir = std::env::temp_dir().join(format!("ticonnect-autostart-{}", std::process::id()));
@@ -67,7 +69,7 @@ fn existing_daemon_is_not_spawned() {
 
     let runtime = tokio::runtime::Runtime::new().expect("test runtime");
     let ready = runtime.block_on(async {
-        let connection = zbus::Connection::session().await.expect("session bus");
+        let connection = ticonnect_core::ipc::connect().await.expect("IPC bus");
         let proxy = DaemonProxy::new(&connection).await.expect("daemon proxy");
         for _ in 0..150 {
             if proxy.ping().await.is_ok() {

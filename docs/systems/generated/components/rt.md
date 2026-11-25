@@ -20,7 +20,7 @@ flowchart LR
     n_disc_supervisor["DISC.supervisor<br/>DISC"]
     n_ipc_dispatch["IPC.dispatch<br/>IPC"]
     n_log_subscriber["LOG.subscriber<br/>LOG"]
-    n_pair_dbus["PAIR.dbus<br/>PAIR"]
+    n_trust_dbus["TRUST.dbus<br/>TRUST"]
     n_tx_endpoint["TX.endpoint<br/>TX"]
   end
   n_rt_lifecycle -->|calls / sync: startup composition| n_rt_wiring
@@ -33,10 +33,10 @@ flowchart LR
   n_rt_autostart -.->|config-read / sync: autostart setting| n_cfg_file_store
   n_rt_supervisor -.->|invokes / async: supervise lifecycle| n_rt_lifecycle
   n_rt_lifecycle -.->|invokes / async: start and stop discovery| n_disc_supervisor
-  n_rt_lifecycle -.->|invokes / async: start and stop pairing service| n_pair_dbus
+  n_rt_lifecycle -.->|invokes / async: start and stop trust service| n_trust_dbus
   n_rt_lifecycle -.->|invokes / async: bind and stop transport| n_tx_endpoint
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_cfg_file_store, n_disc_supervisor, n_ipc_dispatch, n_log_subscriber, n_pair_dbus, n_tx_endpoint external;
+  class n_cfg_file_store, n_disc_supervisor, n_ipc_dispatch, n_log_subscriber, n_trust_dbus, n_tx_endpoint external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -51,5 +51,5 @@ flowchart LR
 | `RT.autostart` | config-read | sync | `CFG.file-store` | autostart setting |  |  | 2 |
 | `RT.supervisor` | invokes | async | `RT.lifecycle` | supervise lifecycle |  |  | 2 |
 | `RT.lifecycle` | invokes | async | `DISC.supervisor` | start and stop discovery |  |  | 4 |
-| `RT.lifecycle` | invokes | async | `PAIR.dbus` | start and stop pairing service |  |  | 5 |
+| `RT.lifecycle` | invokes | async | `TRUST.dbus` | start and stop trust service |  |  | 5 |
 | `RT.lifecycle` | invokes | async | `TX.endpoint` | bind and stop transport |  |  | 5 |

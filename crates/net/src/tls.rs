@@ -15,7 +15,7 @@ use ticonnect_core::fingerprint::Fingerprint;
 use ticonnect_core::identity::IdentityKeyPair;
 use x509_parser::prelude::*;
 
-use crate::pairing::PAIRING_ALPN;
+use crate::trust::TRUST_ALPN;
 
 pub const SESSION_ALPN: &[u8] = b"ticonnect/1";
 pub const PROFILE_ALPN: &[u8] = b"ticonnect-profile/1";
@@ -107,7 +107,7 @@ impl IdentityCertificate {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientAlpn {
     Session,
-    Pairing,
+    Trust,
     Profile,
 }
 
@@ -115,7 +115,7 @@ impl ClientAlpn {
     fn value(self) -> &'static [u8] {
         match self {
             Self::Session => SESSION_ALPN,
-            Self::Pairing => PAIRING_ALPN,
+            Self::Trust => TRUST_ALPN,
             Self::Profile => PROFILE_ALPN,
         }
     }
@@ -133,7 +133,7 @@ pub fn server_config(certificate: &IdentityCertificate) -> Result<quinn::ServerC
         .map_err(config_error)?;
     config.alpn_protocols = vec![
         SESSION_ALPN.to_vec(),
-        PAIRING_ALPN.to_vec(),
+        TRUST_ALPN.to_vec(),
         PROFILE_ALPN.to_vec(),
     ];
     config.max_early_data_size = 0;
@@ -395,7 +395,7 @@ mod tests {
         server_config(&certificate).expect("server config");
         client_config(&certificate, certificate.fingerprint(), ClientAlpn::Session)
             .expect("client config");
-        client_config(&certificate, certificate.fingerprint(), ClientAlpn::Pairing)
-            .expect("pairing config");
+        client_config(&certificate, certificate.fingerprint(), ClientAlpn::Trust)
+            .expect("trust config");
     }
 }

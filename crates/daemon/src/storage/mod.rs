@@ -1,13 +1,14 @@
 pub mod attachments;
+pub mod call_logs;
 pub mod conversations;
 mod error;
 pub mod messages;
 pub mod migrations;
 pub mod outbox;
-pub mod peer_state;
-pub mod peers;
 pub mod profiles;
 pub mod transfer_partials;
+pub mod user_state;
+pub mod users;
 
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
@@ -18,42 +19,44 @@ use ticonnect_core::message::MessageRecord;
 use tokio::sync::{mpsc as tokio_mpsc, oneshot};
 
 pub use attachments::AttachmentRecord;
+pub use call_logs::CallRecord;
 pub use conversations::Conversation;
 pub use error::StorageError;
-pub use messages::{InsertOutcome, MessageState, StoredMessage};
+pub use messages::{ClearHistoryOutcome, InsertOutcome, MessageState, StorageStats, StoredMessage};
 pub use outbox::OutboxEntry;
-pub use peer_state::PeerState;
-pub use peers::{BlockedPeer, NewPeer, Peer, PeerPolicy};
-pub use profiles::PeerProfile;
+pub use profiles::UserProfile;
 pub use transfer_partials::TransferPartial;
+pub use user_state::UserState;
+pub use users::{BlockedUser, NewUser, User, UserPolicy};
 
 type Reply<T> = oneshot::Sender<Result<T, StorageError>>;
 
 #[derive(Debug)]
 enum Command {
-    CountPeers(Reply<u32>),
+    CountUsers(Reply<u32>),
     OutboxDepth(Reply<u32>),
-    ListPeers(Reply<Vec<Peer>>),
+    ListUsers(Reply<Vec<User>>),
     ListConversationSummaries(String, Reply<Vec<messages::ConversationSummary>>),
-    GetPeer(String, Reply<Option<Peer>>),
-    GetPeerByFingerprint(String, Reply<Option<Peer>>),
-    InsertPeer(NewPeer, Reply<Peer>),
-    UpdatePeerPolicy(String, PeerPolicy, Reply<bool>),
-    UpdatePeerLastSeen(String, i64, Reply<bool>),
-    DeletePeer(String, Reply<bool>),
-    UpdatePeerPublicKey(String, [u8; 32], Reply<bool>),
-    BlockPeer(BlockedPeer, Reply<()>),
-    UnblockPeer(String, Reply<bool>),
-    ListBlockedPeers(Reply<Vec<BlockedPeer>>),
-    IsPeerBlocked(String, Reply<bool>),
+    GetUser(String, Reply<Option<User>>),
+    GetUserByFingerprint(String, Reply<Option<User>>),
+    InsertUser(NewUser, Reply<User>),
+    UpdateUserPolicy(String, UserPolicy, Reply<bool>),
+    UpdateUserLastSeen(String, i64, Reply<bool>),
+    DeleteUser(String, Reply<bool>),
+    UpdateUserPublicKey(String, [u8; 32], Reply<bool>),
+    BlockUser(BlockedUser, Reply<()>),
+    UnblockUser(String, Reply<bool>),
+    ListBlockedUsers(Reply<Vec<BlockedUser>>),
+    IsUserBlocked(String, Reply<bool>),
     IntegrityCheck(Reply<String>),
     EnsureConversation {
         id: String,
-        peer_id: String,
+        user_id: String,
         created_at: i64,
         reply: Reply<Conversation>,
     },
-    ConversationByPeer(String, Reply<Option<Conversation>>),
+    ConversationByUser(String, Reply<Option<Conversation>>),
+    ConversationById(String, Reply<Option<Conversation>>),
     AllocateSeq(String, Reply<u64>),
     InsertMessage(
         Box<MessageRecord>,
@@ -69,6 +72,14 @@ enum Command {
         String,
         Reply<InsertOutcome>,
     ),
+    ApplyLifecycle(Box<MessageRecord>, Reply<()>),
+    ApplyInboundLifecycle(
+        Box<MessageRecord>,
+        i64,
+        Vec<u8>,
+        String,
+        Reply<InsertOutcome>,
+    ),
     GetMessage(String, Reply<Option<StoredMessage>>),
     ListHistory {
         conversation_id: String,
@@ -77,6 +88,15 @@ enum Command {
         reply: Reply<Vec<StoredMessage>>,
     },
     CountHistory(String, Reply<u32>),
+    ClearHistory(Option<String>, Reply<ClearHistoryOutcome>),
+    InsertCallLog(CallRecord, Reply<()>),
+    ListCallLogs {
+        user_id: Option<String>,
+        limit: u32,
+        reply: Reply<Vec<CallRecord>>,
+    },
+    ClearCallLogs(Option<String>, Reply<u32>),
+    StorageUsage(Reply<StorageStats>),
     RecordsBetween {
         conversation_id: String,
         sender_id: String,
@@ -90,11 +110,24 @@ enum Command {
         conversation_id: String,
         message_ids: Vec<String>,
         read_at: i64,
-        reply: Reply<u32>,
+        reply: Reply<Vec<String>>,
+    },
+    MarkConversationRead {
+        conversation_id: String,
+        local_sender_id: String,
+        read_at: i64,
+        reply: Reply<Vec<String>>,
     },
     MessageState(String, Reply<Option<MessageState>>),
-    GetPeerState(String, Reply<PeerState>),
+    GetUserState(String, Reply<UserState>),
     AdvanceRecvSeq(String, u64, Reply<()>),
+    RequeueOutbox {
+        message_id: String,
+        sender_id: String,
+        next_try: i64,
+        expires_at: i64,
+        reply: Reply<Option<String>>,
+    },
     EnqueueOutbox {
         message_id: String,
         next_try: i64,
@@ -112,8 +145,8 @@ enum Command {
     GetTransferPartial(String, Reply<Option<TransferPartial>>),
     ListTransferPartials(Reply<Vec<TransferPartial>>),
     RemoveTransferPartial(String, Reply<bool>),
-    UpsertPeerProfile(PeerProfile, Reply<()>),
-    GetPeerProfile(String, Reply<Option<PeerProfile>>),
+    UpsertUserProfile(UserProfile, Reply<()>),
+    GetUserProfile(String, Reply<Option<UserProfile>>),
 }
 
 #[derive(Clone)]
@@ -143,9 +176,9 @@ impl DatabaseHandle {
         }
     }
 
-    pub async fn count_peers(&self) -> Result<u32, StorageError> {
+    pub async fn count_users(&self) -> Result<u32, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::CountPeers(reply))?;
+        self.send(Command::CountUsers(reply))?;
         receive(receiver).await
     }
 
@@ -155,15 +188,15 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
-    pub async fn list_peers(&self) -> Result<Vec<Peer>, StorageError> {
+    pub async fn list_users(&self) -> Result<Vec<User>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::ListPeers(reply))?;
+        self.send(Command::ListUsers(reply))?;
         receive(receiver).await
     }
 
-    pub async fn get_peer(&self, id: &str) -> Result<Option<Peer>, StorageError> {
+    pub async fn get_user(&self, id: &str) -> Result<Option<User>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::GetPeer(id.to_owned(), reply))?;
+        self.send(Command::GetUser(id.to_owned(), reply))?;
         receive(receiver).await
     }
 
@@ -179,69 +212,69 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
-    pub async fn upsert_peer_profile(&self, profile: PeerProfile) -> Result<(), StorageError> {
+    pub async fn upsert_user_profile(&self, profile: UserProfile) -> Result<(), StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::UpsertPeerProfile(profile, reply))?;
+        self.send(Command::UpsertUserProfile(profile, reply))?;
         receive(receiver).await
     }
 
-    pub async fn get_peer_profile(
+    pub async fn get_user_profile(
         &self,
         fingerprint: &str,
-    ) -> Result<Option<PeerProfile>, StorageError> {
+    ) -> Result<Option<UserProfile>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::GetPeerProfile(fingerprint.to_owned(), reply))?;
+        self.send(Command::GetUserProfile(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
-    pub async fn get_peer_by_fingerprint(
+    pub async fn get_user_by_fingerprint(
         &self,
         fingerprint: &str,
-    ) -> Result<Option<Peer>, StorageError> {
+    ) -> Result<Option<User>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::GetPeerByFingerprint(fingerprint.to_owned(), reply))?;
+        self.send(Command::GetUserByFingerprint(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
-    pub async fn insert_peer(&self, peer: NewPeer) -> Result<Peer, StorageError> {
+    pub async fn insert_user(&self, user: NewUser) -> Result<User, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::InsertPeer(peer, reply))?;
+        self.send(Command::InsertUser(user, reply))?;
         receive(receiver).await
     }
 
-    pub async fn update_peer_policy(
+    pub async fn update_user_policy(
         &self,
         id: &str,
-        policy: PeerPolicy,
+        policy: UserPolicy,
     ) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::UpdatePeerPolicy(id.to_owned(), policy, reply))?;
+        self.send(Command::UpdateUserPolicy(id.to_owned(), policy, reply))?;
         receive(receiver).await
     }
 
-    pub async fn update_peer_last_seen(
+    pub async fn update_user_last_seen(
         &self,
         id: &str,
         last_seen: i64,
     ) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::UpdatePeerLastSeen(id.to_owned(), last_seen, reply))?;
+        self.send(Command::UpdateUserLastSeen(id.to_owned(), last_seen, reply))?;
         receive(receiver).await
     }
 
-    pub async fn delete_peer(&self, id: &str) -> Result<bool, StorageError> {
+    pub async fn delete_user(&self, id: &str) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::DeletePeer(id.to_owned(), reply))?;
+        self.send(Command::DeleteUser(id.to_owned(), reply))?;
         receive(receiver).await
     }
 
-    pub async fn update_peer_public_key(
+    pub async fn update_user_public_key(
         &self,
         id: &str,
         public_key: [u8; 32],
     ) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::UpdatePeerPublicKey(
+        self.send(Command::UpdateUserPublicKey(
             id.to_owned(),
             public_key,
             reply,
@@ -249,58 +282,91 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
-    pub async fn block_peer(&self, peer: BlockedPeer) -> Result<(), StorageError> {
+    pub async fn block_user(&self, user: BlockedUser) -> Result<(), StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::BlockPeer(peer, reply))?;
+        self.send(Command::BlockUser(user, reply))?;
         receive(receiver).await
     }
 
-    pub async fn unblock_peer(&self, fingerprint: &str) -> Result<bool, StorageError> {
+    pub async fn unblock_user(&self, fingerprint: &str) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::UnblockPeer(fingerprint.to_owned(), reply))?;
+        self.send(Command::UnblockUser(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
-    pub async fn list_blocked_peers(&self) -> Result<Vec<BlockedPeer>, StorageError> {
+    pub async fn list_blocked_users(&self) -> Result<Vec<BlockedUser>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::ListBlockedPeers(reply))?;
+        self.send(Command::ListBlockedUsers(reply))?;
         receive(receiver).await
     }
 
-    pub async fn is_peer_blocked(&self, fingerprint: &str) -> Result<bool, StorageError> {
+    pub async fn is_user_blocked(&self, fingerprint: &str) -> Result<bool, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::IsPeerBlocked(fingerprint.to_owned(), reply))?;
+        self.send(Command::IsUserBlocked(fingerprint.to_owned(), reply))?;
         receive(receiver).await
     }
 
     pub async fn ensure_conversation(
         &self,
         id: &str,
-        peer_id: &str,
+        user_id: &str,
         created_at: i64,
     ) -> Result<Conversation, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::EnsureConversation {
             id: id.to_owned(),
-            peer_id: peer_id.to_owned(),
+            user_id: user_id.to_owned(),
             created_at,
             reply,
         })?;
         receive(receiver).await
     }
 
-    pub async fn conversation_by_peer(
+    pub async fn conversation_by_user(
         &self,
-        peer_id: &str,
+        user_id: &str,
     ) -> Result<Option<Conversation>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::ConversationByPeer(peer_id.to_owned(), reply))?;
+        self.send(Command::ConversationByUser(user_id.to_owned(), reply))?;
         receive(receiver).await
     }
 
-    pub async fn allocate_seq(&self, peer_id: &str) -> Result<u64, StorageError> {
+    pub async fn conversation_by_id(
+        &self,
+        conversation_id: &str,
+    ) -> Result<Option<Conversation>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::AllocateSeq(peer_id.to_owned(), reply))?;
+        self.send(Command::ConversationById(conversation_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn allocate_seq(&self, user_id: &str) -> Result<u64, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::AllocateSeq(user_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn apply_lifecycle_inbound(
+        &self,
+        record: MessageRecord,
+        received_at: i64,
+        signature: Vec<u8>,
+        user_id: &str,
+    ) -> Result<InsertOutcome, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ApplyInboundLifecycle(
+            Box::new(record),
+            received_at,
+            signature,
+            user_id.to_owned(),
+            reply,
+        ))?;
+        receive(receiver).await
+    }
+
+    pub async fn apply_lifecycle(&self, record: MessageRecord) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ApplyLifecycle(Box::new(record), reply))?;
         receive(receiver).await
     }
 
@@ -327,14 +393,14 @@ impl DatabaseHandle {
         record: MessageRecord,
         received_at: i64,
         signature: Vec<u8>,
-        peer_id: &str,
+        user_id: &str,
     ) -> Result<InsertOutcome, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::InsertInbound(
             Box::new(record),
             received_at,
             signature,
-            peer_id.to_owned(),
+            user_id.to_owned(),
             reply,
         ))?;
         receive(receiver).await
@@ -365,6 +431,47 @@ impl DatabaseHandle {
     pub async fn count_history(&self, conversation_id: &str) -> Result<u32, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::CountHistory(conversation_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn clear_history(
+        &self,
+        user_id: Option<&str>,
+    ) -> Result<ClearHistoryOutcome, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ClearHistory(user_id.map(str::to_owned), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn insert_call_log(&self, record: CallRecord) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::InsertCallLog(record, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn list_call_logs(
+        &self,
+        user_id: Option<&str>,
+        limit: u32,
+    ) -> Result<Vec<CallRecord>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ListCallLogs {
+            user_id: user_id.map(str::to_owned),
+            limit,
+            reply,
+        })?;
+        receive(receiver).await
+    }
+
+    pub async fn clear_call_logs(&self, user_id: Option<&str>) -> Result<u32, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::ClearCallLogs(user_id.map(str::to_owned), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn storage_usage(&self) -> Result<StorageStats, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::StorageUsage(reply))?;
         receive(receiver).await
     }
 
@@ -409,7 +516,7 @@ impl DatabaseHandle {
         conversation_id: &str,
         message_ids: &[String],
         read_at: i64,
-    ) -> Result<u32, StorageError> {
+    ) -> Result<Vec<String>, StorageError> {
         let (reply, receiver) = oneshot::channel();
         self.send(Command::MarkMessagesRead {
             conversation_id: conversation_id.to_owned(),
@@ -420,15 +527,49 @@ impl DatabaseHandle {
         receive(receiver).await
     }
 
-    pub async fn peer_state(&self, peer_id: &str) -> Result<PeerState, StorageError> {
+    pub async fn mark_conversation_read(
+        &self,
+        conversation_id: &str,
+        local_sender_id: &str,
+        read_at: i64,
+    ) -> Result<Vec<String>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::GetPeerState(peer_id.to_owned(), reply))?;
+        self.send(Command::MarkConversationRead {
+            conversation_id: conversation_id.to_owned(),
+            local_sender_id: local_sender_id.to_owned(),
+            read_at,
+            reply,
+        })?;
         receive(receiver).await
     }
 
-    pub async fn advance_recv_seq(&self, peer_id: &str, seq: u64) -> Result<(), StorageError> {
+    pub async fn user_state(&self, user_id: &str) -> Result<UserState, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::AdvanceRecvSeq(peer_id.to_owned(), seq, reply))?;
+        self.send(Command::GetUserState(user_id.to_owned(), reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn advance_recv_seq(&self, user_id: &str, seq: u64) -> Result<(), StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::AdvanceRecvSeq(user_id.to_owned(), seq, reply))?;
+        receive(receiver).await
+    }
+
+    pub async fn requeue_outbox(
+        &self,
+        message_id: &str,
+        sender_id: &str,
+        next_try: i64,
+        expires_at: i64,
+    ) -> Result<Option<String>, StorageError> {
+        let (reply, receiver) = oneshot::channel();
+        self.send(Command::RequeueOutbox {
+            message_id: message_id.to_owned(),
+            sender_id: sender_id.to_owned(),
+            next_try,
+            expires_at,
+            reply,
+        })?;
         receive(receiver).await
     }
 
@@ -450,11 +591,11 @@ impl DatabaseHandle {
 
     pub async fn due_outbox(
         &self,
-        peer_id: &str,
+        user_id: &str,
         now: i64,
     ) -> Result<Vec<OutboxEntry>, StorageError> {
         let (reply, receiver) = oneshot::channel();
-        self.send(Command::DueOutbox(peer_id.to_owned(), now, reply))?;
+        self.send(Command::DueOutbox(user_id.to_owned(), now, reply))?;
         receive(receiver).await
     }
 
@@ -579,64 +720,79 @@ fn run_worker(
 
 fn dispatch(connection: &Connection, command: Command) {
     match command {
-        Command::CountPeers(reply) => {
-            let _ = reply.send(peers::count(connection));
+        Command::CountUsers(reply) => {
+            let _ = reply.send(users::count(connection));
         }
         Command::OutboxDepth(reply) => {
-            let _ = reply.send(peers::outbox_depth(connection));
+            let _ = reply.send(users::outbox_depth(connection));
         }
-        Command::ListPeers(reply) => {
-            let _ = reply.send(peers::list(connection));
+        Command::ListUsers(reply) => {
+            let _ = reply.send(users::list(connection));
         }
         Command::ListConversationSummaries(local_node_id, reply) => {
             let _ = reply.send(messages::conversation_summaries(connection, &local_node_id));
         }
-        Command::GetPeer(id, reply) => {
-            let _ = reply.send(peers::get_by_id(connection, &id));
+        Command::GetUser(id, reply) => {
+            let _ = reply.send(users::get_by_id(connection, &id));
         }
-        Command::GetPeerByFingerprint(fingerprint, reply) => {
-            let _ = reply.send(peers::get_by_fingerprint(connection, &fingerprint));
+        Command::GetUserByFingerprint(fingerprint, reply) => {
+            let _ = reply.send(users::get_by_fingerprint(connection, &fingerprint));
         }
-        Command::InsertPeer(peer, reply) => {
-            let _ = reply.send(peers::insert(connection, &peer));
+        Command::InsertUser(user, reply) => {
+            let _ = reply.send(users::insert(connection, &user));
         }
-        Command::UpdatePeerPolicy(id, policy, reply) => {
-            let _ = reply.send(peers::update_policy(connection, &id, policy));
+        Command::UpdateUserPolicy(id, policy, reply) => {
+            let _ = reply.send(users::update_policy(connection, &id, policy));
         }
-        Command::UpdatePeerLastSeen(id, last_seen, reply) => {
-            let _ = reply.send(peers::update_last_seen(connection, &id, last_seen));
+        Command::UpdateUserLastSeen(id, last_seen, reply) => {
+            let _ = reply.send(users::update_last_seen(connection, &id, last_seen));
         }
-        Command::DeletePeer(id, reply) => {
-            let _ = reply.send(peers::delete(connection, &id));
+        Command::DeleteUser(id, reply) => {
+            let _ = reply.send(users::delete(connection, &id));
         }
-        Command::UpdatePeerPublicKey(id, public_key, reply) => {
-            let _ = reply.send(peers::update_public_key(connection, &id, &public_key));
+        Command::UpdateUserPublicKey(id, public_key, reply) => {
+            let _ = reply.send(users::update_public_key(connection, &id, &public_key));
         }
-        Command::BlockPeer(peer, reply) => {
-            let _ = reply.send(peers::block(connection, &peer));
+        Command::BlockUser(user, reply) => {
+            let _ = reply.send(users::block(connection, &user));
         }
-        Command::UnblockPeer(fingerprint, reply) => {
-            let _ = reply.send(peers::unblock(connection, &fingerprint));
+        Command::UnblockUser(fingerprint, reply) => {
+            let _ = reply.send(users::unblock(connection, &fingerprint));
         }
-        Command::ListBlockedPeers(reply) => {
-            let _ = reply.send(peers::list_blocked(connection));
+        Command::ListBlockedUsers(reply) => {
+            let _ = reply.send(users::list_blocked(connection));
         }
-        Command::IsPeerBlocked(fingerprint, reply) => {
-            let _ = reply.send(peers::is_blocked(connection, &fingerprint));
+        Command::IsUserBlocked(fingerprint, reply) => {
+            let _ = reply.send(users::is_blocked(connection, &fingerprint));
         }
         Command::EnsureConversation {
             id,
-            peer_id,
+            user_id,
             created_at,
             reply,
         } => {
-            let _ = reply.send(conversations::ensure(connection, &id, &peer_id, created_at));
+            let _ = reply.send(conversations::ensure(connection, &id, &user_id, created_at));
         }
-        Command::ConversationByPeer(peer_id, reply) => {
-            let _ = reply.send(conversations::by_peer(connection, &peer_id));
+        Command::ConversationByUser(user_id, reply) => {
+            let _ = reply.send(conversations::by_user(connection, &user_id));
         }
-        Command::AllocateSeq(peer_id, reply) => {
-            let _ = reply.send(peer_state::allocate_seq(connection, &peer_id));
+        Command::ConversationById(conversation_id, reply) => {
+            let _ = reply.send(conversations::by_id(connection, &conversation_id));
+        }
+        Command::AllocateSeq(user_id, reply) => {
+            let _ = reply.send(user_state::allocate_seq(connection, &user_id));
+        }
+        Command::ApplyLifecycle(record, reply) => {
+            let _ = reply.send(messages::apply_lifecycle_update(connection, &record));
+        }
+        Command::ApplyInboundLifecycle(record, received_at, signature, user_id, reply) => {
+            let _ = reply.send(messages::apply_lifecycle(
+                connection,
+                &record,
+                received_at,
+                &signature,
+                &user_id,
+            ));
         }
         Command::InsertMessage(record, received_at, signature, state, reply) => {
             let _ = reply.send(messages::insert(
@@ -647,13 +803,13 @@ fn dispatch(connection: &Connection, command: Command) {
                 state,
             ));
         }
-        Command::InsertInbound(record, received_at, signature, peer_id, reply) => {
+        Command::InsertInbound(record, received_at, signature, user_id, reply) => {
             let _ = reply.send(messages::insert_inbound(
                 connection,
                 &record,
                 received_at,
                 &signature,
-                &peer_id,
+                &user_id,
             ));
         }
         Command::GetMessage(id, reply) => {
@@ -674,6 +830,25 @@ fn dispatch(connection: &Connection, command: Command) {
         }
         Command::CountHistory(conversation_id, reply) => {
             let _ = reply.send(messages::count(connection, &conversation_id));
+        }
+        Command::ClearHistory(user_id, reply) => {
+            let _ = reply.send(messages::clear_history(connection, user_id.as_deref()));
+        }
+        Command::InsertCallLog(record, reply) => {
+            let _ = reply.send(call_logs::insert(connection, &record));
+        }
+        Command::ListCallLogs {
+            user_id,
+            limit,
+            reply,
+        } => {
+            let _ = reply.send(call_logs::list(connection, user_id.as_deref(), limit));
+        }
+        Command::ClearCallLogs(user_id, reply) => {
+            let _ = reply.send(call_logs::clear(connection, user_id.as_deref()));
+        }
+        Command::StorageUsage(reply) => {
+            let _ = reply.send(messages::storage_usage(connection));
         }
         Command::RecordsBetween {
             conversation_id,
@@ -708,14 +883,42 @@ fn dispatch(connection: &Connection, command: Command) {
                 read_at,
             ));
         }
+        Command::MarkConversationRead {
+            conversation_id,
+            local_sender_id,
+            read_at,
+            reply,
+        } => {
+            let _ = reply.send(messages::mark_conversation_read(
+                connection,
+                &conversation_id,
+                &local_sender_id,
+                read_at,
+            ));
+        }
         Command::MessageState(id, reply) => {
             let _ = reply.send(messages::state(connection, &id));
         }
-        Command::GetPeerState(peer_id, reply) => {
-            let _ = reply.send(peer_state::get(connection, &peer_id));
+        Command::GetUserState(user_id, reply) => {
+            let _ = reply.send(user_state::get(connection, &user_id));
         }
-        Command::AdvanceRecvSeq(peer_id, seq, reply) => {
-            let _ = reply.send(peer_state::advance_recv(connection, &peer_id, seq));
+        Command::AdvanceRecvSeq(user_id, seq, reply) => {
+            let _ = reply.send(user_state::advance_recv(connection, &user_id, seq));
+        }
+        Command::RequeueOutbox {
+            message_id,
+            sender_id,
+            next_try,
+            expires_at,
+            reply,
+        } => {
+            let _ = reply.send(outbox::requeue(
+                connection,
+                &message_id,
+                &sender_id,
+                next_try,
+                expires_at,
+            ));
         }
         Command::EnqueueOutbox {
             message_id,
@@ -730,8 +933,8 @@ fn dispatch(connection: &Connection, command: Command) {
                 expires_at,
             ));
         }
-        Command::DueOutbox(peer_id, now, reply) => {
-            let _ = reply.send(outbox::due_for_peer(connection, &peer_id, now));
+        Command::DueOutbox(user_id, now, reply) => {
+            let _ = reply.send(outbox::due_for_user(connection, &user_id, now));
         }
         Command::DeferOutbox(message_id, next_try, reply) => {
             let _ = reply.send(outbox::defer(connection, &message_id, next_try));
@@ -766,10 +969,10 @@ fn dispatch(connection: &Connection, command: Command) {
         Command::RemoveTransferPartial(hash, reply) => {
             let _ = reply.send(transfer_partials::remove(connection, &hash));
         }
-        Command::UpsertPeerProfile(profile, reply) => {
+        Command::UpsertUserProfile(profile, reply) => {
             let _ = reply.send(profiles::upsert(connection, &profile));
         }
-        Command::GetPeerProfile(fingerprint, reply) => {
+        Command::GetUserProfile(fingerprint, reply) => {
             let _ = reply.send(profiles::get(connection, &fingerprint));
         }
     }

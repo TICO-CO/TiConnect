@@ -16,24 +16,17 @@ fn methods_and_signals_match_the_documented_contract() {
     assert_eq!(ipc::methods::GET_IDENTITY, "GetIdentity");
     assert_eq!(ipc::methods::GET_SETTING, "GetSetting");
     assert_eq!(ipc::methods::LIST_SETTINGS, "ListSettings");
-    assert_eq!(ipc::methods::LIST_PEERS, "ListPeers");
+    assert_eq!(ipc::methods::LIST_USERS, "ListUsers");
     assert_eq!(ipc::methods::COUNT_MESSAGES, "CountMessages");
-    assert_eq!(ipc::methods::START_PAIRING, "StartPairing");
-    assert_eq!(ipc::methods::PAIR_WITH_PIN, "PairWithPin");
-    assert_eq!(ipc::methods::PAIR_WITH_QR, "PairWithQr");
-    assert_eq!(ipc::methods::CANCEL_PAIRING, "CancelPairing");
-    assert_eq!(ipc::methods::FORGET_PEER, "ForgetPeer");
-    assert_eq!(ipc::methods::LIST_TRUSTED_PEERS, "ListTrustedPeers");
+    assert_eq!(ipc::methods::MARK_CONVERSATION_READ, "MarkConversationRead");
+    assert_eq!(ipc::methods::FORGET_USER, "ForgetUser");
     assert_eq!(ipc::methods::SHUTDOWN, "Shutdown");
 
     assert_eq!(ipc::signals::DAEMON_STARTED, "DaemonStarted");
     assert_eq!(ipc::signals::DAEMON_STOPPING, "DaemonStopping");
     assert_eq!(ipc::signals::SETTINGS_CHANGED, "SettingsChanged");
-    assert_eq!(ipc::signals::PAIRING_STARTED, "PairingStarted");
-    assert_eq!(ipc::signals::PAIRING_COMPLETED, "PairingCompleted");
-    assert_eq!(ipc::signals::PAIRING_FAILED, "PairingFailed");
-    assert_eq!(ipc::signals::PEER_CONNECTED, "PeerConnected");
-    assert_eq!(ipc::signals::PEER_DISCONNECTED, "PeerDisconnected");
+    assert_eq!(ipc::signals::USER_CONNECTED, "UserConnected");
+    assert_eq!(ipc::signals::USER_DISCONNECTED, "UserDisconnected");
 }
 
 #[test]
@@ -48,12 +41,12 @@ fn error_names_use_the_stable_prefix() {
 #[test]
 fn status_and_identity_keys_are_stable() {
     assert_eq!(ipc::STATUS_UPTIME_SECONDS, "uptime_seconds");
-    assert_eq!(ipc::STATUS_PEER_COUNT, "peer_count");
+    assert_eq!(ipc::STATUS_USER_COUNT, "user_count");
     assert_eq!(ipc::STATUS_OUTBOX_DEPTH, "outbox_depth");
     assert_eq!(ipc::STATUS_TRANSPORT_STATE, "transport_state");
     assert_eq!(ipc::STATUS_ACTIVE_SESSIONS, "active_sessions");
     assert_eq!(ipc::IDENTITY_NODE_ID, "node_id");
     assert_eq!(ipc::IDENTITY_FINGERPRINT, "fingerprint");
     assert_eq!(ipc::IDENTITY_DISPLAY_NAME, "display_name");
-    assert_eq!(ipc::PEER_CONNECTED, "connected");
+    assert_eq!(ipc::USER_CONNECTED, "connected");
 }

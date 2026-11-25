@@ -1,0 +1,40 @@
+{
+    "name": "ticonnect-web",
+    "private": true,
+    "version": "0.0.6",
+    "type": "module",
+    "scripts": {
+        "dev": "vite --host 127.0.0.1 --port 5173 --strictPort",
+        "build": "vite build",
+        "check": "svelte-check --tsconfig ./tsconfig.json",
+        "format": "prettier --write .",
+        "format:check": "prettier --check .",
+        "lint": "eslint .",
+        "test": "vitest run",
+        "test:features": "vitest run src/lib/app-state.features.test.ts src/components/features.test.ts"
+    },
+    "devDependencies": {
+        "@sveltejs/vite-plugin-svelte": "^7.3.1",
+        "@tailwindcss/vite": "4.3.5",
+        "@testing-library/svelte": "5.4.2",
+        "eslint": "10.15.0",
+        "eslint-config-prettier": "10.1.8",
+        "eslint-plugin-simple-import-sort": "14.0.0",
+        "eslint-plugin-svelte": "3.24.1",
+        "jsdom": "31.0.1",
+        "prettier": "3.10.1",
+        "prettier-plugin-svelte": "4.1.1",
+        "prettier-plugin-tailwindcss": "0.8.1",
+        "svelte": "^5.57.3",
+        "svelte-check": "^4.7.8",
+        "svelte-eslint-parser": "1.10.1",
+        "tailwindcss": "4.3.5",
+        "typescript": "~5.9.3",
+        "typescript-eslint": "8.73.0",
+        "vite": "^8.3.8",
+        "vitest": "^5.1.0"
+    },
+    "patchedDependencies": {
+        "@sveltejs/vite-plugin-svelte@7.3.1": "patches/@sveltejs%2Fvite-plugin-svelte@7.3.1.patch"
+    }
+}

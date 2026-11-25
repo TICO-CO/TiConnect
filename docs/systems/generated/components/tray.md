@@ -21,7 +21,7 @@ flowchart LR
   n_tray_item -->|calls / sync: tray menu| n_tray_menu
   n_tray_menu -->|calls / sync: policy menu| n_tray_policy
   n_tray_menu -->|calls / sync: open app action| n_tray_activate
-  n_tray_policy -->|calls / sync gate:POL.store: set peer policy| n_pol_store
+  n_tray_policy -->|calls / sync gate:POL.store: set user policy| n_pol_store
   n_tray_activate -->|calls / sync: Activate view| n_ui_activate
   n_tray_fallback -->|calls / sync: tray unavailable| n_tray_item
   n_tray_item -.->|emits / event: tray status| n_ipc_signal_bus
@@ -34,7 +34,7 @@ flowchart LR
 | `TRAY.item` | calls | sync | `TRAY.menu` | tray menu |  |  | 6 |
 | `TRAY.menu` | calls | sync | `TRAY.policy` | policy menu |  |  | 6 |
 | `TRAY.menu` | calls | sync | `TRAY.activate` | open app action |  |  | 6 |
-| `TRAY.policy` | calls | sync | `POL.store` | set peer policy | POL.store |  | 6 |
+| `TRAY.policy` | calls | sync | `POL.store` | set user policy | POL.store |  | 6 |
 | `TRAY.activate` | calls | sync | `UI.activate` | Activate view |  |  | 7 |
 | `TRAY.fallback` | calls | sync | `TRAY.item` | tray unavailable |  |  | 6 |
 | `TRAY.item` | emits | event | `IPC.signal-bus` | tray status |  |  | 6 |

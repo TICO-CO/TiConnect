@@ -12,6 +12,7 @@ fn first_load_creates_private_identity_files() {
     assert!(dir.join("identity.key").is_file());
     assert!(dir.join("identity.toml").is_file());
     assert_eq!(public.fingerprint().to_hex().len(), 64);
+    assert!(public.created_at() > 0);
 
     assert_eq!(mode(&dir), 0o700);
     assert_eq!(mode(&dir.join("identity.key")), 0o600);
@@ -32,6 +33,7 @@ fn reload_keeps_fingerprint_and_node_id() {
 
     assert_eq!(first.node_id(), second.node_id());
     assert_eq!(first.fingerprint(), second.fingerprint());
+    assert_eq!(first.created_at(), second.created_at());
 
     let _ = fs::remove_dir_all(dir);
 }
@@ -62,6 +64,27 @@ fn missing_metadata_is_an_error_when_key_exists() {
 
     let error = Identity::load_or_create(&dir).expect_err("missing metadata");
     assert!(matches!(error, IdentityError::MissingMetadata));
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn legacy_metadata_falls_back_to_file_timestamp() {
+    let dir = temp_dir();
+    let first = Identity::load_or_create(&dir)
+        .expect("create identity")
+        .public();
+    fs::write(
+        dir.join("identity.toml"),
+        format!("node_id = \"{}\"\n", first.node_id()),
+    )
+    .expect("write legacy metadata");
+
+    let second = Identity::load_or_create(&dir)
+        .expect("reload identity")
+        .public();
+    assert_eq!(second.node_id(), first.node_id());
+    assert!(second.created_at() > 0);
 
     let _ = fs::remove_dir_all(dir);
 }

@@ -7,10 +7,10 @@ use ticonnect_core::id::NodeId;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use super::candidate::{Candidate, CandidateSource};
+use super::candidate::{Candidate, CandidateSource, UserPlatform};
 use super::{
-    DiscoveryConfig, DiscoveryError, MAX_ADDRESS_LENGTH, MAX_DISPLAY_NAME, PROTOCOL_VERSION,
-    SERVICE_TYPE, Sink,
+    DiscoveryConfig, DiscoveryError, MAX_ADDRESS_LENGTH, MAX_DISPLAY_NAME, MAX_PLATFORM_FIELD,
+    PROTOCOL_VERSION, SERVICE_TYPE, Sink,
 };
 
 const TXT_VERSION: &str = "v";
@@ -20,6 +20,10 @@ const TXT_DISPLAY_NAME: &str = "name";
 const TXT_AVATAR_HASH: &str = "avh";
 const TXT_AVATAR_MIME: &str = "avm";
 const TXT_PORT: &str = "port";
+const TXT_OS: &str = "os";
+const TXT_DESKTOP: &str = "de";
+const TXT_DISPLAY_SERVER: &str = "ds";
+const TXT_APP_VERSION: &str = "ver";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxtRecord {
@@ -28,6 +32,7 @@ pub struct TxtRecord {
     pub fingerprint: String,
     pub display_name: String,
     pub avatar_hash: Option<String>,
+    pub platform: UserPlatform,
     pub port: u16,
 }
 
@@ -45,12 +50,18 @@ impl TxtRecord {
             fingerprint: fingerprint.into(),
             display_name: display_name.into(),
             avatar_hash: None,
+            platform: UserPlatform::default(),
             port,
         }
     }
 
     pub fn with_avatar_hash(mut self, avatar_hash: Option<String>) -> Self {
         self.avatar_hash = avatar_hash;
+        self
+    }
+
+    pub fn with_platform(mut self, platform: UserPlatform) -> Self {
+        self.platform = platform;
         self
     }
 
@@ -66,6 +77,7 @@ impl TxtRecord {
             properties.insert(TXT_AVATAR_HASH.to_owned(), avatar_hash.clone());
             properties.insert(TXT_AVATAR_MIME.to_owned(), "png".to_owned());
         }
+        insert_platform(&mut properties, &self.platform);
         properties
     }
 
@@ -114,12 +126,15 @@ impl TxtRecord {
                 .then(|| value.to_ascii_lowercase())
         });
 
+        let platform = platform_from(properties)?;
+
         Ok(Self {
             protocol_version: version,
             node_id: node_id.clone(),
             fingerprint: fingerprint.to_ascii_lowercase(),
             display_name,
             avatar_hash,
+            platform,
             port,
         })
     }
@@ -134,6 +149,10 @@ impl TxtRecord {
             TXT_AVATAR_HASH,
             TXT_AVATAR_MIME,
             TXT_PORT,
+            TXT_OS,
+            TXT_DESKTOP,
+            TXT_DISPLAY_SERVER,
+            TXT_APP_VERSION,
         ] {
             if let Some(value) = resolved.get_property_val_str(key) {
                 properties.insert(key.to_owned(), value.to_owned());
@@ -159,6 +178,7 @@ pub(crate) fn spawn(
         config.transport_port,
     )
     .with_avatar_hash(config.avatar_hash.clone())
+    .with_platform(config.platform.clone())
     .encode();
     let ip = local_ip_argument();
     let service = ServiceInfo::new(SERVICE_TYPE, &instance, &host, ip.as_str(), 0, properties)
@@ -249,8 +269,40 @@ fn resolved_service(resolved: &ResolvedService, sink: &Sink, names: &mut HashMap
             CandidateSource::Mdns,
             Instant::now(),
         )
-        .with_avatar_hash(record.avatar_hash),
+        .with_avatar_hash(record.avatar_hash)
+        .with_platform(record.platform),
     );
+}
+
+fn insert_platform(properties: &mut HashMap<String, String>, platform: &UserPlatform) {
+    for (key, value) in [
+        (TXT_OS, &platform.os),
+        (TXT_DESKTOP, &platform.desktop),
+        (TXT_DISPLAY_SERVER, &platform.display_server),
+        (TXT_APP_VERSION, &platform.app_version),
+    ] {
+        if !value.is_empty() && value.len() <= MAX_PLATFORM_FIELD {
+            properties.insert(key.to_owned(), value.clone());
+        }
+    }
+}
+
+fn platform_from(properties: &HashMap<String, String>) -> Result<UserPlatform, DiscoveryError> {
+    let read = |key: &str| -> Result<String, DiscoveryError> {
+        let value = properties.get(key).cloned().unwrap_or_default();
+        if value.len() > MAX_PLATFORM_FIELD {
+            return Err(DiscoveryError::InvalidRecord(
+                "TXT platform field is too long".to_owned(),
+            ));
+        }
+        Ok(value)
+    };
+    Ok(UserPlatform {
+        os: read(TXT_OS)?,
+        desktop: read(TXT_DESKTOP)?,
+        display_server: read(TXT_DISPLAY_SERVER)?,
+        app_version: read(TXT_APP_VERSION)?,
+    })
 }
 
 fn instance_name(config: &DiscoveryConfig) -> String {

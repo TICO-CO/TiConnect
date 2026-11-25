@@ -1,18 +1,19 @@
 use std::collections::BTreeSet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::str::FromStr;
+use std::sync::Arc;
 
 use if_addrs::{IfAddr, Ifv4Addr};
 use socket2::{Domain, Protocol, Socket, Type};
 use ticonnect_core::id::NodeId;
 use tokio::net::UdpSocket;
-use tokio::sync::watch;
+use tokio::sync::{Notify, watch};
 use tokio::task::JoinHandle;
 
-use super::candidate::{Candidate, CandidateSource};
+use super::candidate::{Candidate, CandidateSource, UserPlatform};
 use super::{
     DiscoveryConfig, DiscoveryError, MAX_ADDRESS_LENGTH, MAX_DISPLAY_NAME, MAX_PACKET_SIZE,
-    PROTOCOL_VERSION, Sink,
+    MAX_PLATFORM_FIELD, PROTOCOL_VERSION, Sink,
 };
 
 const MAGIC: &[u8; 8] = b"TICONNCT";
@@ -26,6 +27,7 @@ pub struct Beacon {
     pub port: u16,
     pub address: String,
     pub display_name: String,
+    pub platform: UserPlatform,
 }
 
 impl Beacon {
@@ -44,7 +46,13 @@ impl Beacon {
             port,
             address: address.into(),
             display_name: display_name.into(),
+            platform: UserPlatform::default(),
         }
+    }
+
+    pub fn with_platform(mut self, platform: UserPlatform) -> Self {
+        self.platform = platform;
+        self
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, DiscoveryError> {
@@ -69,6 +77,13 @@ impl Beacon {
                 "display name is too long".to_owned(),
             ));
         }
+        for value in platform_values(&self.platform) {
+            if value.len() > MAX_PLATFORM_FIELD {
+                return Err(DiscoveryError::InvalidRecord(
+                    "platform field is too long".to_owned(),
+                ));
+            }
+        }
 
         let mut bytes =
             Vec::with_capacity(HEADER_LEN + self.address.len() + self.display_name.len());
@@ -78,11 +93,23 @@ impl Beacon {
         bytes.extend_from_slice(&fingerprint);
         bytes.extend_from_slice(&self.port.to_be_bytes());
         let address = self.address.as_bytes();
-        bytes.push(u8::try_from(address.len()).unwrap_or(u8::MAX));
+        let address_length = u8::try_from(address.len())
+            .map_err(|_| DiscoveryError::InvalidRecord("address is too long".to_owned()))?;
+        bytes.push(address_length);
         bytes.extend_from_slice(address);
         let display_name = self.display_name.as_bytes();
-        bytes.push(u8::try_from(display_name.len()).unwrap_or(u8::MAX));
+        let display_name_length = u8::try_from(display_name.len())
+            .map_err(|_| DiscoveryError::InvalidRecord("display name is too long".to_owned()))?;
+        bytes.push(display_name_length);
         bytes.extend_from_slice(display_name);
+        for value in platform_values(&self.platform) {
+            let value = value.as_bytes();
+            let value_length = u8::try_from(value.len()).map_err(|_| {
+                DiscoveryError::InvalidRecord("platform field is too long".to_owned())
+            })?;
+            bytes.push(value_length);
+            bytes.extend_from_slice(value);
+        }
         Ok(bytes)
     }
 
@@ -127,6 +154,12 @@ impl Beacon {
             ));
         }
         let display_name = read_string(bytes, &mut cursor, display_name_length)?;
+        let platform = UserPlatform {
+            os: read_platform_string(bytes, &mut cursor)?,
+            desktop: read_platform_string(bytes, &mut cursor)?,
+            display_server: read_platform_string(bytes, &mut cursor)?,
+            app_version: read_platform_string(bytes, &mut cursor)?,
+        };
         if cursor != bytes.len() {
             return Err(DiscoveryError::InvalidRecord(
                 "beacon has trailing bytes".to_owned(),
@@ -140,14 +173,35 @@ impl Beacon {
             port,
             address,
             display_name,
+            platform,
         })
     }
+}
+
+fn platform_values(platform: &UserPlatform) -> [&str; 4] {
+    [
+        &platform.os,
+        &platform.desktop,
+        &platform.display_server,
+        &platform.app_version,
+    ]
+}
+
+fn read_platform_string(bytes: &[u8], cursor: &mut usize) -> Result<String, DiscoveryError> {
+    let length = usize::from(read_array::<1>(bytes, cursor)?[0]);
+    if length > MAX_PLATFORM_FIELD {
+        return Err(DiscoveryError::InvalidRecord(
+            "platform field is too long".to_owned(),
+        ));
+    }
+    read_string(bytes, cursor, length)
 }
 
 pub(crate) fn spawn(
     config: DiscoveryConfig,
     sink: Sink,
     shutdown: watch::Receiver<bool>,
+    probe: Arc<Notify>,
 ) -> Result<JoinHandle<()>, DiscoveryError> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
@@ -161,7 +215,7 @@ pub(crate) fn spawn(
 
     let targets = beacon_targets(&config);
     Ok(tokio::spawn(async move {
-        run(config, socket, targets, sink, shutdown).await;
+        run(config, socket, targets, sink, shutdown, probe).await;
     }))
 }
 
@@ -171,6 +225,7 @@ async fn run(
     targets: Vec<Target>,
     sink: Sink,
     mut shutdown: watch::Receiver<bool>,
+    probe: Arc<Notify>,
 ) {
     sink.set_broadcast_active(true);
     let mut ticker = tokio::time::interval(config.beacon_interval);
@@ -185,6 +240,9 @@ async fn run(
                 }
             }
             _ = ticker.tick() => {
+                send_beacons(&config, &socket, &targets, &sink).await;
+            }
+            _ = probe.notified() => {
                 send_beacons(&config, &socket, &targets, &sink).await;
             }
             received = socket.recv_from(&mut buffer) => {
@@ -222,17 +280,22 @@ async fn send_beacons(
             config.transport_port,
             target.local.to_string(),
             config.display_name.clone(),
-        );
+        )
+        .with_platform(config.platform.clone());
         let bytes = match beacon.encode() {
             Ok(bytes) => bytes,
             Err(error) => {
                 tracing::debug!(%error, "failed to encode discovery beacon");
+                sink.note_beacon_send_error();
                 continue;
             }
         };
         if let Err(error) = socket.send_to(&bytes, target.destination).await {
             tracing::debug!(%error, destination = %target.destination, "failed to send discovery beacon");
+            sink.note_beacon_send_error();
             sink.note_dropped();
+        } else {
+            sink.note_beacon_sent();
         }
     }
 }
@@ -246,6 +309,7 @@ fn receive_beacon(bytes: &[u8], source: SocketAddr, sink: &Sink) {
             return;
         }
     };
+    sink.note_beacon_received();
 
     let mut addresses = BTreeSet::new();
     addresses.insert(beacon.address);
@@ -253,16 +317,19 @@ fn receive_beacon(bytes: &[u8], source: SocketAddr, sink: &Sink) {
         addresses.insert(source.ip().to_string());
     }
 
-    sink.offer(Candidate::new(
-        beacon.node_id,
-        beacon.fingerprint,
-        beacon.display_name,
-        addresses,
-        beacon.port,
-        beacon.protocol_version,
-        CandidateSource::Broadcast,
-        std::time::Instant::now(),
-    ));
+    sink.offer(
+        Candidate::new(
+            beacon.node_id,
+            beacon.fingerprint,
+            beacon.display_name,
+            addresses,
+            beacon.port,
+            beacon.protocol_version,
+            CandidateSource::Broadcast,
+            std::time::Instant::now(),
+        )
+        .with_platform(beacon.platform),
+    );
 }
 
 #[derive(Debug, Clone, Copy)]

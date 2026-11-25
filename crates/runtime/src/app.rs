@@ -31,10 +31,10 @@ pub fn ensure_daemon_with_options(
     timeout: Duration,
     autostart_disabled: bool,
 ) -> anyhow::Result<()> {
-    if daemon_present() {
+    if autostart_disabled {
         return Ok(());
     }
-    if autostart_disabled {
+    if daemon_present() {
         return Ok(());
     }
 
@@ -58,7 +58,7 @@ fn daemon_present() -> bool {
 }
 
 async fn daemon_present_async() -> bool {
-    let Ok(connection) = zbus::Connection::session().await else {
+    let Ok(connection) = ticonnect_core::ipc::connect().await else {
         return false;
     };
     let Ok(proxy) = DaemonProxy::new(&connection).await else {

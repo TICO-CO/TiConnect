@@ -7,12 +7,12 @@
 
 ```mermaid
 stateDiagram-v2
-  state "queued: Record is waiting for a peer session." as s_queued
+  state "queued: Record is waiting for a user session." as s_queued
   state "sending: Record is being written to a QUIC stream." as s_sending
   state "sent: Transport acknowledged the frame." as s_sent
   state "failed: Terminal send failure." as s_failed
   state "expired: TTL elapsed before delivery." as s_expired
-  s_queued --> s_sending: peer_connected [trusted peer and gap sync complete]
+  s_queued --> s_sending: user_connected [trusted user and gap sync complete]
   s_sending --> s_sent: ack
   s_sending --> s_queued: error [retry budget remains] / backoff
   s_queued --> s_expired: ttl_elapsed
@@ -22,7 +22,7 @@ stateDiagram-v2
 
 | From | Event | To | Guard | Action |
 |---|---|---|---|---|
-| `queued` | peer_connected | `sending` | trusted peer and gap sync complete |  |
+| `queued` | user_connected | `sending` | trusted user and gap sync complete |  |
 | `sending` | ack | `sent` |  |  |
 | `sending` | error | `queued` | retry budget remains | backoff |
 | `queued` | ttl_elapsed | `expired` |  |  |

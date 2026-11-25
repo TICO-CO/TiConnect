@@ -15,7 +15,7 @@ use ticonnect_net::discovery::{Discovery, DiscoveryEvent, LanDiscovery};
 use ticonnect_net::transport::{DialTarget, Transport, TransportEvent};
 use tokio::sync::broadcast;
 
-use crate::storage::{DatabaseHandle, PeerProfile};
+use crate::storage::{DatabaseHandle, UserProfile};
 
 const SELF_AVATAR: &str = "self.png";
 const PROFILE_DIR: &str = "profile";
@@ -44,7 +44,7 @@ impl SelfProfile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProfileEvent {
     SelfUpdated,
-    PeerUpdated { fingerprint: String },
+    UserUpdated { fingerprint: String },
 }
 
 pub struct ProfileService {
@@ -263,7 +263,7 @@ impl ProfileService {
             .duration_since(UNIX_EPOCH)
             .map_or(0, |duration| duration.as_millis() as i64);
         let fingerprint = fingerprint.to_hex();
-        let stored = PeerProfile {
+        let stored = UserProfile {
             fingerprint: fingerprint.clone(),
             node_id: Some(record.node_id.clone()),
             display_name: record.display_name.clone(),
@@ -272,8 +272,8 @@ impl ProfileService {
             avatar: record.avatar,
             updated_at: now,
         };
-        if self.database.upsert_peer_profile(stored).await.is_ok() {
-            let _ = self.events.send(ProfileEvent::PeerUpdated { fingerprint });
+        if self.database.upsert_user_profile(stored).await.is_ok() {
+            let _ = self.events.send(ProfileEvent::UserUpdated { fingerprint });
         }
     }
 
@@ -304,21 +304,34 @@ impl ProfileService {
             let fingerprint = candidate.fingerprint().to_owned();
             let cached = self
                 .database
-                .get_peer_profile(&fingerprint)
+                .get_user_profile(&fingerprint)
                 .await
                 .ok()
                 .flatten();
-            let needs = match &cached {
-                Some(profile) => candidate
-                    .avatar_hash()
-                    .is_some_and(|hash| profile.avatar_hash.as_deref() != Some(hash)),
-                None => true,
-            };
+            let needs = profile_needs_refresh(
+                cached.as_ref(),
+                candidate.display_name(),
+                candidate.avatar_hash(),
+            );
             if needs {
                 self.maybe_fetch(candidate);
             }
         }
     }
+}
+
+fn profile_needs_refresh(
+    cached: Option<&UserProfile>,
+    candidate_name: &str,
+    candidate_avatar_hash: Option<&str>,
+) -> bool {
+    let Some(profile) = cached else {
+        return true;
+    };
+    let avatar_changed =
+        candidate_avatar_hash.is_some_and(|hash| profile.avatar_hash.as_deref() != Some(hash));
+    let name_changed = !candidate_name.is_empty() && profile.display_name != candidate_name;
+    avatar_changed || name_changed
 }
 
 fn valid_avatar(bytes: &[u8]) -> bool {
@@ -402,7 +415,7 @@ pub fn spawn(
                             let service = profile.clone();
                             tokio::spawn(async move { service.serve(connection).await; });
                         }
-                        Ok(TransportEvent::PeerConnected(_)) => {
+                        Ok(TransportEvent::UserConnected(_)) => {
                             let service = profile.clone();
                             let candidates = discovery.snapshot();
                             tokio::spawn(async move { service.refresh_known(candidates).await; });
@@ -412,7 +425,7 @@ pub fn spawn(
                 }
                 event = profile_events.recv() => {
                     match event {
-                        Ok(ProfileEvent::PeerUpdated { fingerprint }) => {
+                        Ok(ProfileEvent::UserUpdated { fingerprint }) => {
                             if let Err(error) = crate::service::emit_profile_event(&connection, &fingerprint).await {
                                 tracing::debug!(%error, "failed to emit profile signal");
                             }
@@ -443,6 +456,10 @@ mod tests {
     impl TrustLookup for NoTrust {
         fn is_trusted(&self, _fingerprint: &str) -> bool {
             false
+        }
+
+        fn node_id_for_fingerprint(&self, _fingerprint: &str) -> Option<NodeId> {
+            None
         }
     }
 
@@ -540,7 +557,7 @@ mod tests {
             .await;
 
         let stored = local_db
-            .get_peer_profile(&remote_fp.to_hex())
+            .get_user_profile(&remote_fp.to_hex())
             .await
             .expect("profile")
             .expect("stored profile");
@@ -551,5 +568,36 @@ mod tests {
         local_transport.shutdown().await;
         remote_transport.shutdown().await;
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_refresh_tracks_name_and_avatar_changes() {
+        let profile = UserProfile {
+            fingerprint: "fingerprint-1".to_owned(),
+            node_id: Some("node-1".to_owned()),
+            display_name: "Ada".to_owned(),
+            avatar_hash: Some("old-hash".to_owned()),
+            avatar_mime: Some("image/png".to_owned()),
+            avatar: Vec::new(),
+            updated_at: 1,
+        };
+
+        assert!(profile_needs_refresh(None, "Ada", Some("old-hash")));
+        assert!(!profile_needs_refresh(
+            Some(&profile),
+            "Ada",
+            Some("old-hash")
+        ));
+        assert!(profile_needs_refresh(
+            Some(&profile),
+            "Grace",
+            Some("old-hash")
+        ));
+        assert!(profile_needs_refresh(
+            Some(&profile),
+            "Ada",
+            Some("new-hash")
+        ));
+        assert!(!profile_needs_refresh(Some(&profile), "", Some("old-hash")));
     }
 }

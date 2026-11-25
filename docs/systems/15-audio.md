@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Own device selection, capture, resampling, Opus codec, jitter buffer, playback, metrics, and ringtone playback.
+Own device selection, capture, resampling, Opus codec, jitter buffer, playback, and metrics.
 
 ## Boundary
 
@@ -33,14 +33,12 @@ Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline.
 | `AUD.metrics` | Audio metrics | `module` | `crates/media/src/audio/mod.rs` | counters | docs/systems/15-audio.md#components | planned: crates/media/tests/metrics.rs |
 | `AUD.playback` | Playback | `module` | `crates/media/src/audio/playback.rs` | playback ring | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
 | `AUD.resample` | Resampler | `module` | `crates/media/src/audio/resample.rs` |  | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
-| `AUD.ringtone` | Ringtone player | `module` | `crates/media/src/ringtone.rs` | ringtone loop | docs/systems/15-audio.md#components | planned: crates/media/tests/ringtone.rs |
 
 ## Interfaces
 
 - cpal devices
 - Opus frames
 - jitter buffer
-- ringtone sink
 
 ## Relations
 
@@ -55,14 +53,10 @@ Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline.
 | `AUD.decode` | `calls` | `sync` | `AUD.jitter` | decoded frames |  |  |
 | `AUD.jitter` | `calls` | `sync` | `AUD.playback` | ordered frames |  |  |
 | `AUD.playback` | `calls` | `sync` | `AUD.metrics` | playback metrics |  |  |
-| `AUD.ringtone` | `calls` | `sync` | `AUD.playback` | ringtone sink |  |  |
-| `AUD.ringtone` | `calls` | `sync` | `AUD.metrics` | ringtone metrics |  |  |
 | `AUD.encode` | `invokes` | `async` | `TX.datagrams` | send audio datagram | CALL.policy |  |
-| `AUD.ringtone` | `config-read` | `sync` | `CFG.file-store` | ringtone path |  |  |
 | `CALL.media` | `calls` | `sync` | `AUD.devices` | audio devices | CALL.policy |  |
 | `CALL.media` | `calls` | `sync` | `AUD.encode` | encode call audio |  |  |
 | `CALL.media` | `calls` | `sync` | `AUD.decode` | decode call audio |  |  |
-| `CALL.ringtone` | `calls` | `sync` | `AUD.ringtone` | ringtone playback |  |  |
 | `CALL.cleanup` | `calls` | `sync` | `AUD.devices` | release audio devices |  |  |
 
 ## Invariants
@@ -71,7 +65,7 @@ Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline.
 - `INV-LIMIT-1` — Every queue, buffer, and frame decoder is bounded or declares its drop policy. Test: planned: design review plus fuzz tests
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 
@@ -83,4 +77,3 @@ Media library. No storage, D-Bus, or policy. Calls orchestrate the pipeline.
 
 - sample-rate policy
 - jitter target
-- ringtone ducking behavior

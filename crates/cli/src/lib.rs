@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+pub mod doctor;
 pub mod entry;
 pub mod output;
 

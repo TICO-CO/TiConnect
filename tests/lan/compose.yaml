@@ -27,7 +27,6 @@ services:
     environment:
       <<: *node-env
       LAN_TEST_DISPLAY_NAME: "${LAN_TEST_DISPLAY_NAME_A:-node-a}"
-      LAN_TEST_TRUST_OPEN_LAN: "${LAN_TEST_TRUST_OPEN_LAN_A:-false}"
     volumes:
       - node-a-data:/data
 
@@ -37,7 +36,6 @@ services:
     environment:
       <<: *node-env
       LAN_TEST_DISPLAY_NAME: "${LAN_TEST_DISPLAY_NAME_B:-node-b}"
-      LAN_TEST_TRUST_OPEN_LAN: "${LAN_TEST_TRUST_OPEN_LAN_B:-false}"
     volumes:
       - node-b-data:/data
 

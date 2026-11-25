@@ -1,4 +1,4 @@
-use crate::storage::PeerPolicy;
+use crate::storage::UserPolicy;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InboundDecision {
@@ -9,22 +9,22 @@ pub enum InboundDecision {
     },
 }
 
-pub fn inbound(policy: PeerPolicy, dnd: bool, receipts_enabled: bool) -> InboundDecision {
+pub fn inbound(policy: UserPolicy, dnd: bool, receipts_enabled: bool) -> InboundDecision {
     match policy {
-        PeerPolicy::Ignore => InboundDecision::Drop,
-        PeerPolicy::Mute => InboundDecision::Store {
+        UserPolicy::Ignore => InboundDecision::Drop,
+        UserPolicy::Mute => InboundDecision::Store {
             notify: false,
             delivered_receipt: false,
         },
-        PeerPolicy::Accept => InboundDecision::Store {
+        UserPolicy::Accept => InboundDecision::Store {
             notify: !dnd,
             delivered_receipt: receipts_enabled,
         },
     }
 }
 
-pub fn read_receipt(policy: PeerPolicy, receipts_enabled: bool) -> bool {
-    receipts_enabled && matches!(policy, PeerPolicy::Accept | PeerPolicy::Mute)
+pub fn read_receipt(policy: UserPolicy, receipts_enabled: bool) -> bool {
+    receipts_enabled && matches!(policy, UserPolicy::Accept | UserPolicy::Mute)
 }
 
 #[cfg(test)]
@@ -34,11 +34,11 @@ mod tests {
     #[test]
     fn ignore_drops_and_mute_stays_silent() {
         assert_eq!(
-            inbound(PeerPolicy::Ignore, false, true),
+            inbound(UserPolicy::Ignore, false, true),
             InboundDecision::Drop
         );
         assert_eq!(
-            inbound(PeerPolicy::Mute, false, true),
+            inbound(UserPolicy::Mute, false, true),
             InboundDecision::Store {
                 notify: false,
                 delivered_receipt: false
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn dnd_suppresses_only_notification() {
         assert_eq!(
-            inbound(PeerPolicy::Accept, true, true),
+            inbound(UserPolicy::Accept, true, true),
             InboundDecision::Store {
                 notify: false,
                 delivered_receipt: true
@@ -59,8 +59,8 @@ mod tests {
 
     #[test]
     fn read_receipts_follow_the_global_toggle() {
-        assert!(!read_receipt(PeerPolicy::Accept, false));
-        assert!(read_receipt(PeerPolicy::Mute, true));
-        assert!(!read_receipt(PeerPolicy::Ignore, true));
+        assert!(!read_receipt(UserPolicy::Accept, false));
+        assert!(read_receipt(UserPolicy::Mute, true));
+        assert!(!read_receipt(UserPolicy::Ignore, true));
     }
 }

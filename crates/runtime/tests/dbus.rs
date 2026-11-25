@@ -3,7 +3,14 @@ use std::fs;
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
+use ticonnect_core::id::NodeId;
+use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::ipc;
+use ticonnect_core::message::{MessageKind, MessageRecord, conversation_id};
+use ticonnect_daemon::storage::{
+    AttachmentRecord, DatabaseHandle, MessageState, NewUser, UserPolicy,
+};
 use tokio::process::Command;
 use zbus::OwnedVariant;
 use zbus::proxy;
@@ -20,16 +27,16 @@ trait Daemon {
     fn get_identity(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn get_setting(&self, key: &str) -> zbus::Result<OwnedVariant>;
     fn list_settings(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn list_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
+    fn list_users(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn list_candidates(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_discovery_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn start_pairing(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn pair_with_pin(&self, node_id: &str, pin: &str) -> zbus::Result<bool>;
-    fn pair_with_qr(&self, payload: &str) -> zbus::Result<bool>;
-    fn cancel_pairing(&self) -> zbus::Result<()>;
-    fn forget_peer(&self, peer_id: &str) -> zbus::Result<bool>;
-    fn list_trusted_peers(&self) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
-    fn send_message(&self, peer_id: &str, body: &str) -> zbus::Result<String>;
+    fn get_network_status(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn run_lan_check(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn forget_user(&self, user_id: &str) -> zbus::Result<bool>;
+    fn send_message(&self, user_id: &str, body: &str, reply_to: &str) -> zbus::Result<String>;
+    fn retry_message(&self, message_id: &str) -> zbus::Result<bool>;
+    fn edit_message(&self, message_id: &str, body: &str) -> zbus::Result<()>;
+    fn delete_message(&self, message_id: &str) -> zbus::Result<()>;
     fn list_messages(
         &self,
         conversation_id: &str,
@@ -37,22 +44,31 @@ trait Daemon {
         offset: u32,
     ) -> zbus::Result<Vec<HashMap<String, OwnedVariant>>>;
     fn get_message_state(&self, message_id: &str) -> zbus::Result<String>;
-    fn set_peer_policy(&self, peer_id: &str, policy: &str) -> zbus::Result<()>;
+    fn clear_history(&self, user_id: &str) -> zbus::Result<u32>;
+    fn get_storage_usage(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn set_user_policy(&self, user_id: &str, policy: &str) -> zbus::Result<()>;
     fn set_dnd(&self, enabled: bool) -> zbus::Result<()>;
-    fn send_attachment(&self, peer_id: &str, path: &str, mime: &str) -> zbus::Result<String>;
+    fn send_attachment(
+        &self,
+        user_id: &str,
+        path: &str,
+        mime: &str,
+        reply_to: &str,
+    ) -> zbus::Result<String>;
     fn get_transfer_state(&self, hash: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn cancel_transfer(&self, hash: &str) -> zbus::Result<()>;
     fn save_attachment(&self, hash: &str, destination: &str) -> zbus::Result<bool>;
     fn get_attachment_path(&self, hash: &str) -> zbus::Result<String>;
-    fn start_call(&self, peer_id: &str) -> zbus::Result<String>;
+    fn start_call(&self, user_id: &str) -> zbus::Result<String>;
     fn accept_call(&self, call_id: &str) -> zbus::Result<()>;
     fn decline_call(&self, call_id: &str) -> zbus::Result<()>;
     fn hangup_call(&self, call_id: &str) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn request_remote_session(&self, peer_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
-    fn accept_remote_session(&self, session_id: &str, pin: &str) -> zbus::Result<()>;
+    fn request_remote_session(&self, user_id: &str) -> zbus::Result<HashMap<String, OwnedVariant>>;
+    fn accept_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn deny_remote_session(&self, session_id: &str) -> zbus::Result<()>;
     fn end_remote_session(&self, session_id: &str) -> zbus::Result<()>;
+    fn set_remote_input(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
     fn get_remote_session(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn shutdown(&self) -> zbus::Result<()>;
 
@@ -75,6 +91,18 @@ trait Daemon {
     fn incoming_call(&self, call: HashMap<String, OwnedVariant>) -> zbus::Result<()>;
 
     #[zbus(signal)]
+    fn message_edited(
+        &self,
+        message_id: &str,
+        user_id: &str,
+        body: &str,
+        edited_at: u64,
+    ) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn message_deleted(&self, message_id: &str, user_id: &str) -> zbus::Result<()>;
+
+    #[zbus(signal)]
     fn call_state_changed(&self, call_id: &str, state: &str) -> zbus::Result<()>;
 
     #[zbus(signal)]
@@ -91,12 +119,15 @@ trait Daemon {
 
     #[zbus(signal)]
     fn remote_indicator_changed(&self, session_id: &str, visible: bool) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn remote_input_changed(&self, session_id: &str, allowed: bool) -> zbus::Result<()>;
 }
 
 #[tokio::test]
 async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigterm() {
-    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
-        eprintln!("skipping D-Bus test: DBUS_SESSION_BUS_ADDRESS is not set");
+    if ipc::ipc_bus_address().is_none() && std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() {
+        eprintln!("skipping D-Bus test: no D-Bus address is configured");
         return;
     }
 
@@ -114,7 +145,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         .spawn()
         .expect("start daemon");
 
-    let connection = zbus::Connection::session().await.expect("session bus");
+    let connection = ipc::connect().await.expect("IPC bus");
     let proxy = DaemonProxy::new(&connection).await.expect("daemon proxy");
     wait_for_daemon(&proxy).await;
 
@@ -124,7 +155,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     let status = proxy.get_status().await.expect("status");
     assert!(status.contains_key(ipc::STATUS_UPTIME_SECONDS));
     assert_eq!(
-        u32::try_from(&status[ipc::STATUS_PEER_COUNT]).expect("peer count"),
+        u32::try_from(&status[ipc::STATUS_USER_COUNT]).expect("user count"),
         0
     );
     assert_eq!(
@@ -156,29 +187,38 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         <&str>::try_from(&identity[ipc::IDENTITY_DISPLAY_NAME]).expect("display name"),
         ""
     );
+    assert!(u64::try_from(&identity[ipc::IDENTITY_CREATED_AT]).expect("identity created_at") > 0);
+
+    let usage = proxy.get_storage_usage().await.expect("storage usage");
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_MESSAGE_COUNT]).expect("message count"),
+        0
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_COUNT]).expect("attachment count"),
+        0
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_BYTES]).expect("attachment bytes"),
+        0
+    );
+    assert!(u64::try_from(&usage[ipc::STORAGE_DATABASE_BYTES]).expect("database bytes") > 0);
 
     let settings = proxy.list_settings().await.expect("settings");
     assert!(settings.contains_key("dnd.enabled"));
     assert!(settings.contains_key("appearance.color_scheme"));
     assert!(settings.contains_key("attachments.max_size_mib"));
     assert!(settings.contains_key("calls.timeout_secs"));
-    assert!(settings.contains_key("remote.pin_attempts"));
+    assert!(settings.contains_key("remote.session_timeout_secs"));
     assert!(settings.contains_key("video.bitrate_kbps"));
     assert!(!bool::try_from(proxy.get_setting("dnd.enabled").await.expect("dnd")).expect("bool"));
     assert!(proxy.get_setting("missing.key").await.is_err());
-    assert!(proxy.list_peers().await.expect("peers").is_empty());
+    assert!(proxy.list_users().await.expect("users").is_empty());
     assert!(
         proxy
             .list_candidates()
             .await
             .expect("candidates")
-            .is_empty()
-    );
-    assert!(
-        proxy
-            .list_trusted_peers()
-            .await
-            .expect("trusted peers")
             .is_empty()
     );
     assert!(
@@ -190,7 +230,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     assert!(
         proxy
-            .send_message("00000000-0000-7000-8000-000000000000", "hello")
+            .send_message("00000000-0000-7000-8000-000000000000", "hello", "")
             .await
             .is_err()
     );
@@ -202,7 +242,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     );
     assert!(
         proxy
-            .set_peer_policy("00000000-0000-7000-8000-000000000000", "mute")
+            .set_user_policy("00000000-0000-7000-8000-000000000000", "mute")
             .await
             .is_err()
     );
@@ -235,6 +275,7 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
             .send_attachment(
                 "00000000-0000-7000-8000-000000000000",
                 "/missing/path.bin",
+                "",
                 ""
             )
             .await
@@ -261,20 +302,136 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
         0
     );
 
-    let pairing = proxy.start_pairing().await.expect("start pairing");
+    let network = proxy.get_network_status().await.expect("network status");
+    assert!(
+        !<&str>::try_from(&network[ipc::NETWORK_STATE])
+            .expect("network state")
+            .is_empty()
+    );
+    assert!(bool::try_from(&network[ipc::NETWORK_TRANSPORT_BOUND]).expect("transport bound"));
+
+    let local_node = <&str>::try_from(&identity[ipc::IDENTITY_NODE_ID])
+        .expect("node id")
+        .parse::<NodeId>()
+        .expect("parse node id");
+    let user = NodeId::generate();
+    let database = DatabaseHandle::spawn(data_dir.join("ticonnect.db"))
+        .await
+        .expect("test database");
+    let identity_key = IdentityKeyPair::from_secret_bytes([91_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "feature-test".to_owned(),
+            public_key: Some(identity_key.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("insert user");
+    let conversation = conversation_id(local_node, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("ensure conversation");
+
+    let text = MessageRecord::text(
+        conversation.clone(),
+        local_node.to_string(),
+        1,
+        1_700_000_000_000,
+        "local history",
+    );
+    database
+        .insert_message(
+            text.clone(),
+            1_700_000_000_000,
+            vec![0_u8; 64],
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("insert text");
+
+    let bytes = b"voice feature attachment";
+    let hash = AttachmentHash::of(bytes);
+    let path = data_dir
+        .join("attachments")
+        .join(&hash.to_hex()[..2])
+        .join(hash.to_hex());
+    fs::create_dir_all(path.parent().expect("attachment parent")).expect("attachment dir");
+    fs::write(&path, bytes).expect("attachment file");
+    let attachment = AttachmentRef::new(hash, "voice.webm", bytes.len() as u64, "audio/webm")
+        .expect("attachment");
+    let attachment_message = MessageRecord::new(
+        conversation.clone(),
+        local_node.to_string(),
+        2,
+        1_700_000_000_001,
+        MessageKind::Audio,
+        None,
+    )
+    .with_attachment(&attachment)
+    .expect("attachment message");
+    database
+        .insert_message(
+            attachment_message,
+            1_700_000_000_001,
+            vec![0_u8; 64],
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("insert attachment message");
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: hash.to_hex(),
+            size: bytes.len() as u64,
+            path: path.to_string_lossy().into_owned(),
+            mime: "audio/webm".to_owned(),
+            name: "voice.webm".to_owned(),
+            created_at: 1,
+        })
+        .await
+        .expect("insert attachment row");
+
+    let usage = proxy.get_storage_usage().await.expect("feature usage");
     assert_eq!(
-        <&str>::try_from(&pairing[ipc::PAIRING_PIN])
-            .expect("pairing pin")
-            .len(),
-        6
+        u64::try_from(&usage[ipc::STORAGE_MESSAGE_COUNT]).expect("message count"),
+        2
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_COUNT]).expect("attachment count"),
+        1
+    );
+    assert_eq!(
+        u64::try_from(&usage[ipc::STORAGE_ATTACHMENT_BYTES]).expect("attachment bytes"),
+        bytes.len() as u64
+    );
+
+    assert_eq!(
+        proxy
+            .clear_history(&user.to_string())
+            .await
+            .expect("clear history"),
+        2
+    );
+    assert!(!path.exists(), "attachment file was not removed");
+    assert_eq!(
+        u64::try_from(
+            &proxy.get_storage_usage().await.expect("cleared usage")[ipc::STORAGE_MESSAGE_COUNT]
+        )
+        .expect("message count"),
+        0
     );
     assert!(
-        <&str>::try_from(&pairing[ipc::PAIRING_QR])
-            .expect("pairing qr")
-            .starts_with("ticonnect://pair/v1?")
+        proxy
+            .list_messages(&conversation, 10, 0)
+            .await
+            .expect("cleared messages")
+            .is_empty()
     );
-    assert!(u64::try_from(&pairing[ipc::PAIRING_EXPIRES_AT]).expect("expiry") > 0);
-    proxy.cancel_pairing().await.expect("cancel pairing");
+    drop(database);
 
     assert!(config_dir.join("identity.key").is_file());
     assert!(config_dir.join("identity.toml").is_file());
@@ -314,6 +471,11 @@ async fn daemon_serves_dbus_contract_enforces_single_instance_and_stops_on_sigte
     assert!(!bool::try_from(&discovery[ipc::DISCOVERY_MDNS_ACTIVE]).expect("mdns active"));
     assert!(
         !bool::try_from(&discovery[ipc::DISCOVERY_BROADCAST_ACTIVE]).expect("broadcast active")
+    );
+    let checked = proxy.run_lan_check().await.expect("LAN check");
+    assert_eq!(
+        <&str>::try_from(&checked[ipc::NETWORK_STATE]).expect("network state"),
+        "disabled"
     );
 
     let second = Command::new(env!("CARGO_BIN_EXE_ticonnectd"))

@@ -47,7 +47,7 @@ Stages 1, 1.5, 3, 5, 6, and 7 complete.
 - [x] Hash file content with BLAKE3; hash is the storage key.
 - [x] Store files under `$XDG_DATA_HOME/ticonnect/attachments/<first2>/<hash>`.
 - [x] Verify hash on write; reject mismatch.
-- [x] Deduplicate identical content across messages and peers.
+- [x] Deduplicate identical content across messages and users.
 - [x] Store metadata in `attachments`: hash, size, path, mime.
 - [x] Detect MIME from extension and optional content sniffing.
 - [x] Enforce max size (configurable, default 2 GiB) before accepting.
@@ -61,10 +61,10 @@ Stages 1, 1.5, 3, 5, 6, and 7 complete.
 - [x] Chunk size configurable; default 64 KiB.
 - [x] Each chunk frame includes hash, offset, length, and payload.
 - [x] Receiver writes to a temp file and verifies each chunk offset.
-- [x] Persist partial state: hash, bytes received, temp path, peer id.
+- [x] Persist partial state: hash, bytes received, temp path, user id.
 - [x] Resume requests missing ranges from the sender.
 - [x] Support cancellation and timeout.
-- [x] Bound concurrent transfers per peer and globally.
+- [x] Bound concurrent transfers per user and globally.
 - [x] Emit progress signals with bytes and total.
 - [x] Emit `TransferDone` or `TransferFailed` with reason.
 
@@ -75,7 +75,7 @@ Stages 1, 1.5, 3, 5, 6, and 7 complete.
 - [x] If absent, start or resume transfer.
 - [x] Verify final hash before publishing the file into the store.
 - [x] Insert the `attachments` row only after verification.
-- [x] Ignore attachments from `ignore` peers; store silently for `mute`.
+- [x] Ignore attachments from `ignore` users; store silently for `mute`.
 
 ## UI
 
@@ -90,7 +90,7 @@ Stages 1, 1.5, 3, 5, 6, and 7 complete.
 
 ## D-Bus additions
 
-- [x] `SendAttachment(s peer_id, s path, s mime) -> s message_id`.
+- [x] `SendAttachment(s user_id, s path, s mime) -> s message_id`.
 - [x] `GetTransferState(s hash) -> a{sv}`.
 - [x] `CancelTransfer(s hash)`.
 - [x] `SaveAttachment(s hash, s destination) -> b`.

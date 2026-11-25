@@ -12,7 +12,9 @@ pub mod message;
 pub mod profile;
 pub mod remote;
 pub mod sign;
+pub mod watch_party;
 pub mod wire;
+pub mod youtube;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

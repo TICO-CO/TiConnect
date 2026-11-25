@@ -9,7 +9,7 @@ use ticonnect_core::remote::{InputKind, InputPacket};
 use ticonnect_daemon::remote::RemoteEventMessage;
 
 #[tokio::test]
-async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
+async fn consent_indicator_and_kill_switch_between_two_nodes() {
     let first = TestNode::start("remote-first").await;
     let second = TestNode::start("remote-second").await;
     connect_pair(&first, &second).await;
@@ -34,30 +34,13 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
     .expect("host request event");
     assert_eq!(requested.role, "host");
     assert_eq!(requested.state, "requested");
-    assert_eq!(requested.pin.len(), 6);
-    assert_eq!(requested.peer_id, first.node_id().to_string());
+    assert_eq!(requested.user_id, first.node_id().to_string());
 
     second
         .remote
-        .accept_session(&viewer.session_id, "")
+        .accept_session(&viewer.session_id)
         .await
         .expect("host consent");
-    let _consented = recv_event(&mut first_events, |event| match event {
-        RemoteEventMessage::Requested(snapshot)
-            if snapshot.session_id == viewer.session_id && snapshot.state == "consented" =>
-        {
-            Some(snapshot)
-        }
-        _ => None,
-    })
-    .await
-    .expect("viewer consent");
-
-    first
-        .remote
-        .accept_session(&viewer.session_id, &requested.pin)
-        .await
-        .expect("viewer pin");
     recv_event(&mut first_events, |event| match event {
         RemoteEventMessage::Started(snapshot) if snapshot.session_id == viewer.session_id => {
             Some(())
@@ -102,74 +85,6 @@ async fn consent_pin_indicator_and_kill_switch_between_two_nodes() {
     })
     .await
     .expect("viewer teardown");
-
-    first.shutdown().await;
-    second.shutdown().await;
-}
-
-#[tokio::test]
-async fn wrong_pin_is_bounded_and_denies_session() {
-    let first = TestNode::start("remote-pin-first").await;
-    let second = TestNode::start("remote-pin-second").await;
-    connect_pair(&first, &second).await;
-    let mut second_events = second.remote.subscribe();
-
-    let viewer = first
-        .remote
-        .request_session(&second.node_id().to_string())
-        .await
-        .expect("request");
-    let requested = recv_event(&mut second_events, |event| match event {
-        RemoteEventMessage::Requested(snapshot) if snapshot.session_id == viewer.session_id => {
-            Some(snapshot)
-        }
-        _ => None,
-    })
-    .await
-    .expect("host request");
-    second
-        .remote
-        .accept_session(&viewer.session_id, "")
-        .await
-        .expect("consent");
-
-    let wrong = if requested.pin == "000000" {
-        "000001"
-    } else {
-        "000000"
-    };
-    for attempt in 0..2 {
-        first
-            .remote
-            .accept_session(&viewer.session_id, wrong)
-            .await
-            .expect("failed pin accepted");
-        assert_eq!(
-            second.remote.snapshot().expect("session").state,
-            "consented",
-            "attempt {attempt}"
-        );
-    }
-    first
-        .remote
-        .accept_session(&viewer.session_id, wrong)
-        .await
-        .expect("third pin");
-    recv_event(&mut second_events, |event| match event {
-        RemoteEventMessage::Ended { session_id, reason }
-            if session_id == viewer.session_id && reason == "pin" =>
-        {
-            Some(())
-        }
-        _ => None,
-    })
-    .await
-    .expect("host pin denial");
-    wait_true(Duration::from_secs(5), || async {
-        first.remote.snapshot().is_none()
-    })
-    .await
-    .expect("viewer denied");
 
     first.shutdown().await;
     second.shutdown().await;
@@ -238,7 +153,7 @@ async fn deny_path_and_expiry_leave_no_session() {
     .expect("host request");
     clock.fetch_add(400_000, Ordering::Relaxed);
     assert!(matches!(
-        second.remote.accept_session(&viewer.session_id, "").await,
+        second.remote.accept_session(&viewer.session_id).await,
         Err(ticonnect_daemon::remote::RemoteError::Expired)
     ));
     assert!(
@@ -256,15 +171,115 @@ async fn deny_path_and_expiry_leave_no_session() {
 }
 
 #[tokio::test]
+async fn host_can_disable_remote_input() {
+    let first = TestNode::start("remote-input-policy-first").await;
+    let second = TestNode::start("remote-input-policy-second").await;
+    connect_pair(&first, &second).await;
+    let mut first_events = first.remote.subscribe();
+    let mut second_events = second.remote.subscribe();
+
+    let viewer = first
+        .remote
+        .request_session(&second.node_id().to_string())
+        .await
+        .expect("request");
+    wait_true(Duration::from_secs(5), || async {
+        second.remote.snapshot().is_some()
+    })
+    .await
+    .expect("host request");
+    second
+        .remote
+        .accept_session(&viewer.session_id)
+        .await
+        .expect("consent");
+    wait_true(Duration::from_secs(5), || async {
+        let host = second
+            .remote
+            .snapshot()
+            .is_some_and(|session| session.state == "active");
+        let viewer = first
+            .remote
+            .snapshot()
+            .is_some_and(|session| session.state == "active");
+        host && viewer
+    })
+    .await
+    .expect("active sessions");
+    assert!(second.remote.snapshot().expect("host").input_allowed);
+
+    second
+        .remote
+        .set_input_allowed(&viewer.session_id, false)
+        .await
+        .expect("disable input");
+    recv_event(&mut second_events, |event| match event {
+        RemoteEventMessage::InputChanged {
+            session_id,
+            allowed: false,
+        } if session_id == viewer.session_id => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("host input event");
+    recv_event(&mut first_events, |event| match event {
+        RemoteEventMessage::InputChanged {
+            session_id,
+            allowed: false,
+        } if session_id == viewer.session_id => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("viewer input event");
+    assert!(!first.remote.snapshot().expect("viewer").input_allowed);
+
+    let user = second
+        .transport
+        .session_by_node_id(first.node_id())
+        .expect("session")
+        .user()
+        .clone();
+    let session_id: ticonnect_daemon::remote::state::RemoteSessionId =
+        viewer.session_id.parse().expect("session id");
+    let packet = InputPacket {
+        session_id: session_id.as_bytes(),
+        kind: InputKind::Motion,
+        x: 10,
+        y: 20,
+        pressed: false,
+    };
+    assert!(matches!(
+        second.remote.inject_input(user.clone(), packet),
+        Err(ticonnect_daemon::remote::RemoteError::InputDenied)
+    ));
+
+    second
+        .remote
+        .set_input_allowed(&viewer.session_id, true)
+        .await
+        .expect("enable input");
+    recv_event(&mut first_events, |event| match event {
+        RemoteEventMessage::InputChanged { allowed: true, .. } => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("viewer input enabled");
+    assert!(second.remote.inject_input(user, packet).is_ok());
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
 async fn input_is_rejected_without_active_session() {
     let first = TestNode::start("remote-input-first").await;
     let second = TestNode::start("remote-input-second").await;
     connect_pair(&first, &second).await;
-    let peer = second
+    let user = second
         .transport
         .session_by_node_id(first.node_id())
         .expect("session")
-        .peer()
+        .user()
         .clone();
     let packet = InputPacket {
         session_id: [0; 16],
@@ -274,7 +289,7 @@ async fn input_is_rejected_without_active_session() {
         pressed: false,
     };
     assert!(matches!(
-        second.remote.inject_input(peer, packet),
+        second.remote.inject_input(user, packet),
         Err(ticonnect_daemon::remote::RemoteError::Inactive)
     ));
 

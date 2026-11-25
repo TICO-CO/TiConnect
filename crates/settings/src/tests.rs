@@ -430,14 +430,14 @@ fn key_api_sets_and_reads_typed_values() {
 
         settings.set_setting("dnd.enabled", "yes").expect("set dnd");
         settings
-            .set_setting("ringtone.path", "/tmp/ring.ogg")
-            .expect("set ringtone");
-        settings
             .set_setting("outbox.ttl_days", "30")
             .expect("set ttl");
         settings
             .set_setting("overlay.timeout_secs", "12")
             .expect("set overlay timeout");
+        settings
+            .set_setting("calls.mute_shortcut", "Alt+M")
+            .expect("set mute shortcut");
         settings.save().expect("save");
 
         let settings = Settings::load_from(&path).expect("reload");
@@ -457,10 +457,10 @@ fn key_api_sets_and_reads_typed_values() {
         );
         assert_eq!(
             settings
-                .get_setting("ringtone.path")
-                .expect("get ringtone")
+                .get_setting("calls.mute_shortcut")
+                .expect("get mute shortcut")
                 .render(),
-            "/tmp/ring.ogg"
+            "Alt+M"
         );
         assert!(
             settings
@@ -545,23 +545,6 @@ fn key_api_rejects_unknown_and_invalid_values() {
             settings.set_setting("appearance.color_scheme", "sepia"),
             Err(crate::Error::InvalidSetting { .. })
         ));
-        Ok(())
-    });
-}
-
-#[test]
-fn open_lan_defaults_on_and_can_be_disabled() {
-    Jail::expect_with(|jail| {
-        jail.clear_env();
-        let path = jail.directory().join("config.toml");
-        let mut settings = Settings::load_from(&path).expect("valid settings");
-
-        assert!(settings.trust_open_lan());
-        settings.set_trust_open_lan(false);
-        settings.save().expect("save");
-
-        let reloaded = Settings::load_from(&path).expect("reloaded settings");
-        assert!(!reloaded.trust_open_lan());
         Ok(())
     });
 }

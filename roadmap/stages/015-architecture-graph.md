@@ -44,7 +44,7 @@ Stage 1 complete.
 - [x] Define the graph fragment schema and loader.
 - [x] Populate systems, components, stores, edges, invariants, build deps, and
       data-driven build rules.
-- [x] Add state machines for pairing, outbox, transfer, call, and remote desktop.
+- [x] Add state machines for trust, outbox, transfer, call, and remote desktop.
 - [x] Generate a global system graph and per-system component graphs.
 - [x] Generate separate build, runtime, trust, state, registry, and stage views.
 - [x] Generate narrative system contract docs from canonical metadata.

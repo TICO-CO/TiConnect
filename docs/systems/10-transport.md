@@ -61,11 +61,11 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 | `TX.session` | `calls` | `sync` | `TX.metrics` | transport metrics |  |  |
 | `TX.verifier` | `calls` | `sync` | `ID.trust-store` | pinned trust lookup | ID.trust-store |  |
 | `TX.tls-cert` | `calls` | `sync` | `ID.cert-binding` | certificate binding | ID.cert-binding |  |
-| `TX.alpn` | `calls` | `sync` | `PAIR.endpoint` | pairing ALPN | PAIR.endpoint |  |
+| `TX.alpn` | `calls` | `sync` | `TRUST.endpoint` | trust ALPN | TRUST.endpoint |  |
 | `TX.streams` | `calls` | `sync` | `WIRE.envelope` | stream frames |  |  |
 | `TX.datagrams` | `calls` | `sync` | `WIRE.envelope` | datagram frames |  |  |
 | `TX.reconnect` | `calls` | `sync` | `TX.dialer` | retry dial |  |  |
-| `TX.session` | `emits` | `event` | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  |
+| `TX.session` | `emits` | `event` | `IPC.signal-bus` | UserConnected and UserDisconnected |  |  |
 | `TX.session` | `emits` | `event` | `MSG.sync-executor` | session established |  |  |
 | `TX.session` | `emits` | `event` | `ATT.scheduler` | transfer stream available |  |  |
 | `TX.session` | `emits` | `event` | `CALL.signaling` | call signaling available | CALL.policy |  |
@@ -83,8 +83,8 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 | `RD.transport` | `invokes` | `async` | `TX.streams` | remote frame stream | RD.consent |  |
 | `RD.transport` | `invokes` | `async` | `TX.datagrams` | remote input datagram | RD.consent |  |
 | `RD.teardown` | `calls` | `sync` | `TX.session` | close remote transport |  |  |
-| `PAIR.dbus` | `consumes` | `event` | `TX.session` | peer connected and disconnected events |  |  |
-| `PAIR.dbus` | `invokes` | `async` | `TX.dialer` | open pairing connection |  |  |
+| `TRUST.dbus` | `consumes` | `event` | `TX.session` | user connected and disconnected events |  |  |
+| `TRUST.dbus` | `invokes` | `async` | `TX.dialer` | open trust connection |  |  |
 | `RT.lifecycle` | `invokes` | `async` | `TX.endpoint` | bind and stop transport |  |  |
 
 ## Invariants
@@ -94,12 +94,12 @@ Owns sessions and sockets. Uses trust for pinning and discovery for candidates. 
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
 - `INV-TLS-1` — Certificate pinning fails closed on unknown or mismatched fingerprints. Test: planned: crates/net/tests/tls.rs
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 
 - pinning fails closed
-- one active session per peer
+- one active session per user
 - bounded reconnect backoff
 - no 0-RTT until replay handled
 

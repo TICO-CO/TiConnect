@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-peer="${1:?usage: remote.sh PEER_ID SECONDS}"
+user="${1:?usage: remote.sh USER_ID SECONDS}"
 seconds="${2:-15}"
 
-session="$(ticonnect-cli remote request "$peer")"
+session="$(ticonnect-cli remote request "$user")"
 echo "$session"
 session_id="$(printf '%s\n' "$session" | awk -F': ' '/session_id/ {print $2; exit}')"
 echo "Enter the PIN shown on the host:"

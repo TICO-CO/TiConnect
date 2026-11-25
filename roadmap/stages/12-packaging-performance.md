@@ -104,7 +104,7 @@ Stages 1, 1.5, and 2–11 complete.
 ## Security review
 
 - [ ] Threat model reviewed end to end.
-- [ ] Pairing and pinning reviewed.
+- [ ] Automatic trust and pinning reviewed.
 - [x] Key storage and permissions verified.
 - [x] Policy enforcement verified for accept, mute, ignore, and DND.
 - [x] Remote desktop consent, indicator, and kill switch verified.
@@ -118,7 +118,7 @@ Stages 1, 1.5, and 2–11 complete.
 - [x] Install from Flatpak.
 - [x] Install from source with systemd user units.
 - [x] Enable and disable autostart for daemon, UI, and overlay.
-- [x] Pairing guide with PIN and QR.
+- [x] Automatic trust guide with PIN and QR.
 - [x] Troubleshooting: daemon not starting, no discovery, portal denial, audio
   device issues, tray missing.
 - [x] Performance and resource usage.
@@ -132,7 +132,7 @@ Stages 1, 1.5, and 2–11 complete.
 - [ ] CI green on stable Rust.
 - [ ] Flatpak build reproducible.
 - [ ] Install, upgrade, and uninstall tested on a clean VM.
-- [ ] Two-node smoke test: pairing, messaging, file, call, remote desktop.
+- [ ] Two-node smoke test: trust, messaging, file, call, remote desktop.
 - [ ] X11 and Wayland smoke tests.
 - [ ] Soak test passed.
 - [ ] Release notes written.

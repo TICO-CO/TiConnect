@@ -31,11 +31,11 @@ flowchart LR
     n_ipc_signal_bus["IPC.signal-bus<br/>IPC"]
     n_msg_outbox["MSG.outbox<br/>MSG"]
     n_msg_sync_executor["MSG.sync-executor<br/>MSG"]
-    n_pair_dbus["PAIR.dbus<br/>PAIR"]
-    n_pair_endpoint["PAIR.endpoint<br/>PAIR"]
     n_rd_teardown["RD.teardown<br/>RD"]
     n_rd_transport["RD.transport<br/>RD"]
     n_rt_lifecycle["RT.lifecycle<br/>RT"]
+    n_trust_dbus["TRUST.dbus<br/>TRUST"]
+    n_trust_endpoint["TRUST.endpoint<br/>TRUST"]
     n_vid_decoder["VID.decoder<br/>VID"]
     n_vid_packetize["VID.packetize<br/>VID"]
     n_wire_envelope["WIRE.envelope<br/>WIRE"]
@@ -53,11 +53,11 @@ flowchart LR
   n_tx_session -->|calls / sync: transport metrics| n_tx_metrics
   n_tx_verifier -->|calls / sync gate:ID.trust-store: pinned trust lookup| n_id_trust_store
   n_tx_tls_cert -->|calls / sync gate:ID.cert-binding: certificate binding| n_id_cert_binding
-  n_tx_alpn -->|calls / sync gate:PAIR.endpoint: pairing ALPN| n_pair_endpoint
+  n_tx_alpn -->|calls / sync gate:TRUST.endpoint: trust ALPN| n_trust_endpoint
   n_tx_streams -->|calls / sync: stream frames| n_wire_envelope
   n_tx_datagrams -->|calls / sync: datagram frames| n_wire_envelope
   n_tx_reconnect -->|calls / sync: retry dial| n_tx_dialer
-  n_tx_session -.->|emits / event: PeerConnected and PeerDisconnected| n_ipc_signal_bus
+  n_tx_session -.->|emits / event: UserConnected and UserDisconnected| n_ipc_signal_bus
   n_tx_session -.->|emits / event: session established| n_msg_sync_executor
   n_tx_session -.->|emits / event: transfer stream available| n_att_scheduler
   n_tx_session -.->|emits / event gate:CALL.policy: call signaling available| n_call_signaling
@@ -75,11 +75,11 @@ flowchart LR
   n_rd_transport -.->|invokes / async gate:RD.consent: remote frame stream| n_tx_streams
   n_rd_transport -.->|invokes / async gate:RD.consent: remote input datagram| n_tx_datagrams
   n_rd_teardown -->|calls / sync: close remote transport| n_tx_session
-  n_pair_dbus -.->|consumes / event: peer connected and disconnected events| n_tx_session
-  n_pair_dbus -.->|invokes / async: open pairing connection| n_tx_dialer
+  n_trust_dbus -.->|consumes / event: user connected and disconnected events| n_tx_session
+  n_trust_dbus -.->|invokes / async: open trust connection| n_tx_dialer
   n_rt_lifecycle -.->|invokes / async: bind and stop transport| n_tx_endpoint
   classDef external fill:#eee,stroke:#999,stroke-dasharray: 4 3;
-  class n_att_scheduler, n_aud_decode, n_aud_encode, n_call_cleanup, n_call_signaling, n_disc_candidates, n_id_cert_binding, n_id_trust_store, n_ipc_signal_bus, n_msg_outbox, n_msg_sync_executor, n_pair_dbus, n_pair_endpoint, n_rd_teardown, n_rd_transport, n_rt_lifecycle, n_vid_decoder, n_vid_packetize, n_wire_envelope external;
+  class n_att_scheduler, n_aud_decode, n_aud_encode, n_call_cleanup, n_call_signaling, n_disc_candidates, n_id_cert_binding, n_id_trust_store, n_ipc_signal_bus, n_msg_outbox, n_msg_sync_executor, n_rd_teardown, n_rd_transport, n_rt_lifecycle, n_trust_dbus, n_trust_endpoint, n_vid_decoder, n_vid_packetize, n_wire_envelope external;
 ```
 
 | From | Kind | Mode | To | Contract | Gate | Limit | Stage |
@@ -97,11 +97,11 @@ flowchart LR
 | `TX.session` | calls | sync | `TX.metrics` | transport metrics |  |  | 5 |
 | `TX.verifier` | calls | sync | `ID.trust-store` | pinned trust lookup | ID.trust-store |  | 5 |
 | `TX.tls-cert` | calls | sync | `ID.cert-binding` | certificate binding | ID.cert-binding |  | 5 |
-| `TX.alpn` | calls | sync | `PAIR.endpoint` | pairing ALPN | PAIR.endpoint |  | 5 |
+| `TX.alpn` | calls | sync | `TRUST.endpoint` | trust ALPN | TRUST.endpoint |  | 5 |
 | `TX.streams` | calls | sync | `WIRE.envelope` | stream frames |  |  | 5 |
 | `TX.datagrams` | calls | sync | `WIRE.envelope` | datagram frames |  |  | 5 |
 | `TX.reconnect` | calls | sync | `TX.dialer` | retry dial |  |  | 5 |
-| `TX.session` | emits | event | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  | 5 |
+| `TX.session` | emits | event | `IPC.signal-bus` | UserConnected and UserDisconnected |  |  | 5 |
 | `TX.session` | emits | event | `MSG.sync-executor` | session established |  |  | 6 |
 | `TX.session` | emits | event | `ATT.scheduler` | transfer stream available |  |  | 9 |
 | `TX.session` | emits | event | `CALL.signaling` | call signaling available | CALL.policy |  | 10 |
@@ -119,6 +119,6 @@ flowchart LR
 | `RD.transport` | invokes | async | `TX.streams` | remote frame stream | RD.consent |  | 11 |
 | `RD.transport` | invokes | async | `TX.datagrams` | remote input datagram | RD.consent |  | 11 |
 | `RD.teardown` | calls | sync | `TX.session` | close remote transport |  |  | 11 |
-| `PAIR.dbus` | consumes | event | `TX.session` | peer connected and disconnected events |  |  | 5 |
-| `PAIR.dbus` | invokes | async | `TX.dialer` | open pairing connection |  |  | 5 |
+| `TRUST.dbus` | consumes | event | `TX.session` | user connected and disconnected events |  |  | 5 |
+| `TRUST.dbus` | invokes | async | `TX.dialer` | open trust connection |  |  | 5 |
 | `RT.lifecycle` | invokes | async | `TX.endpoint` | bind and stop transport |  |  | 5 |

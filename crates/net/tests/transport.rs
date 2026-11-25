@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,11 +10,15 @@ use ticonnect_net::transport::{
     DialTarget, Session, Transport, TransportConfig, TransportEvent, TrustLookup,
 };
 
-struct StaticTrust(HashSet<String>);
+struct StaticTrust(HashMap<String, NodeId>);
 
 impl TrustLookup for StaticTrust {
     fn is_trusted(&self, fingerprint: &str) -> bool {
-        self.0.contains(fingerprint)
+        self.0.contains_key(fingerprint)
+    }
+
+    fn node_id_for_fingerprint(&self, fingerprint: &str) -> Option<NodeId> {
+        self.0.get(fingerprint).copied()
     }
 }
 
@@ -37,8 +41,8 @@ async fn two_nodes_connect_over_loopback_and_exchange_handshakes() {
     wait_until(|| first.transport.session_count() == 1 && second.transport.session_count() == 1)
         .await;
     let sessions = first.transport.sessions();
-    assert_eq!(sessions[0].peer().node_id, second.node_id);
-    assert_eq!(sessions[0].peer().fingerprint, second.fingerprint);
+    assert_eq!(sessions[0].user().node_id, second.node_id);
+    assert_eq!(sessions[0].user().fingerprint, second.fingerprint);
     assert_eq!(first.transport.metrics().handshakes, 1);
 
     first.transport.shutdown().await;
@@ -46,7 +50,7 @@ async fn two_nodes_connect_over_loopback_and_exchange_handshakes() {
 }
 
 #[tokio::test]
-async fn unpaired_peer_is_rejected_before_any_session() {
+async fn untrusted_user_is_rejected_before_any_session() {
     let (first, _second) = trusted_pair().await;
     let untrusted = node_without_trust().await;
 
@@ -54,7 +58,7 @@ async fn unpaired_peer_is_rejected_before_any_session() {
         .transport
         .connect(target(&untrusted))
         .await
-        .expect_err("untrusted peer must be rejected");
+        .expect_err("untrusted user must be rejected");
     assert!(error.to_string().contains("handshake") || error.to_string().contains("stream"));
 
     first.transport.shutdown().await;
@@ -88,7 +92,7 @@ async fn closing_a_session_removes_it_and_allows_reconnect() {
 }
 
 #[tokio::test]
-async fn a_new_session_replaces_the_previous_session_for_the_same_peer() {
+async fn a_new_session_replaces_the_previous_session_for_the_same_user() {
     let (first, second) = trusted_pair().await;
     first
         .transport
@@ -111,22 +115,22 @@ async fn a_new_session_replaces_the_previous_session_for_the_same_peer() {
 }
 
 #[tokio::test]
-async fn pairing_alpn_is_routed_to_a_pairing_event() {
+async fn trust_alpn_is_routed_to_a_trust_event() {
     let (first, second) = trusted_pair().await;
     let mut events = second.transport.subscribe();
 
     let connection = first
         .transport
-        .connect_pairing(target(&second))
+        .connect_trust(target(&second))
         .await
-        .expect("pairing connection");
+        .expect("trust connection");
     let event = tokio::time::timeout(Duration::from_secs(5), events.recv())
         .await
-        .expect("pairing event timeout")
-        .expect("pairing event");
+        .expect("trust event timeout")
+        .expect("trust event");
 
     match event {
-        TransportEvent::PairingRequested {
+        TransportEvent::TrustRequested {
             fingerprint,
             address,
             ..
@@ -147,17 +151,21 @@ async fn trusted_pair() -> (Node, Node) {
     let second_identity = IdentityKeyPair::from_secret_bytes([72_u8; 32]);
     let first_fingerprint = Fingerprint::of(&first_identity.verifying_key());
     let second_fingerprint = Fingerprint::of(&second_identity.verifying_key());
+    let first_node_id = NodeId::generate();
+    let second_node_id = NodeId::generate();
 
     let first = node(
         first_identity,
+        first_node_id,
         first_fingerprint,
-        [first_fingerprint.to_hex(), second_fingerprint.to_hex()],
+        [(second_fingerprint.to_hex(), second_node_id)],
     )
     .await;
     let second = node(
         second_identity,
+        second_node_id,
         second_fingerprint,
-        [first_fingerprint.to_hex(), second_fingerprint.to_hex()],
+        [(first_fingerprint.to_hex(), first_node_id)],
     )
     .await;
     (first, second)
@@ -166,15 +174,15 @@ async fn trusted_pair() -> (Node, Node) {
 async fn node_without_trust() -> Node {
     let identity = IdentityKeyPair::from_secret_bytes([73_u8; 32]);
     let fingerprint = Fingerprint::of(&identity.verifying_key());
-    node(identity, fingerprint, []).await
+    node(identity, NodeId::generate(), fingerprint, []).await
 }
 
 async fn node(
     identity: IdentityKeyPair,
+    node_id: NodeId,
     fingerprint: Fingerprint,
-    trusted: impl IntoIterator<Item = String>,
+    trusted: impl IntoIterator<Item = (String, NodeId)>,
 ) -> Node {
-    let node_id = NodeId::generate();
     let bind_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0);
     let transport = Transport::bind(TransportConfig {
         identity: identity.clone(),

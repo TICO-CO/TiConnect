@@ -19,13 +19,13 @@
 | `LOG` | Observability | `ticonnect-logging` | `leaves` | 1 | [03-observability.md](../03-observability.md) |
 | `MSG` | Messaging | `ticonnect-daemon` | `daemon` | 6 | [12-messaging.md](../12-messaging.md) |
 | `OVL` | Overlay | `ticonnect-overlay` | `clients` | 8 | [21-overlay.md](../21-overlay.md) |
-| `PAIR` | Pairing | `ticonnect-net` | `services` | 5 | [09-pairing.md](../09-pairing.md) |
 | `POL` | Policy | `ticonnect-daemon` | `daemon` | 6 | [13-policy.md](../13-policy.md) |
 | `RD` | Remote desktop | `ticonnect-daemon` | `daemon` | 11 | [19-remote-desktop.md](../19-remote-desktop.md) |
 | `RT` | Runtime and composition | `ticonnect-runtime` | `daemon` | 2 | [01-runtime.md](../01-runtime.md) |
 | `TRAY` | Tray | `ticonnect-daemon` | `clients` | 6 | [22-tray.md](../22-tray.md) |
+| `TRUST` | Automatic trust | `ticonnect-net` | `services` | 5 | [09-trust.md](../09-trust.md) |
 | `TX` | Transport | `ticonnect-net` | `services` | 5 | [10-transport.md](../10-transport.md) |
-| `UI` | GTK4 user interface | `ticonnect-ui` | `clients` | 7 | [20-ui.md](../20-ui.md) |
+| `UI` | WebKitGTK user interface | `ticonnect-ui` | `clients` | 7 | [20-ui.md](../20-ui.md) |
 | `VID` | Video | `ticonnect-media` | `services` | 11 | [18-video.md](../18-video.md) |
 | `WIRE` | Wire protocol | `ticonnect-core` | `domain` | 5 | [11-wire-protocol.md](../11-wire-protocol.md) |
 
@@ -66,12 +66,10 @@
 | `AUD.metrics` | `AUD` | Audio metrics | `module` | `crates/media/src/audio/mod.rs` | 10 | counters | docs/systems/15-audio.md#components | planned: crates/media/tests/metrics.rs |
 | `AUD.playback` | `AUD` | Playback | `module` | `crates/media/src/audio/playback.rs` | 10 | playback ring | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
 | `AUD.resample` | `AUD` | Resampler | `module` | `crates/media/src/audio/resample.rs` | 10 |  | docs/systems/15-audio.md#components | planned: crates/media/tests/audio.rs |
-| `AUD.ringtone` | `AUD` | Ringtone player | `module` | `crates/media/src/ringtone.rs` | 10 | ringtone loop | docs/systems/15-audio.md#components | planned: crates/media/tests/ringtone.rs |
 | `CALL.cleanup` | `CALL` | Call cleanup | `module` | `crates/daemon/src/calls/session.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.media` | `CALL` | Media coordinator | `module` | `crates/daemon/src/calls/session.rs` | 10 | audio pipeline handles | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.policy` | `CALL` | Call policy gate | `module` | `crates/daemon/src/calls/mod.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.registry` | `CALL` | Call registry | `module` | `crates/daemon/src/calls/mod.rs` | 10 | active call | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
-| `CALL.ringtone` | `CALL` | Ringtone coordinator | `module` | `crates/daemon/src/calls/session.rs` | 10 | ringtone handle | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.signaling` | `CALL` | Call signaling | `module` | `crates/daemon/src/calls/session.rs` | 10 |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.state` | `CALL` | Call state machine | `module` | `crates/daemon/src/calls/state.rs` | 10 | call state | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CFG.defaults` | `CFG` | Defaults | `module` | `crates/settings/src/settings.rs` | 1 |  | docs/systems/02-settings.md#components | crates/settings/src/tests.rs |
@@ -93,10 +91,10 @@
 | `DB.migrations` | `DB` | Migration runner | `module` | `crates/daemon/src/storage/migrations.rs` | 3 | schema version | docs/systems/07-storage.md#components | crates/daemon/tests/migrations.rs |
 | `DB.open` | `DB` | Database open | `module` | `crates/daemon/src/storage/mod.rs` | 3 | database connection | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
 | `DB.outbox` | `DB` | Outbox repository | `module` | `crates/daemon/src/storage/outbox.rs` | 6 | outbox table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/outbox.rs |
-| `DB.peer-state` | `DB` | Peer state repository | `module` | `crates/daemon/src/storage/peer_state.rs` | 6 | peer_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/peer_state.rs |
-| `DB.peers` | `DB` | Peers repository | `module` | `crates/daemon/src/storage/peers.rs` | 3 | peers table | docs/systems/07-storage.md#components | crates/daemon/tests/peers.rs |
 | `DB.transfer-partials` | `DB` | Transfer partials repository | `module` | `crates/daemon/src/storage/transfers.rs` | 9 | transfer partials table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/transfers.rs |
 | `DB.tx` | `DB` | Transaction boundary | `module` | `crates/daemon/src/storage/mod.rs` | 3 | active transaction | docs/systems/07-storage.md#components | crates/daemon/tests/storage.rs |
+| `DB.user-state` | `DB` | User state repository | `module` | `crates/daemon/src/storage/user_state.rs` | 6 | user_state table | docs/systems/07-storage.md#components | planned: crates/daemon/tests/user_state.rs |
+| `DB.users` | `DB` | Users repository | `module` | `crates/daemon/src/storage/users.rs` | 3 | users table | docs/systems/07-storage.md#components | crates/daemon/tests/users.rs |
 | `DISC.beacon-codec` | `DISC` | Beacon codec | `module` | `crates/net/src/discovery/broadcast.rs` | 4 |  | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
 | `DISC.beacon-socket` | `DISC` | Beacon socket | `module` | `crates/net/src/discovery/broadcast.rs` | 4 | UDP socket | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
 | `DISC.candidates` | `DISC` | Candidate cache | `module` | `crates/net/src/discovery/candidate.rs` | 4 | candidate cache | docs/systems/08-discovery.md#components | crates/net/tests/discovery.rs |
@@ -131,7 +129,7 @@
 | `ID.node-id` | `ID` | Node id | `module` | `crates/core/src/id.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/core/tests/ids.rs |
 | `ID.permissions` | `ID` | Permission enforcement | `module` | `crates/daemon/src/identity.rs` | 3 |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/identity.rs |
 | `ID.revoke` | `ID` | Revocation | `module` | `crates/daemon/src/trust.rs` | 5 |  | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
-| `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted peer table | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
+| `ID.trust-store` | `ID` | Trust store | `module` | `crates/daemon/src/trust.rs` | 5 | trusted user table | docs/systems/06-identity-trust.md#components | crates/daemon/tests/trust.rs |
 | `IPC.client` | `IPC` | Client proxy | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
 | `IPC.dispatch` | `IPC` | Daemon dispatch | `module` | `crates/daemon/src/service.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/runtime/tests/dbus.rs |
 | `IPC.dto` | `IPC` | DTO mapping | `module` | `crates/core/src/ipc.rs` | 2 |  | docs/systems/05-ipc.md#components | crates/core/tests/ipc.rs |
@@ -163,22 +161,14 @@
 | `OVL.router` | `OVL` | Card router | `module` | `crates/overlay/src/card.rs` | 8 | card queue | docs/systems/21-overlay.md#components | crates/overlay/tests/card.rs |
 | `OVL.wayland` | `OVL` | Wayland layer-shell | `module` | `crates/overlay/src/layer_shell.rs` | 8 | layer surface | docs/systems/21-overlay.md#components | planned: manual Wayland |
 | `OVL.x11` | `OVL` | X11 fallback window | `module` | `crates/overlay/src/x11_fallback.rs` | 8 | fallback window | docs/systems/21-overlay.md#components | planned: manual X11 |
-| `PAIR.commit` | `PAIR` | Trust commit | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `PAIR.confirm` | `PAIR` | Transcript confirmation | `module` | `crates/net/src/pairing/spake2.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `PAIR.dbus` | `PAIR` | Pairing D-Bus adapter | `module` | `crates/daemon/src/pairing_service.rs` | 5 | pairing sessions | docs/systems/09-pairing.md#components | crates/runtime/tests/dbus.rs |
-| `PAIR.endpoint` | `PAIR` | Pairing endpoint | `module` | `crates/net/src/pairing/endpoint.rs` | 5 | pairing listener | docs/systems/09-pairing.md#components | crates/net/tests/pairing_endpoint.rs |
-| `PAIR.frames` | `PAIR` | Pairing frame codec | `module` | `crates/net/src/pairing/mod.rs` | 5 |  | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `PAIR.pin` | `PAIR` | PIN policy | `module` | `crates/net/src/pairing/pin.rs` | 5 | PIN attempts | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `PAIR.qr` | `PAIR` | QR payload | `module` | `crates/net/src/pairing/qr.rs` | 5 | one-time token | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
-| `PAIR.spake2` | `PAIR` | SPAKE2 state | `module` | `crates/net/src/pairing/spake2.rs` | 5 | pairing transcript | docs/systems/09-pairing.md#components | crates/net/tests/pairing.rs |
 | `POL.dnd` | `POL` | DND state | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | DND state | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `POL.inbound` | `POL` | Inbound decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `POL.notify` | `POL` | Notification decision | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `POL.receipts` | `POL` | Receipt suppression | `module` | `crates/daemon/src/messaging/policy.rs` | 6 |  | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
-| `POL.store` | `POL` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | peer policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
+| `POL.store` | `POL` | Policy store | `module` | `crates/daemon/src/messaging/policy.rs` | 6 | user policy | docs/systems/13-policy.md#components | crates/daemon/src/messaging/policy.rs |
 | `RD.capture` | `RD` | Capture coordinator | `module` | `crates/daemon/src/remote/session.rs` | 11 | capture handles | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
-| `RD.consent` | `RD` | Consent | `module` | `crates/daemon/src/remote/consent.rs` | 11 | consent grant | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
-| `RD.indicator` | `RD` | Indicator and kill switch | `module` | `crates/daemon/src/remote/consent.rs` | 11 | indicator state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
+| `RD.consent` | `RD` | Consent | `module` | `crates/daemon/src/remote/mod.rs` | 11 | consent grant | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
+| `RD.indicator` | `RD` | Indicator and kill switch | `module` | `crates/daemon/src/remote/mod.rs` | 11 | indicator state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.input` | `RD` | Input coordinator | `module` | `crates/daemon/src/remote/session.rs` | 11 | input handles | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.registry` | `RD` | Session registry | `module` | `crates/daemon/src/remote/mod.rs` | 11 | remote session registry | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
 | `RD.state` | `RD` | Remote session state | `module` | `crates/daemon/src/remote/state.rs` | 11 | remote session state | docs/systems/19-remote-desktop.md#components | planned: crates/daemon/tests/remote.rs |
@@ -196,6 +186,12 @@
 | `TRAY.item` | `TRAY` | StatusNotifierItem | `module` | `crates/daemon/src/tray.rs` | 6 | tray item | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
 | `TRAY.menu` | `TRAY` | Tray menu | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
 | `TRAY.policy` | `TRAY` | Policy actions | `module` | `crates/daemon/src/tray.rs` | 6 |  | docs/systems/22-tray.md#components | crates/daemon/src/tray.rs |
+| `TRUST.commit` | `TRUST` | Trust commit | `module` | `crates/net/src/trust/mod.rs` | 5 |  | docs/systems/09-trust.md#components | crates/net/tests/trust.rs |
+| `TRUST.confirm` | `TRUST` | Transcript confirmation | `module` | `crates/net/src/trust/spake2.rs` | 5 |  | docs/systems/09-trust.md#components | crates/net/tests/trust.rs |
+| `TRUST.dbus` | `TRUST` | Automatic trust D-Bus adapter | `module` | `crates/daemon/src/auto_trust.rs` | 5 | trust sessions | docs/systems/09-trust.md#components | crates/runtime/tests/dbus.rs |
+| `TRUST.endpoint` | `TRUST` | Automatic trust endpoint | `module` | `crates/net/src/trust/endpoint.rs` | 5 | trust listener | docs/systems/09-trust.md#components | crates/net/tests/trust_endpoint.rs |
+| `TRUST.frames` | `TRUST` | Automatic trust frame codec | `module` | `crates/net/src/trust/mod.rs` | 5 |  | docs/systems/09-trust.md#components | crates/net/tests/trust.rs |
+| `TRUST.spake2` | `TRUST` | SPAKE2 state | `module` | `crates/net/src/trust/spake2.rs` | 5 | trust transcript | docs/systems/09-trust.md#components | crates/net/tests/trust.rs |
 | `TX.alpn` | `TX` | ALPN routing | `module` | `crates/net/src/transport/server.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.datagrams` | `TX` | Datagram router | `module` | `crates/net/src/transport/session.rs` | 5 | datagram routes | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.dialer` | `TX` | Outbound dialer | `module` | `crates/net/src/transport/client.rs` | 5 | backoff state | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
@@ -207,20 +203,17 @@
 | `TX.streams` | `TX` | Stream registry | `module` | `crates/net/src/transport/session.rs` | 5 | open streams | docs/systems/10-transport.md#components | crates/net/tests/transport.rs |
 | `TX.tls-cert` | `TX` | TLS certificate | `module` | `crates/net/src/tls.rs` | 5 | self-signed certificate | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
 | `TX.verifier` | `TX` | Certificate verifier | `module` | `crates/net/src/tls.rs` | 5 |  | docs/systems/10-transport.md#components | crates/net/tests/tls.rs |
-| `UI.a11y` | `UI` | Accessibility | `module` | `crates/ui/src/app.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/a11y.rs |
-| `UI.activate` | `UI` | Activation service | `module` | `crates/ui/src/app.rs` | 7 | activation view | docs/systems/20-ui.md#components | crates/ui/tests/activation.rs |
-| `UI.attachments` | `UI` | Attachment widgets | `module` | `crates/ui/src/views/chat.rs` | 9 |  | docs/systems/20-ui.md#components | planned: crates/ui/tests/attachments.rs |
-| `UI.call` | `UI` | Call view | `module` | `crates/ui/src/views/call.rs` | 10 | call view state | docs/systems/20-ui.md#components | planned: crates/ui/tests/call.rs |
+| `UI.activate` | `UI` | Activation service | `module` | `crates/ui/src/activation.rs` | 7 | activation view | docs/systems/20-ui.md#components | crates/ui/tests/activation.rs |
+| `UI.assets` | `UI` | Embedded assets | `module` | `crates/ui/src/bridge/assets.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
+| `UI.bridge` | `UI` | HTTP and WebSocket bridge | `module` | `crates/ui/src/bridge/mod.rs` | 7 | bridge token, ticket store | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
 | `UI.client` | `UI` | D-Bus client | `module` | `crates/ui/src/client.rs` | 7 | connection state | docs/systems/20-ui.md#components | crates/ui/tests/client.rs |
-| `UI.composer` | `UI` | Composer | `module` | `crates/ui/src/views/chat.rs` | 7 | draft state | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
-| `UI.conversation` | `UI` | Conversation model | `module` | `crates/ui/src/views/chat.rs` | 7 | message model | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
-| `UI.pairing` | `UI` | Pairing view | `module` | `crates/ui/src/views/pairing.rs` | 7 | pairing dialog state | docs/systems/20-ui.md#components | crates/ui/tests/pairing.rs |
-| `UI.peers` | `UI` | Peer list model | `module` | `crates/ui/src/views/peers.rs` | 7 | peer model | docs/systems/20-ui.md#components | crates/ui/tests/peers.rs |
+| `UI.events` | `UI` | Daemon event mapping | `module` | `crates/ui/src/bridge/events.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
+| `UI.protocol` | `UI` | JSON-RPC protocol | `module` | `crates/ui/src/bridge/protocol.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
 | `UI.reconnect` | `UI` | Reconnect handling | `module` | `crates/ui/src/client.rs` | 7 | retry timer | docs/systems/20-ui.md#components | crates/ui/tests/reconnect.rs |
-| `UI.remote` | `UI` | Remote view | `module` | `crates/ui/src/views/remote.rs` | 11 | frame view state | docs/systems/20-ui.md#components | planned: crates/ui/tests/remote.rs |
-| `UI.settings` | `UI` | Settings view | `module` | `crates/ui/src/views/settings.rs` | 7 | settings form state | docs/systems/20-ui.md#components | crates/ui/tests/settings.rs |
-| `UI.shell` | `UI` | Application shell | `module` | `crates/ui/src/app.rs` | 7 | window state | docs/systems/20-ui.md#components | crates/ui/tests/shell.rs |
-| `UI.state-view` | `UI` | Message state view | `module` | `crates/ui/src/views/chat.rs` | 7 |  | docs/systems/20-ui.md#components | crates/ui/tests/chat.rs |
+| `UI.security` | `UI` | Bridge security | `module` | `crates/ui/src/bridge/security.rs` | 7 | bridge origins | docs/systems/20-ui.md#components | crates/ui/tests/bridge.rs |
+| `UI.settings` | `UI` | Settings writes | `module` | `crates/ui/src/model.rs` | 7 | settings form state | docs/systems/20-ui.md#components | crates/ui/tests/settings.rs |
+| `UI.shell` | `UI` | WebKitGTK host | `module` | `crates/ui/src/app.rs` | 7 | window state | docs/systems/20-ui.md#components | planned: tests/local/run.sh ui |
+| `UI.web` | `UI` | Svelte frontend | `module` | `crates/ui/web/` | 7 | view state | docs/systems/20-ui.md#components | crates/ui/web/src/lib/bridge.test.ts |
 | `VID.config` | `VID` | Encoder config | `module` | `crates/media/src/h264/mod.rs` | 11 | encoder config | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.decoder` | `VID` | H264 decoder | `module` | `crates/media/src/h264/decoder.rs` | 11 | decoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
 | `VID.encoder` | `VID` | H264 encoder | `module` | `crates/media/src/h264/encoder.rs` | 11 | encoder state | docs/systems/18-video.md#components | planned: crates/media/tests/h264.rs |
@@ -249,10 +242,10 @@
 | `DB.conversations-store` | `DB` | `sqlite-table` | `DB.conversations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#conversations |
 | `DB.messages-store` | `DB` | `sqlite-table` | `DB.messages` | $XDG_DATA_HOME/ticonnect/ticonnect.db#messages |
 | `DB.outbox-store` | `DB` | `sqlite-table` | `DB.outbox` | $XDG_DATA_HOME/ticonnect/ticonnect.db#outbox |
-| `DB.peer-state-store` | `DB` | `sqlite-table` | `DB.peer-state` | $XDG_DATA_HOME/ticonnect/ticonnect.db#peer_state |
-| `DB.peers-store` | `DB` | `sqlite-table` | `DB.peers` | $XDG_DATA_HOME/ticonnect/ticonnect.db#peers |
 | `DB.schema-store` | `DB` | `sqlite-table` | `DB.migrations` | $XDG_DATA_HOME/ticonnect/ticonnect.db#schema_version |
 | `DB.transfer-partials-store` | `DB` | `sqlite-table` | `DB.transfer-partials` | $XDG_DATA_HOME/ticonnect/ticonnect.db#transfer_partials |
+| `DB.user-state-store` | `DB` | `sqlite-table` | `DB.user-state` | $XDG_DATA_HOME/ticonnect/ticonnect.db#user_state |
+| `DB.users-store` | `DB` | `sqlite-table` | `DB.users` | $XDG_DATA_HOME/ticonnect/ticonnect.db#users |
 | `ID.key-store` | `ID` | `key-file` | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.key |
 | `ID.meta-store` | `ID` | `toml-file` | `ID.key-load` | $XDG_CONFIG_HOME/ticonnect/identity.toml |
 
@@ -274,4 +267,4 @@
 | `INV-STAGE-1` | Every stage demo uses only components from that stage or earlier stages. | cargo xtask systems --check | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 |
 | `INV-STATE-1` | Every persistent store has exactly one owner component. | cargo xtask systems --check | 1 |
 | `INV-TLS-1` | Certificate pinning fails closed on unknown or mismatched fingerprints. | planned: crates/net/tests/tls.rs | 5 |
-| `INV-TRUST-1` | No non-pairing feature is reachable before trust is established. | planned: crates/net/tests/unpaired_rejected.rs | 5, 6, 9, 10, 11 |
+| `INV-TRUST-1` | Users are trusted automatically on the LAN unless blocked. | planned: crates/net/tests/unpaired_rejected.rs | 5, 6, 9, 10, 11 |

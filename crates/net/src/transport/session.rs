@@ -7,13 +7,13 @@ use ticonnect_core::id::NodeId;
 use ticonnect_core::wire::{Frame, FrameKind, HandshakeFrame, MAX_WIRE_FRAME};
 use tokio::time::timeout;
 
-use super::TransportError;
+use super::{SESSION_REJECTED, TransportError};
 
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 pub const STREAM_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerInfo {
+pub struct UserInfo {
     pub node_id: NodeId,
     pub fingerprint: Fingerprint,
     pub public_key: [u8; 32],
@@ -31,15 +31,15 @@ pub enum SessionState {
 #[derive(Clone)]
 pub struct Session {
     connection: quinn::Connection,
-    peer: PeerInfo,
+    user: UserInfo,
     state: Arc<Mutex<SessionState>>,
 }
 
 impl Session {
-    pub(crate) fn new(connection: quinn::Connection, peer: PeerInfo) -> Self {
+    pub(crate) fn new(connection: quinn::Connection, user: UserInfo) -> Self {
         Self {
             connection,
-            peer,
+            user,
             state: Arc::new(Mutex::new(SessionState::Connected)),
         }
     }
@@ -48,8 +48,8 @@ impl Session {
         *self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    pub fn peer(&self) -> &PeerInfo {
-        &self.peer
+    pub fn user(&self) -> &UserInfo {
+        &self.user
     }
 
     pub fn connection(&self) -> &quinn::Connection {
@@ -109,7 +109,7 @@ impl std::fmt::Debug for Session {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("Session")
-            .field("peer", &self.peer)
+            .field("user", &self.user)
             .field("state", &self.state())
             .field("stable_id", &self.connection.stable_id())
             .finish()
@@ -121,9 +121,9 @@ pub(crate) async fn client_handshake(
     node_id: NodeId,
     fingerprint: Fingerprint,
     expected: Fingerprint,
-    expected_node_id: Option<NodeId>,
+    expected_node_id: NodeId,
     public_key: [u8; 32],
-) -> Result<PeerInfo, TransportError> {
+) -> Result<UserInfo, TransportError> {
     let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.open_bi())
         .await
         .map_err(|_| TransportError::Handshake("open stream timed out".to_owned()))?
@@ -144,19 +144,18 @@ pub(crate) async fn client_handshake(
             "expected handshake frame".to_owned(),
         ));
     }
-    let peer = HandshakeFrame::decode(frame.payload())?;
-    if peer.fingerprint != expected {
+    let user = HandshakeFrame::decode(frame.payload())?;
+    if user.fingerprint != expected {
         return Err(TransportError::IdentityMismatch);
     }
-    if let Some(expected_node_id) = expected_node_id
-        && peer.node_id != expected_node_id
-    {
+    if user.node_id != expected_node_id {
+        connection.close(SESSION_REJECTED.into(), b"identity mismatch");
         return Err(TransportError::IdentityMismatch);
     }
 
-    Ok(PeerInfo {
-        node_id: peer.node_id,
-        fingerprint: peer.fingerprint,
+    Ok(UserInfo {
+        node_id: user.node_id,
+        fingerprint: user.fingerprint,
         public_key,
         address: connection.remote_address(),
     })
@@ -167,8 +166,9 @@ pub(crate) async fn server_handshake(
     node_id: NodeId,
     fingerprint: Fingerprint,
     certificate_fingerprint: Fingerprint,
+    expected_remote_node_id: NodeId,
     public_key: [u8; 32],
-) -> Result<PeerInfo, TransportError> {
+) -> Result<UserInfo, TransportError> {
     let (mut send, mut recv) = timeout(HANDSHAKE_TIMEOUT, connection.accept_bi())
         .await
         .map_err(|_| TransportError::Handshake("accept stream timed out".to_owned()))?
@@ -180,8 +180,12 @@ pub(crate) async fn server_handshake(
             "expected handshake frame".to_owned(),
         ));
     }
-    let peer = HandshakeFrame::decode(frame.payload())?;
-    if peer.fingerprint != certificate_fingerprint {
+    let user = HandshakeFrame::decode(frame.payload())?;
+    if user.fingerprint != certificate_fingerprint {
+        return Err(TransportError::IdentityMismatch);
+    }
+    if user.node_id != expected_remote_node_id {
+        connection.close(SESSION_REJECTED.into(), b"identity mismatch");
         return Err(TransportError::IdentityMismatch);
     }
 
@@ -194,9 +198,9 @@ pub(crate) async fn server_handshake(
     )
     .await?;
 
-    Ok(PeerInfo {
-        node_id: peer.node_id,
-        fingerprint: peer.fingerprint,
+    Ok(UserInfo {
+        node_id: user.node_id,
+        fingerprint: user.fingerprint,
         public_key,
         address: connection.remote_address(),
     })

@@ -1,0 +1,7 @@
+- [x] renamed peers to users
+- [x] stable user identity: fingerprint/node ID; IP/MAC/OS/display server shown as metadata
+- [x] voice calls and remote desktop requests are top-right overlay notifications, not chat messages
+- [x] removed manual pairing (PIN/QR); automatic LAN trust connects users by default
+- [x] user details live on the user page, not chat/call screens
+- [x] YouTube URLs detected and played in a desktop overlay player
+- [x] YouTube watch parties with play/pause/seek synchronization

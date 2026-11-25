@@ -1,47 +1,50 @@
 # Security model
 
-This document covers identity, discovery, pairing, transport, and text
+This document covers identity, discovery, automatic trust, transport, and text
 messaging. Files, calls, and remote desktop add their own gates in later stages.
 
 ## Assets
 
 - Ed25519 identity private key in `identity.key`.
-- Trusted peer table and peer signing keys in SQLite.
+- Trusted user table and user signing keys in SQLite.
 - Message bodies, signatures, and receipt state.
-- Pairing PINs, QR tokens, and SPAKE2 secrets.
-- Post-pairing QUIC session keys and application frames.
+- LAN trust tokens and SPAKE2 secrets.
+- QUIC session keys and application frames.
 
 ## Trust boundaries
 
 - Discovery is untrusted input. A candidate is a hint only and never grants
   trust.
-- The pairing endpoint is reachable before trust. It exposes no feature other
-  than the pairing exchange.
+- The trust endpoint is reachable before trust. It exposes no feature other
+  than the automatic trust exchange.
 - The profile endpoint (`ticonnect-profile/1`) is reachable before trust. It
   serves only the local display name and avatar, bounded to 160 KiB. Profile
   data is public LAN data and never grants trust.
-- Post-pairing sessions are reachable only after the peer certificate
-  fingerprint matches a trusted peer.
-- The D-Bus session bus is the local control boundary. Any local process on the
-  session bus can call daemon methods; this is the same boundary used by the UI
-  and CLI.
+- Sessions are reachable only after the user certificate fingerprint matches a
+  trusted user. Inbound and outbound handshakes require the claimed `node_id` to
+  match the node id stored for that fingerprint, so a trusted key cannot
+  impersonate another trusted contact.
+- The TiConnect IPC bus is the local control boundary. It uses the D-Bus session
+  bus by default; `TICONNECT_IPC_BUS_ADDRESS` can select a private bus. Any
+  local process on that bus can call daemon methods; this is the same boundary
+  used by the UI and CLI.
 
 ## Threats and mitigations
 
 | Threat | Mitigation |
 |---|---|
-| Spoofed mDNS or broadcast candidate | Candidates are validated and only used as addresses. Pairing still requires the PIN or QR token. |
-| Man-in-the-middle during pairing | SPAKE2 binds both identities, both fingerprints, the certificate fingerprints, protocol version, and pairing mode in the transcript. Confirmation values are compared in constant time. |
-| PIN guessing | PINs are six digits, expire after 120 seconds, and allow three failures per session. A new PIN is required after exhaustion. |
-| QR replay | QR tokens are 32 random bytes, expire after 120 seconds, and are single-use. The listener clears the active session after success. |
+| Spoofed mDNS or broadcast candidate | Candidates are validated and only used as addresses. Trust still requires the LAN token exchange and certificate pinning. |
+| Man-in-the-middle during trust | SPAKE2 binds both identities, both fingerprints, the certificate fingerprints, protocol version, and LAN token in the transcript. Confirmation values are compared in constant time. |
+| Trust token replay | The LAN token is derived from both fingerprints and is bound into the SPAKE2 transcript. Trust frames are single-use per exchange. |
 | Certificate substitution | The client pins the expected BLAKE3 fingerprint before the handshake completes. The server requires the certificate fingerprint to be in the trust store before accepting session streams. |
-| Unpaired access | Only the `ticonnect-pair/1` and `ticonnect-profile/1` ALPNs are reachable before trust. `ticonnect/1` closes the connection when the peer fingerprint is not trusted. |
-| Spoofed profile | The profile endpoint is self-asserted. Clients verify the signed profile against the certificate key and advertised avatar hash, but profile data never grants trust. Pairing and session trust remain authoritative. |
+| Unknown user access | Only the `ticonnect-trust/1` and `ticonnect-profile/1` ALPNs are reachable before trust. `ticonnect/1` closes the connection when the user fingerprint is blocked. |
+| Spoofed profile | The profile endpoint is self-asserted. Clients verify the signed profile against the certificate key and advertised avatar hash, but profile data never grants trust. Session trust remains authoritative. |
 | Key substitution | The self-signed certificate uses the Ed25519 identity key. TLS proves possession of that key, and the fingerprint is the BLAKE3 hash of the public key. |
-| Replay of pairing messages | The transcript includes both identities, the token, and a protocol version. Pairing messages are length-prefixed and bounded. 0-RTT is disabled. |
-| Oversized or malformed frames | Every decoder enforces fixed maximum sizes and returns typed errors. Fuzz targets cover wire and pairing decoders. |
-| Resource exhaustion | Candidate caps, packet size limits, bounded pairing frames, connection timeouts, and one active session per peer limit memory and connection abuse. |
-| Secret leakage | Private keys, PINs, tokens, and session keys are never logged or exposed over D-Bus. Message bodies are never logged. Errors are stable reason codes. |
+| Replay of trust messages | The transcript includes both identities, the token, and a protocol version. Trust messages are length-prefixed and bounded. 0-RTT is disabled. |
+| Oversized or malformed frames | Every decoder enforces fixed maximum sizes and returns typed errors. Fuzz targets cover wire and trust decoders. |
+| Resource exhaustion | Candidate caps, packet size limits, bounded trust frames, connection timeouts, and one active session per user limit memory and connection abuse. |
+| Secret leakage | Private keys, trust tokens, and session keys are never logged or exposed over D-Bus. Message bodies are never logged. Errors are stable reason codes. |
+| Claimed node id substitution | Both sides resolve the expected node id from the trusted fingerprint and reject the handshake when the claimed id differs. Remote consent also shows the verified fingerprint. |
 | Forged or tampered message | Records are signed with the sender's Ed25519 identity key. The receiver verifies the signature against the public key bound to the pinned fingerprint before storage, acknowledgement, or notification. |
 | Message replay or duplication | Message IDs are UUIDv7 and signed. Duplicate IDs and duplicate `(conversation, sender, seq)` rows are ignored. Sequence numbers are bounded and monotonic. |
 | Forged receipt | Ack records are signed and may target only a locally stored outbound message. Acks for unknown or inbound targets are rejected. |
@@ -56,39 +59,34 @@ There is one fingerprint model in v1:
 2. The identity fingerprint is BLAKE3 of the Ed25519 public key.
 3. The self-signed TLS certificate uses the same Ed25519 key.
 4. The certificate fingerprint is therefore the identity fingerprint.
-5. Trust rows store that single fingerprint and the peer's Ed25519 public key.
-6. The public key is extracted from the peer certificate during pairing or the
+5. Trust rows store that single fingerprint and the user's Ed25519 public key.
+6. The public key is extracted from the user certificate during trust or the
    first authenticated session and checked against the pinned fingerprint.
 
 Certificate validity and self-signature are checked. Pinning fails closed on
 unknown, mismatched, or malformed certificates.
 
-## Open LAN mode
+## Automatic LAN trust
 
-Open LAN mode is enabled by default. Every discovered peer is automatically
-paired and trusted using a deterministic LAN token derived from both
-fingerprints. This removes the user identity-verification step: any device on
-the same LAN can appear in the peer list and send messages or calls.
+Every discovered user is automatically trusted using a deterministic LAN token
+derived from both fingerprints. This removes the user identity-verification step:
+any device on the same LAN can appear in the user list and send messages or
+calls.
 
 Controls:
 
-- `mute` keeps the peer connected but suppresses notifications.
+- `mute` keeps the user connected but suppresses notifications.
 - `ignore` drops inbound messages and calls silently.
 - blocking removes trust, closes the session, and adds the fingerprint to a
-  persistent blocklist so automatic pairing does not re-trust it.
-- manual pairing or `pair unblock <fingerprint>` clears a block.
+  persistent blocklist so automatic trust does not re-add it.
+- `ticonnect users unblock <fingerprint>` clears a block.
 
-Remote desktop remains gated by explicit host consent and a fresh PIN even in
-Open LAN mode. `trust.open_lan` can be disabled in settings or with:
+Remote desktop remains gated by explicit host consent.
 
-```sh
-ticonnect settings set trust.open_lan false
-```
+## Trust endpoint
 
-## Pairing endpoint
-
-The pairing endpoint shares the QUIC listener and port with session transport but
-uses the `ticonnect-pair/1` ALPN. ALPN routing happens before any application
+The trust endpoint shares the QUIC listener and port with session transport but
+uses the `ticonnect-trust/1` ALPN. ALPN routing happens before any application
 handler is dispatched. Session ALPN connections check the trust table after the
 TLS handshake and before accepting the handshake stream.
 
@@ -96,7 +94,7 @@ TLS handshake and before accepting the handshake stream.
 
 - Compromised local accounts or root on either host.
 - WAN discovery or relays.
-- Key rotation, multi-device identities, and group pairing in v1.
+- Key rotation, multi-device identities, and group trust in v1.
 
 ## Attachments
 
@@ -107,38 +105,39 @@ TLS handshake and before accepting the handshake stream.
   symlinks and never overwrite an existing path.
 - Size is bounded by `attachments.max_size_mib` (default 2048). MIME type and
   extension are validated; nothing is opened or executed automatically.
-- Peer `ignore` policy blocks inbound transfer initiation. `mute` stores content
+- User `ignore` policy blocks inbound transfer initiation. `mute` stores content
   silently.
-- Transfer frames, chunk sizes, concurrent transfers per peer, and total active
+- Transfer frames, chunk sizes, concurrent transfers per user, and total active
   transfers are bounded.
 
 ## Voice calls
 
-- Calls are offered only to trusted, pinned peers over the authenticated QUIC
+- Calls are offered only to trusted, pinned users over the authenticated QUIC
   session.
 - The microphone is opened only after the local call is accepted.
-- Audio datagrams are accepted only for the active call and the matching peer.
+- Audio datagrams are accepted only for the active call and the matching user.
 - Packet size, jitter depth, and playback buffers are bounded.
-- Ignore policy drops calls before any media setup; DND suppresses the ringtone
-  but still reports the incoming call.
-- Logs contain call state and peer id, not audio contents.
+- Ignore policy drops calls before any media setup; DND suppresses notification
+  sounds but still reports the incoming call.
+- Logs contain call state and user id, not audio contents.
 
 ## Remote desktop
 
-- Every session requires explicit host consent and a fresh six-digit PIN.
-- PINs expire after `remote.pin_ttl_secs` (default 300 s) and allow
-  `remote.pin_attempts` failures (default 3), after which the session is denied.
-- A session is scoped to exactly one pinned peer. Untrusted peers cannot request
-  or join a session.
-- Capture and input use the desktop portal grant and begin only after consent.
+- Every session requires explicit host consent. Consent is the full grant; no PIN is shown or entered.
+- A session is scoped to exactly one pinned user and the verified fingerprint.
+  Untrusted users cannot request or join a session, and a trusted user cannot
+  claim another contact's node id.
+- The consent card shows the verified fingerprint. Capture starts only after
+  consent and a desktop portal grant. Input injection uses libei on Wayland or
+  XTEST on X11 and begins only after consent.
 - A visible indicator is shown for the whole active session. The kill switch
   tears down capture, input, and transport immediately.
 - Input events are validated and rate limited before injection. No screen
-  content, keystrokes, or PINs are logged.
+  content or keystrokes are logged.
 
 ## Threat model review status
 
-Pairing, pinning, key storage, message policy, attachments, calls, and remote
+Automatic trust, pinning, key storage, message policy, attachments, calls, and remote
 consent are covered by unit and integration tests. Manual GNOME/KDE Wayland and
 X11 verification of portals, input injection, and the indicator remains a
 release gate.

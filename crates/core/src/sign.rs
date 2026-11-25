@@ -152,12 +152,12 @@ mod tests {
     #[test]
     fn sign_and_verify_round_trip() {
         let identity = IdentityKeyPair::from_secret_bytes([17_u8; 32]);
-        let envelope = SignedEnvelope::sign(&identity, b"pairing transcript").expect("sign");
+        let envelope = SignedEnvelope::sign(&identity, b"trust transcript").expect("sign");
 
         envelope
             .verify(&identity.verifying_key())
             .expect("verify own signature");
-        assert_eq!(envelope.payload(), b"pairing transcript");
+        assert_eq!(envelope.payload(), b"trust transcript");
         assert!(verify(
             &identity.verifying_key(),
             envelope.payload(),
@@ -168,7 +168,7 @@ mod tests {
     #[test]
     fn tampered_payload_fails_verification() {
         let identity = IdentityKeyPair::from_secret_bytes([18_u8; 32]);
-        let mut bytes = SignedEnvelope::sign(&identity, b"pairing transcript")
+        let mut bytes = SignedEnvelope::sign(&identity, b"trust transcript")
             .expect("sign")
             .encode();
         let payload_offset = HEADER_LEN;

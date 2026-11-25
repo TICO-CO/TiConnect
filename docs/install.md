@@ -72,7 +72,9 @@ sudo nixos-rebuild switch --flake /etc/nixos
 ```
 
 The module installs the package, adds the app-menu entry, and enables the
-daemon and overlay systemd user services. Package-only install without services:
+daemon and overlay systemd user services. Set `services.ticonnect.openFirewall =
+true` to allow the default UDP ports `5353`, `45870`, and `45871`. Package-only
+install without services:
 
 ```sh
 nix profile install github:TICO-CO/TiConnect#ticonnect
@@ -89,13 +91,14 @@ directly:
 ```sh
 ticonnect status
 ticonnect id show
-ticonnect pair start
-ticonnect send <peer-id> "hello"
-ticonnect peers list
+ticonnect send <user-id> "hello"
+ticonnect users list
 ticonnect settings list
+ticonnect doctor
 ```
 
-The command line starts the daemon when it is absent. `ticonnect --help` lists
+The command line starts the daemon when it is absent. `ticonnect doctor` checks
+local prerequisites without starting the daemon. `ticonnect --help` lists
 the user-facing surface; `ticonnect --version` prints the binary version.
 `ticonnect version` is an alias. `ticonnect cli ...` remains a hidden
 compatibility alias.
@@ -138,26 +141,61 @@ Daemon logs also go to `$XDG_STATE_HOME/ticonnect/daemon.log`, usually
 If the app menu entry does not launch, verify `~/.local/bin` is in your session
 `PATH` and run `ticonnect` from a terminal to see the error.
 
-## Flatpak (experimental)
-
-Flatpak is kept as an experimental packaging path and is not a release gate:
+If peers are not discovered or cannot connect, check LAN access:
 
 ```sh
-flatpak-builder --user --install --force-clean build packaging/flatpak/org.ticonnect.TiConnect.yml
+ticonnect network status
+ticonnect network check
+```
+
+The daemon uses mDNS (`5353/udp`), UDP broadcast discovery (`45870/udp`), and
+QUIC transport (`45871/udp` by default). On systems with a firewall, allow those
+UDP ports on the LAN. Examples:
+
+```sh
+sudo ufw allow 5353/udp
+sudo ufw allow 45870/udp
+sudo ufw allow 45871/udp
+```
+
+```sh
+sudo firewall-cmd --add-port=5353/udp --add-port=45870/udp --add-port=45871/udp --permanent
+sudo firewall-cmd --reload
+```
+
+`no_peers` means no peer replied; it does not prove the firewall is blocking
+traffic. `peers_unreachable` means discovery worked but the transport port did
+not. Check client isolation, VPNs, and the configured `transport.port`.
+
+## Flatpak
+
+Flatpak is the recommended tester path. Download
+`org.ticonnect.TiConnect-<tag>.flatpak` from the latest release, then install
+it:
+
+```sh
+flatpak install --user ./org.ticonnect.TiConnect-v0.1.0.flatpak
+flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
 
-Portal-backed capture and input, notifications, autostart, and the status
-notifier must be provided by the host desktop.
+The bundle includes the media codec extension and `yt-dlp`. Portal-backed
+capture and input, notifications, tray integration, audio devices, and LAN UDP
+access must still be provided by the host desktop. See
+`docs/tester-quickstart.md` for the full two-machine checklist.
+
+Developers can build the bundle locally:
+
+```sh
+scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.1.0 dist
+```
 
 ## From source
 
 Dependencies on Debian/Ubuntu:
 
 ```sh
-sudo apt install build-essential cmake pkg-config libgtk-4-dev libadwaita-1-dev \
-  libasound2-dev libwayland-dev wayland-protocols libxkbcommon-dev \
-  libx11-dev libxi-dev libxtst-dev
+sudo apt install build-essential cmake pkg-config libgtk-4-dev   libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols   libxkbcommon-dev libx11-dev libxi-dev libxtst-dev
 ```
 
 `gtk4-layer-shell` is required by the overlay. Build it from source when it is

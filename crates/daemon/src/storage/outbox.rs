@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
 
@@ -26,9 +26,44 @@ pub fn enqueue(
     Ok(())
 }
 
-pub fn due_for_peer(
+pub fn requeue(
     connection: &Connection,
-    peer_id: &str,
+    message_id: &str,
+    sender_id: &str,
+    next_try: i64,
+    expires_at: i64,
+) -> Result<Option<String>, StorageError> {
+    let transaction = connection.unchecked_transaction()?;
+    let user_id = transaction
+        .query_row(
+            "SELECT c.user_id
+             FROM messages m
+             JOIN conversations c ON c.id = m.conversation_id
+             WHERE m.id = ?1 AND m.sender_id = ?2
+               AND m.state IN ('failed', 'expired')",
+            params![message_id, sender_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    let Some(user_id) = user_id else {
+        return Ok(None);
+    };
+    transaction.execute(
+        "INSERT OR REPLACE INTO outbox (message_id, attempts, next_try, expires_at)
+         VALUES (?1, 0, ?2, ?3)",
+        params![message_id, next_try, expires_at],
+    )?;
+    transaction.execute(
+        "UPDATE messages SET state = 'queued' WHERE id = ?1",
+        params![message_id],
+    )?;
+    transaction.commit()?;
+    Ok(Some(user_id))
+}
+
+pub fn due_for_user(
+    connection: &Connection,
+    user_id: &str,
     now: i64,
 ) -> Result<Vec<OutboxEntry>, StorageError> {
     let mut statement = connection.prepare(
@@ -36,22 +71,30 @@ pub fn due_for_peer(
          FROM outbox o
          JOIN messages m ON m.id = o.message_id
          JOIN conversations c ON c.id = m.conversation_id
-         WHERE c.peer_id = ?1 AND o.next_try <= ?2 AND o.expires_at > ?2
+         WHERE c.user_id = ?1 AND o.next_try <= ?2 AND o.expires_at > ?2
          ORDER BY m.seq
          LIMIT ?3",
     )?;
-    let rows = statement.query_map(params![peer_id, now, i64::from(OUTBOX_BATCH)], |row| {
-        let attempts: i64 = row.get(1)?;
-        Ok(OutboxEntry {
-            message_id: row.get(0)?,
-            attempts: u32::try_from(attempts).unwrap_or_default(),
-            next_try: row.get(2)?,
-            expires_at: row.get(3)?,
-        })
+    let rows = statement.query_map(params![user_id, now, i64::from(OUTBOX_BATCH)], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, i64>(1)?,
+            row.get::<_, i64>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
     })?;
     let mut entries = Vec::new();
     for row in rows {
-        entries.push(row?);
+        let (message_id, attempts, next_try, expires_at) = row?;
+        let attempts = u32::try_from(attempts).map_err(|_| {
+            StorageError::InvalidData(format!("outbox attempts out of range: {attempts}"))
+        })?;
+        entries.push(OutboxEntry {
+            message_id,
+            attempts,
+            next_try,
+            expires_at,
+        });
     }
     Ok(entries)
 }

@@ -8,7 +8,7 @@ Constraints:
 
 - Linux, X11 and Wayland.
 - Lightweight while idle.
-- Mute/ignore incoming messages per peer.
+- Mute/ignore incoming messages per user.
 - No root privileges.
 
 ## 1. Process model
@@ -17,7 +17,7 @@ Constraints:
 ticonnect          launcher: starts the daemon if absent, opens the GTK4 UI
 ticonnect <cmd>    command-line client: scripting and diagnostics
 ticonnect daemon   hidden internal: headless daemon, discovery, transport,
-                   storage, calls, capture, ringtone
+                   storage, calls, capture
 ticonnect ui       hidden internal: GTK4 application, main window
 ticonnect overlay  hidden internal: corner overlay agent, toast cards
 ```
@@ -33,7 +33,7 @@ without any graphical stack.
 D-Bus is the control plane:
 
 - `org.ticonnect.Daemon` — owned by `ticonnect daemon`. Methods for sending messages,
-  managing peers, starting calls, granting remote sessions, and reading settings.
+  managing users, starting calls, granting remote sessions, and reading settings.
   Config writes go through `ticonnect-settings`, not D-Bus. Signals for inbound
   events and config reloads.
 - `org.ticonnect.UI` — owned by `ticonnect ui`. The overlay activates it by
@@ -53,7 +53,7 @@ crates/
   settings/                 persisted + effective settings (leaf)
   logging/                  tracing setup (leaf)
   runtime/                  composition root, settings + logging + ticonnectd
-  core/                     protocol types, identity, pairing, crypto
+  core/                     protocol types, identity, trust, crypto
   net/                      mDNS discovery, QUIC transport, sessions
   media/                    cpal audio, opus, openh264, jitter buffer
   desktop/                  portals, screencast, libei/XTEST input
@@ -99,16 +99,15 @@ startup step and let `anyhow` aggregate crate errors. Only `src/main.rs` uses
 | Transport | `quinn` over `rustls` (TLS 1.3, self-signed pinned certs) |
 | Wire format | `postcard` + `serde` |
 | Identity | `ed25519-dalek`, `blake3` fingerprints |
-| Pairing | `spake2` with a 6-digit PIN or QR |
-| IPC | `zbus` on the session bus |
+| Trust | automatic LAN token exchange with `spake2` |
+| IPC | `zbus` on the session bus by default (`TICONNECT_IPC_BUS_ADDRESS` override) |
 | Data storage | `rusqlite` (bundled) |
 | Audio I/O | `cpal` |
 | Audio codec | `opus`, 20ms frames |
 | Video codec | `openh264` (software), 1080p target |
 | Screen capture | `ashpd` RemoteDesktop portal + `pipewire-rs` |
 | Input injection | `reis` (libei) on Wayland, `x11rb` XTEST on X11 |
-| Ringtone | `rodio` + `symphonia` decoders |
-| UI | `gtk4`, `libadwaita`, `relm4` |
+| UI | `gtk4`, `webkit6`, `axum`, Svelte 5 |
 | Toast overlay | `gtk4-layer-shell` |
 | Notifications | `notify-rust` |
 | Tray | `ksni` (StatusNotifierItem) |
@@ -125,7 +124,7 @@ not lost updates. Environment overrides are runtime-only and never persisted.
 
 The daemon watches `config.toml`, reloads changed settings, and emits
 `SettingsChanged`. SQLite under the user data directory holds application data
-only: peers, messages, outbox, attachment metadata, and related state. It never
+only: users, messages, outbox, attachment metadata, and related state. It never
 stores configuration.
 
 ### Transport rule
@@ -141,28 +140,28 @@ LAN path.
 Pure-Rust media stack. Software H.264. No GStreamer. Target is 1080p on a
 LAN; 4K support is explicitly out of scope.
 
-## 4. Discovery, identity, pairing
+## 4. Discovery, identity, automatic trust
 
 1. Node starts and generates or loads an Ed25519 identity.
 2. `net` advertises `_ticonnect._udp.local.` over mDNS with a TXT record
    carrying protocol version and fingerprint. UDP broadcast is the fallback
    when mDNS is unavailable.
-3. Discovery produces candidates, not trust. Nothing is exchanged until pairing.
-4. Pairing uses SPAKE2 keyed by a 6-digit PIN shown on one side and typed on
-   the other, or a QR code containing node id, address, and fingerprint.
-5. Successful pairing binds the peer fingerprint into the trusted-peer table
+3. Discovery produces candidates. The daemon performs automatic LAN trust.
+4. Users are trusted automatically on the LAN with a token exchange derived from
+   both fingerprints. There is no manual pairing flow.
+5. Successful trust binds the user fingerprint into the trusted-user table
    in SQLite. Subsequent TLS connections use certificate pinning against that
    fingerprint.
 
-All traffic is encrypted and authenticated. Unpaired peers can only reach the
-pairing endpoint.
+All traffic is encrypted and authenticated. Unpaired users can only reach the
+trust endpoint.
 
 ## 5. Messaging and files
 
 ### Replica model
 
 Each node stores a full local replica of every conversation it participates in.
-There is no server and no shared authority. A conversation is the peer pair;
+There is no server and no shared authority. A conversation is the user pair;
 group chats are out of scope in v1. Each side is authoritative only for the
 messages it sent, and the receiver cannot delete or modify the sender's copy.
 
@@ -178,7 +177,7 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 
 ### Outbox
 
-- Undelivered messages queue in `outbox` and retry on peer rediscovery.
+- Undelivered messages queue in `outbox` and retry on user rediscovery.
 - Undelivered messages expire after **7 days by default**, configurable per
   node. `expires_at` is stored per row; expired rows are dropped and surfaced
   in the UI as failed.
@@ -187,10 +186,10 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 ### Gap sync on reconnect
 
 1. Transport is authenticated by pinned fingerprint.
-2. Both sides swap `peer_state` (`last_sent_seq` / `last_recv_seq`).
+2. Both sides swap `user_state` (`last_sent_seq` / `last_recv_seq`).
 3. Each requests the missing ranges and streams them.
 4. Records are verified and inserted; duplicates are ignored.
-5. The outbox for that peer is flushed.
+5. The outbox for that user is flushed.
 
 ### Read receipts (v1)
 
@@ -199,7 +198,7 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 - `delivered` means the receiver's daemon stored the message. `read` means the
   conversation was visible in the UI and the message was scrolled into view.
 - Acks are coalesced over a short interval to avoid ack storms.
-- Receipts are suppressed for peers under `mute`/`ignore` unless the message
+- Receipts are suppressed for users under `mute`/`ignore` unless the message
   was actually read.
 - A global config toggle disables sending read receipts; disabling it still
   honors inbound receipts.
@@ -215,7 +214,7 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 
 ### Policy
 
-- Per-peer `accept` / `mute` / `ignore`, plus a global DND mode.
+- Per-user `accept` / `mute` / `ignore`, plus a global DND mode.
   `mute` stores messages silently; `ignore` drops them with no notification.
 - The daemon plays a bundled notification chime for notifiable messages so it
   rings with the UI closed. Mute, ignore, and DND silence it with notifications.
@@ -224,10 +223,10 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 ### Schema sketch
 
 ```sql
-peers(id TEXT PK, fingerprint TEXT, display_name TEXT, policy TEXT,
+users(id TEXT PK, fingerprint TEXT, display_name TEXT, policy TEXT,
       trusted_at INTEGER, last_seen INTEGER)
 
-conversations(id TEXT PK, peer_id TEXT, created_at INTEGER)
+conversations(id TEXT PK, user_id TEXT, created_at INTEGER)
 
 messages(id TEXT PK,            -- UUIDv7, sender-generated
          conversation_id TEXT,
@@ -247,7 +246,7 @@ outbox(message_id TEXT PK, attempts INTEGER, next_try INTEGER,
 
 attachments(hash TEXT PK, size INTEGER, path TEXT, mime TEXT)
 
-peer_state(peer_id TEXT PK, last_sent_seq INTEGER, last_recv_seq INTEGER)
+user_state(user_id TEXT PK, last_sent_seq INTEGER, last_recv_seq INTEGER)
 ```
 
 There is deliberately no `settings` table. Configuration lives in
@@ -258,12 +257,8 @@ There is deliberately no `settings` table. Configuration lives in
 - `cpal` captures and plays audio.
 - Frames are encoded with Opus at 20ms and sent over QUIC datagrams.
 - A jitter buffer with packet-loss concealment handles loss and reordering.
-- The daemon owns the call state machine: `idle`, `ringing`, `in-call`,
-  `ended`. State changes are D-Bus signals.
-- Ringtone playback uses `rodio`, reads a configurable file, and loops until
-  the call is answered or declined. It respects mute/DND and ducks under the
-  call audio once connected.
-- Ringtone runs inside the daemon so calls ring with the UI closed.
+- The daemon owns the call state machine: `idle`, `connecting`, `ringing`,
+  `in-call`, `ended`. State changes are D-Bus signals.
 
 ## 7. Remote desktop
 
@@ -279,29 +274,46 @@ View and control are both in v1.
    X11 falls back to XTEST through `x11rb`.
 5. Consent is explicit: the host shows a dialog and a persistent "remote
    session active" indicator, and has a hard kill switch. Sessions are
-   PIN-gated and scoped to a single trusted peer.
+   consent-gated and scoped to a single trusted user.
 
-Remote desktop is the highest-risk feature. Pairing, per-session grants, the
-visible indicator, and the kill switch are all mandatory, not optional.
+Remote pointer and keyboard input can be blocked per session without ending
+sharing, and the daemon enforces that policy before injection. Remote desktop is
+the highest-risk feature. Per-session consent, the visible indicator, and the kill switch are
+mandatory, not optional.
 
 ## 8. UI
 
 ### Main window
 
-- Peers and presence.
-- Chat threads with text, images, audio, and file attachments.
-- Call view: voice controls plus remote-desktop viewer.
-- Settings: per-peer mute/ignore, ringtone file, discovery, autostart,
-  overlay enable/disable.
-- Pairing dialog (PIN or QR).
+The UI process hosts one WebKitGTK 6.0 webview. Svelte renders the user list,
+chat, user, settings, call, remote, and watch-party screens. The Rust host keeps the
+`org.ticonnect.UI` activation service, single-instance forwarding, settings and
+autostart handling, and the daemon client.
+
+JavaScript never talks to D-Bus. A loopback HTTP + WebSocket bridge wraps the
+existing daemon client:
+
+- `GET /` and `GET /assets/*` serve the embedded Vite build.
+- `GET /ws` carries JSON-RPC requests and daemon events.
+- `POST /attachment?user_id=` uploads bytes from a file input.
+- `GET /attachment/{hash}` and `GET /avatar/{fingerprint}` use short-lived
+  tickets minted over JSON-RPC.
+- The bridge binds `127.0.0.1` on an ephemeral port, requires a 128-bit token in
+  the URL fragment, and validates `Origin` and `Host`.
+
+The old GTK4/libadwaita/relm4 views are removed. There is no fallback desktop
+UI.
 
 ### Corner overlay
 
 - Implemented with `gtk4-layer-shell` on Wayland: `Layer::Overlay`, anchored
-  bottom-right, transparent window, rounded card.
+  top-right, transparent window, rounded card.
 - `KeyboardMode::None` so it never steals focus; only the card itself takes
   pointer input.
-- A card slides in on `MessageReceived`, `IncomingCall`, and `TransferDone`.
+- Cards cover messages, calls, remote consent and sharing, watch parties, and
+  typed ended/offline states so the overlay never disappears without feedback.
+- Outgoing call cards show `connecting` before the remote rings; ended cards
+  preserve the reason (`declined`, `timeout`, `kill-switch`, `host disconnected`).
 - Clicking a card calls `org.ticonnect.UI.Activate(view)` and opens the app on
   the relevant screen.
 - Incoming-call cards persist until answered or declined; other cards
@@ -313,7 +325,7 @@ visible indicator, and the kill switch are all mandatory, not optional.
 
 - All traffic encrypted with TLS 1.3 over QUIC, certificates pinned to trusted
   fingerprints.
-- No feature is reachable before pairing.
+- All LAN users are trusted automatically; blocking is the exclusion mechanism.
 - No root. Screen capture and input injection go through portals.
 - Remote control requires a per-session grant, a visible indicator, and a kill
   switch.
@@ -323,12 +335,12 @@ visible indicator, and the kill switch are all mandatory, not optional.
 ## 10. Phases
 
 1. Workspace skeleton, config, D-Bus daemon, systemd user unit, CLI.
-2. Identity, mDNS discovery, SPAKE2 pairing, TLS pinning.
+2. Identity, mDNS discovery, automatic LAN trust, TLS pinning.
 3. Text messaging: signed records, outbox with expiry, gap sync, read receipts,
    SQLite history, mute/ignore, tray.
-4. GTK4 main window, corner overlay, ringtone.
+4. GTK4 main window and corner overlay.
 5. File/image/audio transfer with resume and content-addressed storage.
-6. Voice calls: cpal, Opus, datagrams, jitter buffer, ringtone ducking.
+6. Voice calls: cpal, Opus, datagrams, and jitter buffer.
 7. Remote desktop: portal capture, openh264, libei/XTEST input, consent flow.
 8. Packaging, flatpak, performance pass.
 
@@ -343,5 +355,6 @@ visible indicator, and the kill switch are all mandatory, not optional.
   KDE first.
 - Outbox expiry loses undelivered messages after the TTL.
 - Clock skew can reorder messages; there is no global ordering.
-- Deletion is local-only; the sender's or receiver's remote copy cannot be
-  removed.
+- Edits and deletes are signed lifecycle records. Receiving peers update or hide
+  their local copy, but already-downloaded attachment bytes remain until retention
+  cleanup.

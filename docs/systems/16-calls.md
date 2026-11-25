@@ -9,7 +9,7 @@
 
 ## Purpose
 
-Own call state, signaling, media coordination, ringtone coordination, policy gates, timeout, and cleanup.
+Own call state, signaling, media coordination, policy gates, timeout, and cleanup.
 
 ## Boundary
 
@@ -28,7 +28,6 @@ Daemon service. Uses audio, transport, policy, and IPC. UI only presents control
 | `CALL.media` | Media coordinator | `module` | `crates/daemon/src/calls/session.rs` | audio pipeline handles | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.policy` | Call policy gate | `module` | `crates/daemon/src/calls/mod.rs` |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.registry` | Call registry | `module` | `crates/daemon/src/calls/mod.rs` | active call | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
-| `CALL.ringtone` | Ringtone coordinator | `module` | `crates/daemon/src/calls/session.rs` | ringtone handle | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.signaling` | Call signaling | `module` | `crates/daemon/src/calls/session.rs` |  | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 | `CALL.state` | Call state machine | `module` | `crates/daemon/src/calls/state.rs` | call state | docs/systems/16-calls.md#components | planned: crates/daemon/tests/calls.rs |
 
@@ -47,7 +46,6 @@ Daemon service. Uses audio, transport, policy, and IPC. UI only presents control
 | `CALL.state` | `calls` | `sync` | `CALL.registry` | call registration |  |  |
 | `CALL.signaling` | `calls` | `sync` | `CALL.state` | signaling event |  |  |
 | `CALL.media` | `calls` | `sync` | `CALL.state` | media state |  |  |
-| `CALL.ringtone` | `calls` | `sync` | `CALL.state` | ringing state |  |  |
 | `CALL.cleanup` | `calls` | `sync` | `CALL.state` | terminal transition |  |  |
 | `CALL.policy` | `calls` | `sync` | `CALL.state` | call policy |  |  |
 | `CALL.signaling` | `invokes` | `async` | `TX.streams` | call signaling frame |  |  |
@@ -55,7 +53,6 @@ Daemon service. Uses audio, transport, policy, and IPC. UI only presents control
 | `CALL.media` | `calls` | `sync` | `AUD.devices` | audio devices | CALL.policy |  |
 | `CALL.media` | `calls` | `sync` | `AUD.encode` | encode call audio |  |  |
 | `CALL.media` | `calls` | `sync` | `AUD.decode` | decode call audio |  |  |
-| `CALL.ringtone` | `calls` | `sync` | `AUD.ringtone` | ringtone playback |  |  |
 | `CALL.state` | `emits` | `event` | `IPC.signal-bus` | IncomingCall and CallStateChanged |  |  |
 | `CALL.policy` | `calls` | `sync` | `POL.inbound` | call policy decision | POL.inbound |  |
 | `CALL.cleanup` | `calls` | `sync` | `AUD.devices` | release audio devices |  |  |
@@ -67,16 +64,16 @@ Daemon service. Uses audio, transport, policy, and IPC. UI only presents control
 - `INV-LIMIT-1` — Every queue, buffer, and frame decoder is bounded or declares its drop policy. Test: planned: design review plus fuzz tests
 - `INV-SEC-1` — No secret, key, message body, or keystroke is logged by default. Test: planned: logging redaction tests
 - `INV-STAGE-1` — Every stage demo uses only components from that stage or earlier stages. Test: cargo xtask systems --check
-- `INV-TRUST-1` — No non-pairing feature is reachable before trust is established. Test: planned: crates/net/tests/unpaired_rejected.rs
+- `INV-TRUST-1` — Users are trusted automatically on the LAN unless blocked. Test: planned: crates/net/tests/unpaired_rejected.rs
 
 ## Failure semantics
 
-- one call per node and peer
-- reject untrusted peers
+- one call per node and user
+- reject untrusted users
 - cleanup on every terminal transition
 
 ## Open decisions
 
 - call signaling frames
-- mute peer ringing behavior
+- mute user ringing behavior
 - device selection persistence

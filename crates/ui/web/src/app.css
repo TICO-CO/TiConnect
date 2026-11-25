@@ -1,0 +1,303 @@
+@import 'tailwindcss' source(none);
+
+@source '../index.html';
+@source './**/*.{svelte,ts}';
+
+@font-face {
+    font-family: 'Istok Web';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/istok-web-400-latin.woff2') format('woff2');
+    unicode-range:
+        U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+        U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Istok Web';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/istok-web-400-latin-ext.woff2') format('woff2');
+    unicode-range:
+        U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+        U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113,
+        U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+    font-family: 'Istok Web';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('./assets/fonts/istok-web-700-latin.woff2') format('woff2');
+    unicode-range:
+        U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+        U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Istok Web';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('./assets/fonts/istok-web-700-latin-ext.woff2') format('woff2');
+    unicode-range:
+        U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+        U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113,
+        U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+    font-family: 'Konkhmer Sleokchher';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/konkhmer-sleokchher-400-latin.woff2') format('woff2');
+    unicode-range:
+        U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+        U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+    font-family: 'Konkhmer Sleokchher';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./assets/fonts/konkhmer-sleokchher-400-latin-ext.woff2') format('woff2');
+    unicode-range:
+        U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329,
+        U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113,
+        U+2C60-2C7F, U+A720-A7FF;
+}
+
+@theme {
+    --font-display: 'Konkhmer Sleokchher';
+    --font-text: 'Istok Web';
+
+    --text-step-xs: 13.328px;
+    --text-step-0: 16px;
+    --text-step-1: 19.2px;
+    --text-step-2: 23.04px;
+    --text-step-3: 27.648px;
+    --text-step-4: 33.184px;
+    --text-step-5: 39.808px;
+
+    --color-base: #182b2f;
+    --color-surface: #213639;
+    --color-surface-2: #2a403c;
+    --color-rail: #1b3034;
+    --color-backdrop: #0f1f22;
+    --color-ink: #ffe5b0;
+    --color-ink-2: #edb483;
+    --color-ink-3: #a9a78a;
+    --color-line: #2f4547;
+    --color-line-strong: #3f5a52;
+    --color-accent: #edb483;
+    --color-error: #e08a66;
+    --color-success: #7fae63;
+    --color-info: #8ab4c4;
+    --color-warning: #d9b26a;
+    --color-lamp: #577e46;
+
+    --radius-sm: 10px;
+    --radius-md: 14px;
+    --radius-lg: 20px;
+    --radius-pill: 999px;
+
+    --shadow-soft: 0 1px 2px rgba(6, 18, 18, 0.3), 0 14px 32px rgba(6, 18, 18, 0.28);
+    --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme='light'] {
+    --color-base: #f4efe2;
+    --color-surface: #fbf7ec;
+    --color-surface-2: #eee6d4;
+    --color-rail: #e9e1cf;
+    --color-backdrop: #d8cfbb;
+    --color-ink: #24352f;
+    --color-ink-2: #4f6256;
+    --color-ink-3: #526458;
+    --color-line: #d3c9b5;
+    --color-line-strong: #b9ad95;
+    --color-accent: #7a4a24;
+    --color-error: #96402a;
+    --color-success: #3f6a31;
+    --color-info: #356474;
+    --color-warning: #755612;
+    --color-lamp: #658743;
+    --shadow-soft: 0 1px 2px rgba(73, 59, 35, 0.12), 0 14px 32px rgba(73, 59, 35, 0.14);
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme]) {
+        --color-base: #f4efe2;
+        --color-surface: #fbf7ec;
+        --color-surface-2: #eee6d4;
+        --color-rail: #e9e1cf;
+        --color-backdrop: #d8cfbb;
+        --color-ink: #24352f;
+        --color-ink-2: #4f6256;
+        --color-ink-3: #526458;
+        --color-line: #d3c9b5;
+        --color-line-strong: #b9ad95;
+        --color-accent: #7a4a24;
+        --color-error: #96402a;
+        --color-success: #3f6a31;
+        --color-info: #356474;
+        --color-warning: #755612;
+        --color-lamp: #658743;
+        --shadow-soft: 0 1px 2px rgba(73, 59, 35, 0.12), 0 14px 32px rgba(73, 59, 35, 0.14);
+    }
+}
+
+@layer base {
+    :root {
+        color-scheme: light dark;
+    }
+
+    :root[data-theme='dark'] {
+        color-scheme: dark;
+    }
+
+    :root[data-theme='light'] {
+        color-scheme: light;
+    }
+
+    html,
+    body,
+    #app {
+        height: 100%;
+        margin: 0;
+    }
+
+    body {
+        min-width: 1024px;
+        min-height: 720px;
+        overflow: hidden;
+        background: var(--color-base);
+        color: var(--color-ink);
+        font-family: var(--font-text);
+        font-size: var(--text-step-0);
+        font-synthesis: none;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+        font: inherit;
+        color: inherit;
+    }
+
+    button {
+        cursor: pointer;
+    }
+
+    button:disabled {
+        cursor: default;
+    }
+
+    a {
+        color: var(--color-ink-2);
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--color-accent);
+        outline-offset: 2px;
+    }
+
+    ::selection {
+        background: var(--color-accent);
+        color: var(--color-base);
+    }
+}
+
+@utility logo-mark {
+    --logo-mask: url('./assets/logo.svg');
+    display: inline-block;
+    background-color: var(--color-ink);
+    -webkit-mask: var(--logo-mask) center / contain no-repeat;
+    mask: var(--logo-mask) center / contain no-repeat;
+}
+
+@utility scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+
+    &::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+
+    &::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        border-radius: var(--radius-pill);
+        background: var(--color-line-strong);
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+        background: var(--color-ink-2);
+    }
+}
+
+@utility toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    width: 40px;
+    height: 22px;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--color-line-strong);
+    padding: 2px;
+    transition: background-color 150ms var(--ease-soft);
+
+    &::after {
+        content: '';
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--color-ink);
+        transition: transform 150ms var(--ease-soft);
+    }
+
+    &[aria-pressed='true'] {
+        background: var(--color-accent);
+    }
+
+    &[aria-pressed='true']::after {
+        transform: translateX(18px);
+        background: var(--color-base);
+    }
+
+    &.small {
+        width: 34px;
+        height: 18px;
+    }
+
+    &.small::after {
+        width: 14px;
+        height: 14px;
+    }
+
+    &.small[aria-pressed='true']::after {
+        transform: translateX(16px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+    }
+}

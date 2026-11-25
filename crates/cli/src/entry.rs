@@ -1,6 +1,10 @@
+use std::collections::HashMap;
 use std::ffi::OsString;
 
-use crate::output::{candidate_line, status_human, status_json, variant_text};
+use crate::doctor;
+use crate::output::{
+    candidate_line, network_human, network_json, status_human, status_json, variant_text,
+};
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 use futures_util::StreamExt;
@@ -41,26 +45,32 @@ enum Command {
         #[command(subcommand)]
         command: SettingsCommand,
     },
-    /// Inspect known peers.
-    Peers {
+    /// Inspect known users.
+    Users {
         #[command(subcommand)]
-        command: PeersCommand,
+        command: UsersCommand,
     },
     /// Inspect discovery candidates.
     Discover {
         #[command(subcommand)]
         command: DiscoverCommand,
     },
-    /// Pair with another node.
-    Pair {
+    /// Inspect LAN access and run a reachability check.
+    Network {
         #[command(subcommand)]
-        command: PairCommand,
+        command: NetworkCommand,
     },
-    /// Send a text message to a trusted peer.
-    Send { peer_id: String, body: String },
-    /// Send a file attachment to a trusted peer.
+    /// Check local desktop, audio, media, and config prerequisites.
+    Doctor {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Send a text message to a trusted user.
+    Send { user_id: String, body: String },
+    /// Send a file attachment to a trusted user.
     SendFile {
-        peer_id: String,
+        user_id: String,
         path: String,
         #[arg(long, default_value = "")]
         mime: String,
@@ -72,9 +82,9 @@ enum Command {
         #[command(subcommand)]
         command: TransferCommand,
     },
-    /// List message history for a peer.
+    /// List message history for a user.
     Messages {
-        peer_id: String,
+        user_id: String,
         #[arg(long, default_value_t = 50)]
         limit: u32,
         #[arg(long, default_value_t = 0)]
@@ -82,10 +92,10 @@ enum Command {
     },
     /// Mark inbound messages as read.
     MarkRead {
-        peer_id: String,
+        user_id: String,
         message_ids: Vec<String>,
     },
-    /// Read or change peer policy and DND.
+    /// Read or change user policy and DND.
     Policy {
         #[command(subcommand)]
         command: PolicyCommand,
@@ -119,9 +129,15 @@ enum SettingsCommand {
 }
 
 #[derive(Debug, Subcommand)]
-enum PeersCommand {
-    /// List known peers.
+enum UsersCommand {
+    /// List known users.
     List,
+    /// Forget and block a trusted user.
+    Forget { user_id: String },
+    /// List blocked users.
+    Blocked,
+    /// Unblock a user fingerprint.
+    Unblock { fingerprint: String },
 }
 
 #[derive(Debug, Subcommand)]
@@ -130,6 +146,22 @@ enum DiscoverCommand {
     List,
     /// Print candidate found and lost events.
     Watch,
+}
+
+#[derive(Debug, Subcommand)]
+enum NetworkCommand {
+    /// Print LAN access state.
+    Status {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Probe the LAN and print the resulting state.
+    Check {
+        /// Print machine-readable JSON.
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -143,7 +175,7 @@ enum TransferCommand {
 #[derive(Debug, Subcommand)]
 enum CallCommand {
     /// Start an outgoing call.
-    Start { peer_id: String },
+    Start { user_id: String },
     /// Accept an incoming call.
     Accept { call_id: String },
     /// Decline an incoming call.
@@ -159,13 +191,9 @@ enum CallCommand {
 #[derive(Debug, Subcommand)]
 enum RemoteCommand {
     /// Request a remote desktop session.
-    Request { peer_id: String },
-    /// Consent on the host or submit a PIN on the viewer.
-    Accept {
-        session_id: String,
-        #[arg(default_value = "")]
-        pin: String,
-    },
+    Request { user_id: String },
+    /// Consent to a remote desktop request.
+    Accept { session_id: String },
     /// Deny a remote session request.
     Deny { session_id: String },
     /// End or kill a remote session.
@@ -176,8 +204,8 @@ enum RemoteCommand {
 
 #[derive(Debug, Subcommand)]
 enum PolicyCommand {
-    /// Set policy for one peer.
-    Set { peer_id: String, policy: String },
+    /// Set policy for one user.
+    Set { user_id: String, policy: String },
     /// Toggle global do-not-disturb mode.
     Dnd { state: DndState },
 }
@@ -186,24 +214,6 @@ enum PolicyCommand {
 enum DndState {
     On,
     Off,
-}
-
-#[derive(Debug, Subcommand)]
-enum PairCommand {
-    /// Start a pairing session and print the PIN and QR payload.
-    Start,
-    /// Pair with a discovered node using a PIN.
-    WithPin { node_id: String, pin: String },
-    /// Pair using a QR payload.
-    WithQr { payload: String },
-    /// Cancel the active pairing session.
-    Cancel,
-    /// Forget and block a trusted peer.
-    Forget { peer_id: String },
-    /// List blocked peers.
-    Blocked,
-    /// Unblock a peer fingerprint.
-    Unblock { fingerprint: String },
 }
 
 pub async fn run<I, T>(args: I) -> Result<()>
@@ -268,43 +278,26 @@ async fn run_command(command: Command) -> Result<()> {
             );
         }
         Command::Settings { command } => run_settings(command)?,
-        Command::Peers {
-            command: PeersCommand::List,
-        } => {
-            let proxy = connect().await?;
-            let peers = proxy.list_peers().await.context("list peers")?;
-            if peers.is_empty() {
-                println!("no peers");
-            } else {
-                for peer in peers {
-                    println!(
-                        "{} {} {} {}",
-                        peer_value(&peer, ipc::PEER_ID),
-                        peer_value(&peer, ipc::PEER_FINGERPRINT),
-                        peer_value(&peer, ipc::PEER_POLICY),
-                        peer_value(&peer, ipc::PEER_DISPLAY_NAME)
-                    );
-                }
-            }
-        }
+        Command::Doctor { json } => doctor::run(json)?,
+        Command::Users { command } => run_users(command).await?,
         Command::Discover { command } => run_discover(command).await?,
-        Command::Pair { command } => run_pair(command).await?,
-        Command::Send { peer_id, body } => {
+        Command::Network { command } => run_network(command).await?,
+        Command::Send { user_id, body } => {
             let proxy = connect().await?;
             let message_id = proxy
-                .send_message(&peer_id, &body)
+                .send_message(&user_id, &body, "")
                 .await
                 .context("send message")?;
             println!("{message_id}");
         }
         Command::SendFile {
-            peer_id,
+            user_id,
             path,
             mime,
         } => {
             let proxy = connect().await?;
             let message_id = proxy
-                .send_attachment(&peer_id, &path, &mime)
+                .send_attachment(&user_id, &path, &mime, "")
                 .await
                 .context("send attachment")?;
             println!("{message_id}");
@@ -327,7 +320,7 @@ async fn run_command(command: Command) -> Result<()> {
                         .context("get transfer state")?;
                     for key in [
                         ipc::TRANSFER_HASH,
-                        ipc::TRANSFER_PEER_ID,
+                        ipc::TRANSFER_USER_ID,
                         ipc::TRANSFER_NAME,
                         ipc::TRANSFER_SIZE,
                         ipc::TRANSFER_BYTES,
@@ -347,12 +340,12 @@ async fn run_command(command: Command) -> Result<()> {
             }
         }
         Command::Messages {
-            peer_id,
+            user_id,
             limit,
             offset,
         } => {
             let proxy = connect().await?;
-            let conversation_id = derive_conversation(&proxy, &peer_id).await?;
+            let conversation_id = derive_conversation(&proxy, &user_id).await?;
             let messages = proxy
                 .list_messages(&conversation_id, limit, offset)
                 .await
@@ -373,11 +366,11 @@ async fn run_command(command: Command) -> Result<()> {
             }
         }
         Command::MarkRead {
-            peer_id,
+            user_id,
             message_ids,
         } => {
             let proxy = connect().await?;
-            let conversation_id = derive_conversation(&proxy, &peer_id).await?;
+            let conversation_id = derive_conversation(&proxy, &user_id).await?;
             let ids: Vec<&str> = message_ids.iter().map(String::as_str).collect();
             proxy
                 .mark_read(&conversation_id, &ids)
@@ -388,10 +381,10 @@ async fn run_command(command: Command) -> Result<()> {
         Command::Call { command } => {
             let proxy = connect().await?;
             match command {
-                CallCommand::Start { peer_id } => {
+                CallCommand::Start { user_id } => {
                     println!(
                         "{}",
-                        proxy.start_call(&peer_id).await.context("start call")?
+                        proxy.start_call(&user_id).await.context("start call")?
                     );
                 }
                 CallCommand::Accept { call_id } => {
@@ -424,11 +417,13 @@ async fn run_command(command: Command) -> Result<()> {
                     } else {
                         for key in [
                             ipc::CALL_ID,
-                            ipc::CALL_PEER_ID,
+                            ipc::CALL_USER_ID,
                             ipc::CALL_DIRECTION,
                             ipc::CALL_STATE,
                             ipc::CALL_STARTED_AT,
                             ipc::CALL_CONNECTED_AT,
+                            ipc::CALL_INPUT_MUTED,
+                            ipc::CALL_OUTPUT_MUTED,
                         ] {
                             println!("{key}: {}", message_value(&state, key));
                         }
@@ -439,24 +434,23 @@ async fn run_command(command: Command) -> Result<()> {
         Command::Remote { command } => {
             let proxy = connect().await?;
             match command {
-                RemoteCommand::Request { peer_id } => {
+                RemoteCommand::Request { user_id } => {
                     let session = proxy
-                        .request_remote_session(&peer_id)
+                        .request_remote_session(&user_id)
                         .await
                         .context("request remote session")?;
                     for key in [
                         ipc::REMOTE_SESSION_ID,
-                        ipc::REMOTE_PEER_ID,
+                        ipc::REMOTE_USER_ID,
                         ipc::REMOTE_ROLE,
                         ipc::REMOTE_STATE,
-                        ipc::REMOTE_PIN,
                     ] {
                         println!("{key}: {}", message_value(&session, key));
                     }
                 }
-                RemoteCommand::Accept { session_id, pin } => {
+                RemoteCommand::Accept { session_id } => {
                     proxy
-                        .accept_remote_session(&session_id, &pin)
+                        .accept_remote_session(&session_id)
                         .await
                         .context("accept remote session")?;
                     println!("accepted");
@@ -485,11 +479,10 @@ async fn run_command(command: Command) -> Result<()> {
                     } else {
                         for key in [
                             ipc::REMOTE_SESSION_ID,
-                            ipc::REMOTE_PEER_ID,
+                            ipc::REMOTE_USER_ID,
                             ipc::REMOTE_FINGERPRINT,
                             ipc::REMOTE_ROLE,
                             ipc::REMOTE_STATE,
-                            ipc::REMOTE_PIN,
                             ipc::REMOTE_INDICATOR,
                             ipc::REMOTE_EXPIRES_AT,
                         ] {
@@ -502,12 +495,12 @@ async fn run_command(command: Command) -> Result<()> {
         Command::Policy { command } => {
             let proxy = connect().await?;
             match command {
-                PolicyCommand::Set { peer_id, policy } => {
+                PolicyCommand::Set { user_id, policy } => {
                     proxy
-                        .set_peer_policy(&peer_id, &policy)
+                        .set_user_policy(&user_id, &policy)
                         .await
-                        .context("set peer policy")?;
-                    println!("{peer_id} {policy}");
+                        .context("set user policy")?;
+                    println!("{user_id} {policy}");
                 }
                 PolicyCommand::Dnd { state } => {
                     let enabled = matches!(state, DndState::On);
@@ -520,76 +513,97 @@ async fn run_command(command: Command) -> Result<()> {
     Ok(())
 }
 
-async fn derive_conversation(proxy: &DaemonProxy<'_>, peer_id: &str) -> Result<String> {
+async fn derive_conversation(proxy: &DaemonProxy<'_>, user_id: &str) -> Result<String> {
     let identity = proxy.get_identity().await.context("get daemon identity")?;
     let local = identity_value(&identity, ipc::IDENTITY_NODE_ID);
     let local = local
         .parse::<NodeId>()
         .context("daemon returned an invalid node id")?;
-    let peer = peer_id
+    let user = user_id
         .parse::<NodeId>()
-        .context("peer id is not a valid node id")?;
-    Ok(conversation_id(local, peer))
+        .context("user id is not a valid node id")?;
+    Ok(conversation_id(local, user))
 }
 
-async fn run_pair(command: PairCommand) -> Result<()> {
+async fn run_users(command: UsersCommand) -> Result<()> {
     let proxy = connect().await?;
     match command {
-        PairCommand::Start => {
-            let started = proxy.start_pairing().await.context("start pairing")?;
-            println!("pin: {}", identity_value(&started, ipc::PAIRING_PIN));
-            println!("qr: {}", identity_value(&started, ipc::PAIRING_QR));
-            println!(
-                "expires_at: {}",
-                identity_value(&started, ipc::PAIRING_EXPIRES_AT)
-            );
-            println!("port: {}", identity_value(&started, ipc::PAIRING_PORT));
-        }
-        PairCommand::WithPin { node_id, pin } => {
-            proxy
-                .pair_with_pin(&node_id, &pin)
-                .await
-                .context("pair with pin")?;
-            println!("paired");
-        }
-        PairCommand::WithQr { payload } => {
-            proxy.pair_with_qr(&payload).await.context("pair with qr")?;
-            println!("paired");
-        }
-        PairCommand::Cancel => {
-            proxy.cancel_pairing().await.context("cancel pairing")?;
-            println!("pairing cancelled");
-        }
-        PairCommand::Forget { peer_id } => {
-            proxy.forget_peer(&peer_id).await.context("forget peer")?;
-            println!("peer forgotten and blocked");
-        }
-        PairCommand::Blocked => {
-            let peers = proxy
-                .list_blocked_peers()
-                .await
-                .context("list blocked peers")?;
-            if peers.is_empty() {
-                println!("no blocked peers");
+        UsersCommand::List => {
+            let users = proxy.list_users().await.context("list users")?;
+            if users.is_empty() {
+                println!("no users");
             } else {
-                for peer in peers {
+                for user in users {
                     println!(
                         "{} {} {} {}",
-                        peer_value(&peer, ipc::PEER_FINGERPRINT),
-                        peer_value(&peer, ipc::PEER_ID),
-                        peer_value(&peer, ipc::PEER_DISPLAY_NAME),
-                        peer_value(&peer, ipc::BLOCKED_AT),
+                        user_value(&user, ipc::USER_ID),
+                        user_value(&user, ipc::USER_FINGERPRINT),
+                        user_value(&user, ipc::USER_POLICY),
+                        user_value(&user, ipc::USER_DISPLAY_NAME)
                     );
                 }
             }
         }
-        PairCommand::Unblock { fingerprint } => {
-            proxy
-                .unblock_peer(&fingerprint)
-                .await
-                .context("unblock peer")?;
-            println!("peer unblocked");
+        UsersCommand::Forget { user_id } => {
+            proxy.forget_user(&user_id).await.context("forget user")?;
+            println!("user forgotten and blocked");
         }
+        UsersCommand::Blocked => {
+            let users = proxy
+                .list_blocked_users()
+                .await
+                .context("list blocked users")?;
+            if users.is_empty() {
+                println!("no blocked users");
+            } else {
+                for user in users {
+                    println!(
+                        "{} {} {} {}",
+                        user_value(&user, ipc::USER_FINGERPRINT),
+                        user_value(&user, ipc::USER_ID),
+                        user_value(&user, ipc::USER_DISPLAY_NAME),
+                        user_value(&user, ipc::BLOCKED_AT),
+                    );
+                }
+            }
+        }
+        UsersCommand::Unblock { fingerprint } => {
+            proxy
+                .unblock_user(&fingerprint)
+                .await
+                .context("unblock user")?;
+            println!("user unblocked");
+        }
+    }
+    Ok(())
+}
+
+async fn run_network(command: NetworkCommand) -> Result<()> {
+    let proxy = connect().await?;
+    match command {
+        NetworkCommand::Status { json } => {
+            let status = proxy
+                .get_network_status()
+                .await
+                .context("get network status")?;
+            print_network(&status, json)?;
+        }
+        NetworkCommand::Check { json } => {
+            let status = proxy.run_lan_check().await.context("run LAN check")?;
+            print_network(&status, json)?;
+        }
+    }
+    Ok(())
+}
+
+fn print_network(status: &HashMap<String, zbus::OwnedVariant>, json: bool) -> Result<()> {
+    if json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&network_json(status)).context("serialize network")?
+        );
+    } else {
+        print!("{}", network_human(status));
     }
     Ok(())
 }
@@ -691,8 +705,8 @@ fn identity_value(
         .unwrap_or_else(|| "unknown".to_owned())
 }
 
-fn peer_value(peer: &std::collections::HashMap<String, zbus::OwnedVariant>, key: &str) -> String {
-    peer.get(key)
+fn user_value(user: &std::collections::HashMap<String, zbus::OwnedVariant>, key: &str) -> String {
+    user.get(key)
         .map(variant_text)
         .unwrap_or_else(|| "unknown".to_owned())
 }
@@ -708,9 +722,9 @@ fn message_value(
 }
 
 async fn connect() -> Result<DaemonProxy<'static>> {
-    let connection = zbus::Connection::session()
+    let connection = ipc::connect()
         .await
-        .context("connect to the session bus")?;
+        .context("connect to the TiConnect IPC session bus")?;
     DaemonProxy::new(&connection)
         .await
         .context("create daemon proxy")

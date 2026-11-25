@@ -5,6 +5,7 @@ Targets are for a modern laptop on a wired or 5 GHz LAN.
 | Metric | Target |
 |---|---|
 | Idle daemon RSS | under 30 MB |
+| UI web process RSS | 100–200 MB |
 | Overlay idle RSS | about 40 MB |
 | Idle CPU | under 1% |
 | Remote desktop | 1080p software H.264 |
@@ -15,10 +16,10 @@ Targets are for a modern laptop on a wired or 5 GHz LAN.
 ```sh
 scripts/bench/idle.sh
 scripts/bench/startup.sh
-scripts/bench/messaging.sh <peer-id> 20
-scripts/bench/transfer.sh <peer-id> 64
-scripts/bench/call.sh <peer-id> 15
-scripts/bench/remote.sh <peer-id> 15
+scripts/bench/messaging.sh <user-id> 20
+scripts/bench/transfer.sh <user-id> 64
+scripts/bench/call.sh <user-id> 15
+scripts/bench/remote.sh <user-id> 15
 ```
 
 Record the hardware, kernel, Rust toolchain, desktop, and session type with every
@@ -43,3 +44,9 @@ frames under backpressure.
 | `video.keyframe_interval` | 60 | frames between keyframes |
 | `remote.session_timeout_secs` | 0 | 0 disables automatic timeout |
 | `discovery.beacon_interval_secs` | 5 | idle LAN beacon interval |
+
+## Webview cost
+
+The GTK4 WebKitGTK webview adds a separate web process. Expect roughly 100–200 MB
+of additional RSS while the window is open, plus the Svelte heap. This exceeds
+the old GTK-widget idle-memory profile and is accepted as the cost of the web UI.

@@ -4,7 +4,7 @@
 
 Give each node a persistent Ed25519 identity, a BLAKE3 fingerprint, and a SQLite
 database with migrations for application data. Extend the TOML settings schema
-and add the peer table. The daemon exposes identity and read-only settings over
+and add the user table. The daemon exposes identity and read-only settings over
 D-Bus; any process may change settings through `ticonnect-settings`.
 
 ## Systems and components
@@ -18,12 +18,12 @@ Component graphs: [ID](../../docs/systems/generated/components/id.md), [DB](../.
 - BLAKE3 fingerprint derivation.
 - SQLite schema, migrations, and typed access layer for application data.
 - TOML settings schema extensions with typed getters and validation.
-- Peer table CRUD used by later stages.
+- User table CRUD used by later stages.
 - D-Bus methods for identity and read-only settings.
 
 ## Non-goals
 
-- No discovery, pairing, or transport.
+- No discovery, trust, or transport.
 - No message tables beyond the schema sketch (tables may exist but stay unused).
 - No UI.
 
@@ -37,11 +37,11 @@ Stages 1, 1.5, and 2 complete.
 - `crates/core/src/fingerprint.rs`
 - `crates/daemon/src/storage/mod.rs`
 - `crates/daemon/src/storage/migrations/0001_init.sql`
-- `crates/daemon/src/storage/peers.rs`
+- `crates/daemon/src/storage/users.rs`
 - `crates/daemon/src/config_watch.rs`
 - `crates/settings/src/settings/schema.rs` (Stage 3 keys)
 - `crates/cli` subcommands `id show`, `settings get`, `settings set`,
-  `peers list`.
+  `users list`.
 
 ## Identity
 
@@ -61,12 +61,12 @@ Stages 1, 1.5, and 2 complete.
 - [x] Enable WAL mode and foreign keys.
 - [x] Add a `schema_version` table and a migration runner.
 - [x] Migration `0001_init.sql` creates:
-  - [x] `peers`
+  - [x] `users`
   - [x] `conversations`
   - [x] `messages`
   - [x] `outbox`
   - [x] `attachments`
-  - [x] `peer_state`
+  - [x] `user_state`
 - [x] Keep configuration out of SQLite; there is no `settings` table.
 - [x] Use `rusqlite` with the `bundled` feature.
 - [x] Wrap writes in transactions where multiple rows change.
@@ -82,7 +82,7 @@ Stages 1, 1.5, and 2 complete.
   never stores configuration.
 - [x] Extend the `ticonnect-settings` schema with keys:
   `identity.display_name`, `discovery.enabled`, `overlay.enabled`,
-  `read_receipts.enabled`, `outbox.ttl_days`, `ringtone.path`, `dnd.enabled`.
+  `read_receipts.enabled`, `outbox.ttl_days`, `dnd.enabled`.
 - [x] Defaults live in code; TOML stores explicit values only.
 - [x] Validate `outbox.ttl_days` is positive and bounded in `ticonnect-settings`.
 - [x] Any process may update settings through `ticonnect-settings`. Writes take
@@ -97,19 +97,19 @@ Stages 1, 1.5, and 2 complete.
 - [x] CLI `settings get` and `settings set` read and write TOML directly through
   `ticonnect-settings`.
 
-## Peers
+## Users
 
-- [x] `peers` CRUD: insert, get by id, get by fingerprint, list, update policy,
+- [x] `users` CRUD: insert, get by id, get by fingerprint, list, update policy,
   update last_seen, delete.
 - [x] Policy enum: `accept`, `mute`, `ignore`.
 - [x] Reject duplicate fingerprints with a typed conflict error.
-- [x] Do not store peers before pairing; pairing populates this table.
+- [x] Do not store users before trust; trust populates this table.
 
 ## D-Bus additions
 
 - [x] `GetIdentity() -> a{sv}` with node id, fingerprint, display name.
 - [x] `GetSetting(s) -> v`, `ListSettings() -> a{sv}`.
-- [x] `ListPeers() -> aa{sv}` returning empty until pairing exists.
+- [x] `ListUsers() -> aa{sv}` returning empty until trust exists.
 - [x] Signal `SettingsChanged(s)` after the daemon reloads a changed config file.
 - [x] No `SetSetting`; config writes go through `ticonnect-settings`.
 
@@ -122,7 +122,7 @@ Stages 1, 1.5, and 2 complete.
 - [x] TOML settings round-trip for string, bool, integer, path, and optional
   values.
 - [x] Invalid setting value returns a typed error.
-- [x] Peer CRUD and policy update tests.
+- [x] User CRUD and policy update tests.
 - [x] Concurrent reads and one writer do not lock under WAL in tests.
 - [x] Concurrent config writers leave valid TOML and one complete snapshot.
 - [x] Daemon reloads config after an external write and emits `SettingsChanged`.
@@ -167,7 +167,7 @@ Stages 1, 1.5, and 2 complete.
 ## Risks and mitigations
 
 - Risk: key loss makes the node untrusted. Mitigation: document clearly; no
-  silent regeneration over an existing peer table.
+  silent regeneration over an existing user table.
 - Risk: schema churn. Mitigation: migrations from day one and tests that apply
   all migrations to an empty database.
 - Risk: concurrent config writers lose updates. Mitigation: keep writes atomic
@@ -175,5 +175,5 @@ Stages 1, 1.5, and 2 complete.
 
 ## Works without later stages
 
-Identity, SQLite data storage, TOML settings, and peer CRUD work with no
-discovery, pairing, transport, or UI.
+Identity, SQLite data storage, TOML settings, and user CRUD work with no
+discovery, trust, transport, or UI.

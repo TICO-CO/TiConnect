@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use quinn::rustls::pki_types::CertificateDer;
 use thiserror::Error;
@@ -19,7 +19,7 @@ use tokio::task::JoinHandle;
 
 use crate::tls::{self, ClientAlpn, IdentityCertificate, TlsError};
 
-pub use session::{PeerInfo, Session};
+pub use session::{Session, UserInfo};
 
 pub const DEFAULT_TRANSPORT_PORT: u16 = 45871;
 pub const SESSION_REJECTED: u32 = 1;
@@ -40,10 +40,10 @@ pub enum TransportError {
     #[error("transport handshake failed: {0}")]
     Handshake(String),
 
-    #[error("peer is not trusted")]
+    #[error("user is not trusted")]
     Untrusted,
 
-    #[error("peer identity does not match the expected identity")]
+    #[error("user identity does not match the expected identity")]
     IdentityMismatch,
 
     #[error("transport stream failed: {0}")]
@@ -58,7 +58,7 @@ pub enum TransportError {
 
 #[derive(Clone, Debug)]
 pub enum TransportEvent {
-    PairingRequested {
+    TrustRequested {
         fingerprint: Fingerprint,
         address: SocketAddr,
         connection: quinn::Connection,
@@ -68,12 +68,13 @@ pub enum TransportEvent {
         address: SocketAddr,
         connection: quinn::Connection,
     },
-    PeerConnected(PeerInfo),
-    PeerDisconnected(PeerInfo),
+    UserConnected(UserInfo),
+    UserDisconnected(UserInfo),
 }
 
 pub trait TrustLookup: Send + Sync {
     fn is_trusted(&self, fingerprint: &str) -> bool;
+    fn node_id_for_fingerprint(&self, fingerprint: &str) -> Option<NodeId>;
 }
 
 #[derive(Clone)]
@@ -90,6 +91,8 @@ pub struct TransportMetrics {
     pub handshakes: u64,
     pub failures: u64,
     pub active_sessions: u64,
+    pub last_failure_at: u64,
+    pub last_session_at: u64,
 }
 
 #[derive(Debug, Default)]
@@ -97,6 +100,8 @@ pub(crate) struct AtomicMetrics {
     handshakes: AtomicU64,
     failures: AtomicU64,
     active_sessions: AtomicU64,
+    last_failure_at: AtomicU64,
+    last_session_at: AtomicU64,
 }
 
 impl AtomicMetrics {
@@ -105,6 +110,8 @@ impl AtomicMetrics {
             handshakes: self.handshakes.load(Ordering::Relaxed),
             failures: self.failures.load(Ordering::Relaxed),
             active_sessions: self.active_sessions.load(Ordering::Relaxed),
+            last_failure_at: self.last_failure_at.load(Ordering::Relaxed),
+            last_session_at: self.last_session_at.load(Ordering::Relaxed),
         }
     }
 
@@ -114,10 +121,12 @@ impl AtomicMetrics {
 
     pub(crate) fn note_failure(&self) {
         self.failures.fetch_add(1, Ordering::Relaxed);
+        self.last_failure_at.store(unix_millis(), Ordering::Relaxed);
     }
 
     pub(crate) fn note_connected(&self) {
         self.active_sessions.fetch_add(1, Ordering::Relaxed);
+        self.last_session_at.store(unix_millis(), Ordering::Relaxed);
     }
 
     pub(crate) fn note_disconnected(&self) {
@@ -241,7 +250,7 @@ impl Transport {
             .read()
             .unwrap_or_else(PoisonError::into_inner)
             .values()
-            .find(|session| session.peer().node_id == node_id)
+            .find(|session| session.user().node_id == node_id)
             .cloned()
     }
 
@@ -253,11 +262,11 @@ impl Transport {
         client::connect_with_retry(self, target).await
     }
 
-    pub async fn connect_pairing(
+    pub async fn connect_trust(
         &self,
         target: DialTarget,
     ) -> Result<quinn::Connection, TransportError> {
-        client::connect_pairing(self, target).await
+        client::connect_trust(self, target).await
     }
 
     pub async fn connect_profile(
@@ -267,11 +276,11 @@ impl Transport {
         client::connect_profile(self, target).await
     }
 
-    pub async fn connect_pairing_with_retry(
+    pub async fn connect_trust_with_retry(
         &self,
         target: DialTarget,
     ) -> Result<quinn::Connection, TransportError> {
-        client::connect_pairing_with_retry(self, target).await
+        client::connect_trust_with_retry(self, target).await
     }
 
     pub async fn shutdown(&self) {
@@ -308,7 +317,7 @@ impl Transport {
     }
 
     pub(crate) fn register(&self, session: Session) {
-        let key = session.peer().fingerprint.to_hex();
+        let key = session.user().fingerprint.to_hex();
         let previous = self
             .sessions
             .write()
@@ -319,29 +328,29 @@ impl Transport {
             self.metrics.note_disconnected();
             let _ = self
                 .events
-                .send(TransportEvent::PeerDisconnected(previous.peer().clone()));
+                .send(TransportEvent::UserDisconnected(previous.user().clone()));
         }
         self.metrics.note_connected();
         self.metrics.note_handshake();
         let _ = self
             .events
-            .send(TransportEvent::PeerConnected(session.peer().clone()));
+            .send(TransportEvent::UserConnected(session.user().clone()));
     }
 
-    pub(crate) fn unregister(&self, connection_id: usize, peer: &PeerInfo) {
+    pub(crate) fn unregister(&self, connection_id: usize, user: &UserInfo) {
         let mut sessions = self
             .sessions
             .write()
             .unwrap_or_else(PoisonError::into_inner);
         let remove = sessions
-            .get(&peer.fingerprint.to_hex())
+            .get(&user.fingerprint.to_hex())
             .is_some_and(|session| session.connection().stable_id() == connection_id);
         if remove {
-            sessions.remove(&peer.fingerprint.to_hex());
+            sessions.remove(&user.fingerprint.to_hex());
             self.metrics.note_disconnected();
             let _ = self
                 .events
-                .send(TransportEvent::PeerDisconnected(peer.clone()));
+                .send(TransportEvent::UserDisconnected(user.clone()));
         }
     }
 
@@ -358,21 +367,29 @@ impl Transport {
     }
 }
 
-pub(crate) fn peer_certificate(
+pub(crate) fn user_certificate(
     connection: &quinn::Connection,
 ) -> Result<(Fingerprint, [u8; 32]), TransportError> {
     let identity = connection
         .peer_identity()
-        .ok_or_else(|| TransportError::Handshake("peer certificate is missing".to_owned()))?;
+        .ok_or_else(|| TransportError::Handshake("user certificate is missing".to_owned()))?;
     let certificates = identity
         .downcast::<Vec<CertificateDer<'static>>>()
-        .map_err(|_| TransportError::Handshake("peer identity type is invalid".to_owned()))?;
+        .map_err(|_| TransportError::Handshake("user identity type is invalid".to_owned()))?;
     let certificate = certificates
         .first()
-        .ok_or_else(|| TransportError::Handshake("peer certificate is missing".to_owned()))?;
+        .ok_or_else(|| TransportError::Handshake("user certificate is missing".to_owned()))?;
     let fingerprint = tls::validate_certificate(certificate).map_err(TransportError::Tls)?;
     let public_key = tls::certificate_public_key(certificate).map_err(TransportError::Tls)?;
     Ok((fingerprint, public_key))
+}
+
+fn unix_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| {
+            u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 #[derive(Debug, Clone)]

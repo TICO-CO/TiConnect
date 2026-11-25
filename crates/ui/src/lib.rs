@@ -1,17 +1,21 @@
 #![forbid(unsafe_code)]
 
+pub mod activation;
 pub mod app;
 pub mod autostart;
 pub mod avatar;
+pub mod bridge;
 pub mod client;
 pub mod error;
 pub mod model;
-pub mod views;
+mod timing;
 
 use anyhow::Context;
 
 pub fn run() -> anyhow::Result<()> {
+    timing::mark("ui run start");
     ticonnect_runtime::init().context("initialize runtime")?;
+    timing::mark("runtime initialized");
     app::run().context("run TiConnect UI")?;
     Ok(())
 }

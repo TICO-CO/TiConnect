@@ -20,7 +20,7 @@ flowchart LR
     n_disc["DISC<br/>Discovery 4"]
     n_dt["DT<br/>Desktop capture and input 11"]
     n_id["ID<br/>Identity and trust 3"]
-    n_pair["PAIR<br/>Pairing 5"]
+    n_trust["TRUST<br/>Automatic trust 5"]
     n_tx["TX<br/>Transport 5"]
     n_vid["VID<br/>Video 11"]
   end
@@ -37,7 +37,7 @@ flowchart LR
     n_cli["CLI<br/>Command-line client 2"]
     n_ovl["OVL<br/>Overlay 8"]
     n_tray["TRAY<br/>Tray 6"]
-    n_ui["UI<br/>GTK4 user interface 7"]
+    n_ui["UI<br/>WebKitGTK user interface 7"]
   end
   subgraph assurance["Assurance"]
     n_asr["ASR<br/>Assurance and packaging 1"]
@@ -47,7 +47,6 @@ flowchart LR
   n_att -->|emits / event| n_ipc
   n_att -->|calls / sync| n_msg
   n_att -->|invokes / async| n_tx
-  n_aud -->|config-read / sync| n_cfg
   n_aud -->|invokes / async gate:CALL.policy| n_tx
   n_call -->|calls / sync gate:CALL.policy| n_aud
   n_call -->|emits / event| n_ipc
@@ -71,12 +70,7 @@ flowchart LR
   n_msg -->|calls / sync gate:POL.inbound, POL.receipts| n_pol
   n_msg -->|invokes / async| n_tx
   n_ovl -->|config-read, consumes / event, sync| n_cfg
-  n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
-  n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
-  n_pair -->|emits / event| n_ipc
-  n_pair -->|consumes, invokes / async, event| n_tx
-  n_pair -->|calls / sync| n_wire
   n_pol -->|config-read / sync| n_cfg
   n_pol -->|calls / sync| n_db
   n_pol -->|emits / event| n_ipc
@@ -88,11 +82,15 @@ flowchart LR
   n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
-  n_rt -->|invokes / async| n_pair
+  n_rt -->|invokes / async| n_trust
   n_rt -->|invokes / async| n_tx
   n_tray -->|emits / event| n_ipc
   n_tray -->|calls / sync gate:POL.store| n_pol
   n_tray -->|calls / sync| n_ui
+  n_trust -->|calls / sync gate:ID.trust-store, TRUST.confirm| n_id
+  n_trust -->|emits / event| n_ipc
+  n_trust -->|consumes, invokes / async, event| n_tx
+  n_trust -->|calls / sync| n_wire
   n_tx -->|emits / event| n_att
   n_tx -->|emits / event gate:CALL.policy| n_aud
   n_tx -->|emits / event gate:CALL.policy| n_call
@@ -100,8 +98,8 @@ flowchart LR
   n_tx -->|calls / sync gate:ID.cert-binding, ID.trust-store| n_id
   n_tx -->|emits / event| n_ipc
   n_tx -->|emits / event| n_msg
-  n_tx -->|calls / sync gate:PAIR.endpoint| n_pair
   n_tx -->|emits / event gate:RD.consent| n_rd
+  n_tx -->|calls / sync gate:TRUST.endpoint| n_trust
   n_tx -->|emits / event gate:RD.consent| n_vid
   n_tx -->|calls / sync| n_wire
   n_ui -->|calls, consumes / event, sync| n_cfg
@@ -122,23 +120,22 @@ flowchart LR
 | `RT.autostart` | `CFG.file-store` | config-read | sync | autostart setting |  |  | 2 |
 | `CFG.watch` | `IPC.signal-bus` | emits | event | SettingsChanged |  |  | 3 |
 | `IPC.dto` | `DOM.ids` | calls | sync | domain id mapping |  |  | 2 |
-| `ID.trust-store` | `DB.peers` | calls | sync | trusted peer rows |  |  | 5 |
+| `ID.trust-store` | `DB.users` | calls | sync | trusted user rows |  |  | 5 |
 | `ID.key-load` | `CFG.file-store` | config-read | sync | config directory |  |  | 3 |
 | `DISC.dbus` | `IPC.signal-bus` | emits | event | CandidateFound and CandidateLost |  |  | 4 |
 | `DISC.candidates` | `TX.dialer` | emits | event | candidate available |  |  | 5 |
 | `DISC.supervisor` | `ID.fingerprint` | calls | sync | advertise fingerprint |  |  | 4 |
 | `DISC.supervisor` | `CFG.file-store` | config-read | sync | discovery settings |  |  | 4 |
-| `PAIR.commit` | `ID.trust-store` | calls | sync | commit trusted peer | PAIR.confirm |  | 5 |
-| `PAIR.commit` | `IPC.signal-bus` | emits | event | PairingCompleted or PairingFailed |  |  | 5 |
-| `PAIR.endpoint` | `WIRE.envelope` | calls | sync | pairing frame envelope |  |  | 5 |
-| `PAIR.qr` | `ID.fingerprint` | calls | sync | QR fingerprint |  |  | 5 |
+| `TRUST.commit` | `ID.trust-store` | calls | sync | commit trusted user | TRUST.confirm |  | 5 |
+| `TRUST.commit` | `IPC.signal-bus` | emits | event | Automatic trustCompleted or Automatic trustFailed |  |  | 5 |
+| `TRUST.endpoint` | `WIRE.envelope` | calls | sync | trust frame envelope |  |  | 5 |
 | `TX.dialer` | `DISC.candidates` | consumes | event | candidate available |  |  | 5 |
 | `TX.verifier` | `ID.trust-store` | calls | sync | pinned trust lookup | ID.trust-store |  | 5 |
 | `TX.tls-cert` | `ID.cert-binding` | calls | sync | certificate binding | ID.cert-binding |  | 5 |
-| `TX.alpn` | `PAIR.endpoint` | calls | sync | pairing ALPN | PAIR.endpoint |  | 5 |
+| `TX.alpn` | `TRUST.endpoint` | calls | sync | trust ALPN | TRUST.endpoint |  | 5 |
 | `TX.streams` | `WIRE.envelope` | calls | sync | stream frames |  |  | 5 |
 | `TX.datagrams` | `WIRE.envelope` | calls | sync | datagram frames |  |  | 5 |
-| `TX.session` | `IPC.signal-bus` | emits | event | PeerConnected and PeerDisconnected |  |  | 5 |
+| `TX.session` | `IPC.signal-bus` | emits | event | UserConnected and UserDisconnected |  |  | 5 |
 | `TX.session` | `MSG.sync-executor` | emits | event | session established |  |  | 6 |
 | `TX.session` | `ATT.scheduler` | emits | event | transfer stream available |  |  | 9 |
 | `TX.session` | `CALL.signaling` | emits | event | call signaling available | CALL.policy |  | 10 |
@@ -156,14 +153,14 @@ flowchart LR
 | `MSG.history` | `DB.messages` | calls | sync | list messages |  |  | 6 |
 | `MSG.outbox` | `DB.outbox` | calls | sync | queue outbound record |  |  | 6 |
 | `MSG.outbox` | `TX.streams` | invokes | async | send message frame |  |  | 6 |
-| `MSG.sync-planner` | `DB.peer-state` | calls | sync | read peer state |  |  | 6 |
+| `MSG.sync-planner` | `DB.user-state` | calls | sync | read user state |  |  | 6 |
 | `MSG.sync-executor` | `TX.streams` | invokes | async | request missing records |  |  | 6 |
 | `MSG.sync-executor` | `DB.messages` | calls | sync | insert synced records |  |  | 6 |
 | `MSG.state` | `DB.messages` | calls | sync | read message state |  |  | 6 |
 | `MSG.events` | `IPC.signal-bus` | emits | event | MessageReceived and MessageStateChanged |  |  | 6 |
 | `MSG.receipts` | `POL.receipts` | calls | sync | receipt suppression | POL.receipts |  | 6 |
-| `MSG.ingest` | `DB.peer-state` | calls | sync | update last_recv_seq |  |  | 6 |
-| `POL.store` | `DB.peers` | calls | sync | peer policy rows |  |  | 6 |
+| `MSG.ingest` | `DB.user-state` | calls | sync | update last_recv_seq |  |  | 6 |
+| `POL.store` | `DB.users` | calls | sync | user policy rows |  |  | 6 |
 | `POL.dnd` | `CFG.file-store` | config-read | sync | DND setting |  |  | 6 |
 | `POL.notify` | `IPC.signal-bus` | emits | event | notification event |  |  | 6 |
 | `POL.store` | `IPC.signal-bus` | emits | event | PolicyChanged |  |  | 6 |
@@ -174,13 +171,11 @@ flowchart LR
 | `ATT.progress` | `IPC.signal-bus` | emits | event | TransferProgress and TransferDone |  |  | 9 |
 | `ATT.recv-verify` | `DB.attachments` | calls | sync | attachment metadata |  |  | 9 |
 | `AUD.encode` | `TX.datagrams` | invokes | async | send audio datagram | CALL.policy |  | 10 |
-| `AUD.ringtone` | `CFG.file-store` | config-read | sync | ringtone path |  |  | 10 |
 | `CALL.signaling` | `TX.streams` | invokes | async | call signaling frame |  |  | 10 |
 | `CALL.signaling` | `TX.datagrams` | invokes | async | call control datagram |  |  | 10 |
 | `CALL.media` | `AUD.devices` | calls | sync | audio devices | CALL.policy |  | 10 |
 | `CALL.media` | `AUD.encode` | calls | sync | encode call audio |  |  | 10 |
 | `CALL.media` | `AUD.decode` | calls | sync | decode call audio |  |  | 10 |
-| `CALL.ringtone` | `AUD.ringtone` | calls | sync | ringtone playback |  |  | 10 |
 | `CALL.state` | `IPC.signal-bus` | emits | event | IncomingCall and CallStateChanged |  |  | 10 |
 | `CALL.policy` | `POL.inbound` | calls | sync | call policy decision | POL.inbound |  | 10 |
 | `CALL.cleanup` | `AUD.devices` | calls | sync | release audio devices |  |  | 10 |
@@ -204,20 +199,19 @@ flowchart LR
 | `UI.settings` | `CFG.file-store` | calls | sync | direct settings write |  |  | 7 |
 | `UI.client` | `IPC.signal-bus` | consumes | event | daemon signals |  |  | 7 |
 | `UI.settings` | `CFG.watch` | consumes | event | SettingsChanged |  |  | 7 |
-| `OVL.client` | `IPC.client` | calls | sync | daemon signal proxy |  |  | 8 |
 | `OVL.activate` | `UI.activate` | calls | sync | Activate view |  |  | 8 |
 | `OVL.client` | `CFG.file-store` | config-read | sync | overlay enabled and timeout |  |  | 8 |
-| `TRAY.policy` | `POL.store` | calls | sync | set peer policy | POL.store |  | 6 |
+| `TRAY.policy` | `POL.store` | calls | sync | set user policy | POL.store |  | 6 |
 | `TRAY.activate` | `UI.activate` | calls | sync | Activate view |  |  | 7 |
 | `TRAY.item` | `IPC.signal-bus` | emits | event | tray status |  |  | 6 |
 | `CLI.daemon` | `IPC.client` | calls | sync | daemon proxy |  |  | 2 |
 | `CLI.settings` | `CFG.file-store` | calls | sync | settings read and write |  |  | 3 |
 | `RT.lifecycle` | `DISC.supervisor` | invokes | async | start and stop discovery |  |  | 4 |
 | `CFG.watch` | `DISC.dbus` | invokes | async | reconfigure discovery |  |  | 4 |
-| `PAIR.dbus` | `ID.trust-store` | calls | sync | commit and forget peers | ID.trust-store |  | 5 |
-| `PAIR.dbus` | `IPC.signal-bus` | emits | event | PairingStarted, PairingCompleted, and PairingFailed |  |  | 5 |
-| `PAIR.dbus` | `TX.session` | consumes | event | peer connected and disconnected events |  |  | 5 |
-| `PAIR.dbus` | `TX.dialer` | invokes | async | open pairing connection |  |  | 5 |
-| `RT.lifecycle` | `PAIR.dbus` | invokes | async | start and stop pairing service |  |  | 5 |
+| `TRUST.dbus` | `ID.trust-store` | calls | sync | commit and forget users | ID.trust-store |  | 5 |
+| `TRUST.dbus` | `IPC.signal-bus` | emits | event | Automatic trustStarted, Automatic trustCompleted, and Automatic trustFailed |  |  | 5 |
+| `TRUST.dbus` | `TX.session` | consumes | event | user connected and disconnected events |  |  | 5 |
+| `TRUST.dbus` | `TX.dialer` | invokes | async | open trust connection |  |  | 5 |
+| `RT.lifecycle` | `TRUST.dbus` | invokes | async | start and stop trust service |  |  | 5 |
 | `RT.lifecycle` | `TX.endpoint` | invokes | async | bind and stop transport |  |  | 5 |
 | `OVL.client` | `CFG.watch` | consumes | event | SettingsChanged |  |  | 8 |

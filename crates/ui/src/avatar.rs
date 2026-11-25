@@ -28,11 +28,13 @@ fn encode_png(pixbuf: &gdk_pixbuf::Pixbuf) -> Result<Vec<u8>, String> {
     let height = u32::try_from(pixbuf.height()).map_err(|error| error.to_string())?;
     let channels = usize::try_from(pixbuf.n_channels()).map_err(|error| error.to_string())?;
     let rowstride = usize::try_from(pixbuf.rowstride()).map_err(|error| error.to_string())?;
+    let width_pixels = usize::try_from(width).map_err(|error| error.to_string())?;
+    let height_pixels = usize::try_from(height).map_err(|error| error.to_string())?;
     let bytes = pixbuf.read_pixel_bytes();
     let raw = bytes.as_ref();
-    let row_bytes = usize::try_from(width).map_err(|error| error.to_string())? * channels;
-    let mut pixels = Vec::with_capacity(row_bytes * usize::try_from(height).unwrap_or_default());
-    for row in 0..usize::try_from(height).map_err(|error| error.to_string())? {
+    let row_bytes = width_pixels * channels;
+    let mut pixels = Vec::with_capacity(row_bytes * height_pixels);
+    for row in 0..height_pixels {
         let start = row * rowstride;
         pixels.extend_from_slice(&raw[start..start + row_bytes]);
     }

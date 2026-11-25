@@ -5,7 +5,8 @@ shopt -s nullglob
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BIN="${TICONNECT_BIN:-$ROOT/target/debug/ticonnect}"
 SMOKE=0
-LAB_OPEN_LAN="${LAB_OPEN_LAN:-1}"
+HOT_RELOAD="${LAB_HOT_RELOAD:-1}"
+DEV_URL="http://127.0.0.1:5173"
 
 usage() {
     cat >&2 <<'EOF'
@@ -58,6 +59,7 @@ NODE_B="$WORK/node-b"
 TAB_NAME="ticonnect-lab-$$"
 PIDS=()
 SEEN_TAB=0
+CALL_AUDIO_DISCARD='Discard all samples (playback) or generate zero samples (capture)'
 
 zellij_action() {
     if [ -n "${ZELLIJ:-}" ] || [ -z "${ZELLIJ_SESSION_NAME:-}" ]; then
@@ -118,13 +120,88 @@ start_bus() {
     fail "private D-Bus did not start"
 }
 
+stop_existing_dev_server() {
+    local pids
+    pids="$(ss -ltnpH "sport = :5173" 2>/dev/null |
+        sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p' | sort -u || true)"
+    if [ -z "$pids" ] && command -v fuser >/dev/null 2>&1; then
+        pids="$(fuser 5173/tcp 2>/dev/null | tr ' ' '\n' |
+            grep -E '^[0-9]+$' | sort -u || true)"
+    fi
+    [ -n "$pids" ] ||
+        fail "port 5173 is in use but the owning process could not be identified"
+    local pid args cwd
+    for pid in $pids; do
+        args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+        cwd="$(readlink -f "/proc/$pid/cwd" 2>/dev/null || true)"
+        if [ "$cwd" != "$ROOT/crates/ui/web" ] &&
+            [[ "$args" != *"$ROOT/crates/ui/web"* ]]; then
+            fail "port 5173 is held by an unrelated process (pid $pid): $args"
+        fi
+    done
+    printf 'lab: restarting UI dev server on port 5173\n'
+    kill $pids 2>/dev/null || true
+    for _ in $(seq 1 50); do
+        if ! (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+            return 0
+        fi
+        sleep 0.1
+    done
+    kill -9 $pids 2>/dev/null || true
+    sleep 0.2
+    if (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+        fail "port 5173 is still in use after stopping the existing dev server"
+    fi
+}
+
+start_dev_server() {
+    command -v bun >/dev/null 2>&1 ||
+        fail "bun is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
+    command -v curl >/dev/null 2>&1 ||
+        fail "curl is required for UI hot reload; set LAB_HOT_RELOAD=0 to use embedded assets"
+    if (exec 3<>"/dev/tcp/127.0.0.1/5173") 2>/dev/null; then
+        stop_existing_dev_server
+    fi
+    (
+        cd "$ROOT/crates/ui/web"
+        exec bun run dev
+    ) >"$WORK/vite.log" 2>&1 &
+    PIDS+=("$!")
+    local ready=0 i
+    for i in $(seq 1 900); do
+        if curl --noproxy '*' --max-time 1 -fsS "$DEV_URL/" >/dev/null 2>&1; then
+            ready=1
+            break
+        fi
+        if ! kill -0 "${PIDS[-1]}" 2>/dev/null; then
+            tail -n 80 "$WORK/vite.log" >&2 || true
+            fail "Vite dev server exited"
+        fi
+        if [ $((i % 100)) -eq 0 ]; then
+            printf 'lab: still waiting for Vite dev server (%ss)\n' "$((i / 10))" >&2
+        fi
+        sleep 0.1
+    done
+    if [ "$ready" = "0" ]; then
+        printf 'lab: Vite did not answer %s within 90s\n' "$DEV_URL" >&2
+        printf 'lab: recent vite log (%s):\n' "$WORK/vite.log" >&2
+        tail -n 80 "$WORK/vite.log" >&2 || true
+        if command -v ss >/dev/null 2>&1; then
+            printf 'lab: port 5173 listeners:\n' >&2
+            ss -ltnpH 'sport = :5173' >&2 2>/dev/null || true
+        fi
+        fail "Vite dev server did not become ready; log: $WORK/vite.log"
+    fi
+    printf 'lab: UI hot reload at %s (log: %s)\n' "$DEV_URL" "$WORK/vite.log"
+}
+
 cli() {
     local node="$1"
     shift
     local dir="$WORK/node-$node"
     local bus="$BUS_A"
     [ "$node" = b ] && bus="$BUS_B"
-    DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus" \
     TICONNECT_CONFIG_DIR="$dir/config" \
     TICONNECT_DATA_DIR="$dir/data" \
     TICONNECT_NO_AUTOSTART=1 \
@@ -136,6 +213,7 @@ start_node() {
     local node="$1" bus="$2" dir="$3" port="$4"
     mkdir -p "$dir/config" "$dir/data"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus" \
     TICONNECT_CONFIG_DIR="$dir/config" \
     TICONNECT_DATA_DIR="$dir/data" \
     TICONNECT_LOG_LEVEL="${TICONNECT_LAB_LOG_LEVEL:-warn}" \
@@ -161,13 +239,52 @@ node_id() {
     cli "$1" id show | awk '/^node_id:/ {print $2}'
 }
 
+gio_env() {
+    if [ -n "${GIO_EXTRA_MODULES:-}" ]; then
+        return 0
+    fi
+    local dir
+    dir="$(ls -d /nix/store/*-glib-networking-*/lib/gio/modules 2>/dev/null |
+        head -n 1)"
+    [ -n "$dir" ] ||
+        fail "glib-networking is not available; run make lab from nix develop"
+    GIO_EXTRA_MODULES="$dir"
+    export GIO_EXTRA_MODULES
+}
+
+gstreamer_env() {
+    if [ -n "${GST_PLUGIN_SYSTEM_PATH_1_0:-}" ]; then
+        GST_PLUGIN_SYSTEM_PATH="${GST_PLUGIN_SYSTEM_PATH:-$GST_PLUGIN_SYSTEM_PATH_1_0}"
+        export GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_SYSTEM_PATH
+        return 0
+    fi
+    local lib version dir
+    lib="$(ldd "$BIN" 2>/dev/null | awk '/libgstreamer-1\.0\.so/ {print $3; exit}')"
+    [ -n "$lib" ] ||
+        fail "cannot resolve libgstreamer-1.0; run make lab from nix develop"
+    version="$(basename "$(dirname "$(dirname "$lib")")" |
+        sed -n 's/.*-gstreamer-\(.*\)$/\1/p')"
+    [ -n "$version" ] || fail "cannot determine GStreamer version from $lib"
+    local -a dirs=()
+    for dir in /nix/store/*-gstreamer-"$version"/lib/gstreamer-1.0 \
+        /nix/store/*-gst-plugins-*-"$version"/lib/gstreamer-1.0 \
+        /nix/store/*-gst-libav-"$version"/lib/gstreamer-1.0; do
+        [ -d "$dir" ] && dirs+=("$dir")
+    done
+    [ "${#dirs[@]}" -gt 0 ] ||
+        fail "no GStreamer $version plugins found; run make lab from nix develop"
+    GST_PLUGIN_SYSTEM_PATH_1_0="$(IFS=:; printf '%s' "${dirs[*]}")"
+    GST_PLUGIN_SYSTEM_PATH="$GST_PLUGIN_SYSTEM_PATH_1_0"
+    export GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_SYSTEM_PATH
+}
+
 write_node_files() {
-    local node="$1" bus="$2" dir="$3" id="$4" peer_id="$5" label="$6" peer_label="$7"
+    local node="$1" bus="$2" dir="$3" id="$4" user_id="$5" label="$6" user_label="$7"
     mkdir -p "$dir/bin"
     cat >"$dir/bin/ticonnect" <<EOF
 #!/bin/sh
 exec env \\
-  DBUS_SESSION_BUS_ADDRESS='unix:path=$bus' \\
+  TICONNECT_IPC_BUS_ADDRESS='unix:path=$bus' \\
   TICONNECT_CONFIG_DIR='$dir/config' \\
   TICONNECT_DATA_DIR='$dir/data' \\
   TICONNECT_NO_AUTOSTART=1 \\
@@ -177,7 +294,7 @@ EOF
     chmod 755 "$dir/bin/ticonnect"
 
     cat >"$dir/env" <<EOF
-export DBUS_SESSION_BUS_ADDRESS='unix:path=$bus'
+export TICONNECT_IPC_BUS_ADDRESS='unix:path=$bus'
 export TICONNECT_CONFIG_DIR='$dir/config'
 export TICONNECT_DATA_DIR='$dir/data'
 export TICONNECT_NO_AUTOSTART=1
@@ -185,22 +302,36 @@ export TICONNECT_LOG_LEVEL=off
 export TICONNECT_BIN='$BIN'
 export TICONNECT_UI_TITLE='TiConnect · $label'
 export LD_LIBRARY_PATH='${LD_LIBRARY_PATH:-}'
+export TICONNECT_UI_TIMING='${TICONNECT_UI_TIMING:-}'
+export GST_PLUGIN_SYSTEM_PATH_1_0='${GST_PLUGIN_SYSTEM_PATH_1_0:-}'
+export GST_PLUGIN_SYSTEM_PATH='${GST_PLUGIN_SYSTEM_PATH:-}'
+export GIO_EXTRA_MODULES='${GIO_EXTRA_MODULES:-}'
+export TICONNECT_YTDLP='${TICONNECT_YTDLP:-}'
+export TICONNECT_DISABLE_GPU='${TICONNECT_DISABLE_GPU:-}'
+export WEBKIT_DISABLE_DMABUF_RENDERER='${WEBKIT_DISABLE_DMABUF_RENDERER:-}'
+export LIBGL_ALWAYS_SOFTWARE='${LIBGL_ALWAYS_SOFTWARE:-}'
+export GALLIUM_DRIVER='${GALLIUM_DRIVER:-}'
 export LAB_DIR='$WORK'
 export LAB_NODE_DIR='$dir'
 export LAB_NODE='$node'
 export LAB_LABEL='$label'
-export LAB_PEER_LABEL='$peer_label'
+export LAB_USER_LABEL='$user_label'
 export NODE_ID='$id'
-export PEER_ID='$peer_id'
+export USER_ID='$user_id'
 export PATH='$dir/bin':"\$PATH"
 EOF
+
+    if [ -n "$DEV_URL" ] && [ "$SMOKE" = "0" ] && [ "$HOT_RELOAD" = "1" ]; then
+        printf "export TICONNECT_DEV_URL='%s'\nexport LAB_DEV_URL='%s'\n" \
+            "$DEV_URL" "$DEV_URL" >>"$dir/env"
+    fi
 
     cat >"$dir/bashrc" <<EOF
 source '$dir/env'
 export PS1='[$node] \\w \$ '
-peer() { printf '%s\\n' "\$PEER_ID"; }
-send() { ticonnect send "\$PEER_ID" "\$*"; }
-inbox() { ticonnect messages "\$PEER_ID" --limit "\${1:-20}"; }
+user() { printf '%s\\n' "\$USER_ID"; }
+send() { ticonnect send "\$USER_ID" "\$*"; }
+inbox() { ticonnect messages "\$USER_ID" --limit "\${1:-20}"; }
 pair() { '$WORK/bin/lab-pair'; }
 ui() {
     if [ -f "\$LAB_NODE_DIR/ui.pid" ] && kill -0 "\$(cat "\$LAB_NODE_DIR/ui.pid")" 2>/dev/null; then
@@ -253,24 +384,43 @@ stop-ovl() {
     fi
 }
 logs() { tail -n "\${1:-50}" "\$LAB_NODE_DIR/daemon.log"; }
+call-audio() {
+    case "\${1:-}" in
+        silent)
+            ticonnect settings set calls.input_device '${CALL_AUDIO_DISCARD}'
+            ticonnect settings set calls.output_device '${CALL_AUDIO_DISCARD}'
+            echo "Call audio muted; next call uses the null device"
+            ;;
+        hardware)
+            ticonnect settings set calls.input_device ''
+            ticonnect settings set calls.output_device ''
+            echo "Call audio restored; use headphones to avoid feedback"
+            ;;
+        *)
+            echo "usage: call-audio silent|hardware" >&2
+            return 1
+            ;;
+    esac
+}
 lab-stop() { zellij action close-tab; }
 help-lab() {
     cat <<'HELP'
 node commands:
   ticonnect <args>   talk to this node's daemon
-  pair               pair the two lab nodes
-  peer               print the peer node id
-  send "hello"       send to the peer
-  inbox [limit]      show messages from the peer
+  trust              wait for automatic LAN trust
+  user               print the user node id
+  send "hello"       send to the user
+  inbox [limit]      show messages from the user
   ui / stop-ui       start or stop this node's UI
   ovl / stop-ovl     start or stop this node's overlay
+  call-audio silent|hardware  route calls to null devices or hardware
   logs [lines]       show the daemon log
   lab-stop           close the lab tab
 HELP
 }
 echo "Node \$LAB_LABEL"
 echo "  id:   \$NODE_ID"
-echo "  peer: \$PEER_ID"
+echo "  user: \$USER_ID"
 echo "  type 'help-lab' for commands"
 EOF
 }
@@ -283,7 +433,7 @@ cli_a() { '$NODE_A/bin/ticonnect' "\$@"; }
 cli_b() { '$NODE_B/bin/ticonnect' "\$@"; }
 A_ID='$A_ID'
 B_ID='$B_ID'
-if cli_a peers list | grep -q "\$B_ID"; then
+if cli_a users list | grep -q "\$B_ID"; then
     echo "already paired"
     exit 0
 fi
@@ -291,17 +441,13 @@ for _ in \$(seq 1 600); do
     cli_a discover list | grep -q "\$B_ID" && break
     sleep 0.1
 done
-cli_a discover list | grep -q "\$B_ID" || { echo "peer not discovered" >&2; exit 1; }
-start="\$(cli_a pair start)"
-pin="\$(printf '%s\\n' "\$start" | sed -n 's/^pin: //p')"
-[ -n "\$pin" ] || { echo "no pairing PIN" >&2; exit 1; }
-cli_b pair with-pin "\$A_ID" "\$pin" >/dev/null
+cli_a discover list | grep -q "\$B_ID" || { echo "user not discovered" >&2; exit 1; }
 for _ in \$(seq 1 300); do
-    cli_a peers list | grep -q "\$B_ID" && cli_b peers list | grep -q "\$A_ID" && break
+    cli_a users list | grep -q "\$B_ID" && cli_b users list | grep -q "\$A_ID" && break
     sleep 0.1
 done
-cli_a peers list | grep -q "\$B_ID" && cli_b peers list | grep -q "\$A_ID"
-echo "paired"
+cli_a users list | grep -q "\$B_ID" && cli_b users list | grep -q "\$A_ID"
+echo "trusted"
 EOF
     chmod 755 "$WORK/bin/lab-pair"
 }
@@ -327,25 +473,50 @@ B_ID="$(node_id b)"
 
 cli a settings set identity.display_name "Lab Node A" >/dev/null
 cli b settings set identity.display_name "Lab Node B" >/dev/null
-if [ "$LAB_OPEN_LAN" = "0" ]; then
-    cli a settings set trust.open_lan false >/dev/null
-    cli b settings set trust.open_lan false >/dev/null
-fi
-
 mkdir -p "$WORK/bin"
+if [ "$SMOKE" = "0" ] && [ "$HOT_RELOAD" = "1" ]; then
+    start_dev_server
+fi
+gstreamer_env
+gio_env
+if [ -z "${TICONNECT_YTDLP:-}" ]; then
+    TICONNECT_YTDLP="$(ls -d /nix/store/*-yt-dlp-*/bin/yt-dlp 2>/dev/null |
+        sort | tail -n 1 || true)"
+fi
+[ -n "${TICONNECT_YTDLP:-}" ] ||
+    fail "yt-dlp is required; run make lab from nix develop"
+export TICONNECT_YTDLP
 write_node_files a "$BUS_A" "$NODE_A" "$A_ID" "$B_ID" "Lab Node A" "Lab Node B"
 write_node_files b "$BUS_B" "$NODE_B" "$B_ID" "$A_ID" "Lab Node B" "Lab Node A"
 lab_pair
 
+case "${LAB_CALL_AUDIO:-silent}" in
+    silent)
+        cli a settings set calls.input_device "$CALL_AUDIO_DISCARD"
+        cli b settings set calls.input_device "$CALL_AUDIO_DISCARD"
+        cli a settings set calls.output_device "$CALL_AUDIO_DISCARD"
+        cli b settings set calls.output_device "$CALL_AUDIO_DISCARD"
+        printf 'lab: call audio uses null devices to avoid same-host feedback\n'
+        printf 'lab: run call-audio hardware in both panes and use headphones for real audio\n'
+        ;;
+    hardware)
+        printf 'lab: call audio uses host devices; use headphones to avoid feedback\n'
+        ;;
+    *)
+        fail "LAB_CALL_AUDIO must be silent or hardware"
+        ;;
+esac
+
 if [ "$SMOKE" = "1" ]; then
-    if [ "$LAB_OPEN_LAN" = "1" ]; then
-        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
-            fail "node-a did not auto-trust node-b"
-        wait_for "cli b peers list | grep -q '$A_ID'" 300 ||
-            fail "node-b did not auto-trust node-a"
-    else
-        "$WORK/bin/lab-pair" >/dev/null
-    fi
+    wait_for "cli a users list | grep -q '$B_ID'" 300 ||
+        fail "node-a did not auto-trust node-b"
+    wait_for "cli b users list | grep -q '$A_ID'" 300 ||
+        fail "node-b did not auto-trust node-a"
+    wait_for "cli b users list | grep -q 'Lab Node A'" 300 ||
+        fail "node-b did not receive node-a display name"
+    cli a settings set identity.display_name "Lab Node A Renamed" >/dev/null
+    wait_for "cli b users list | grep -q 'Lab Node A Renamed'" 300 ||
+        fail "node-b did not receive renamed display name"
     message_id="$(cli a send "$B_ID" "lab-smoke-$(date +%s)")"
     for _ in $(seq 1 100); do
         cli b messages "$A_ID" --limit 20 | grep -q "$message_id" && break
@@ -354,18 +525,16 @@ if [ "$SMOKE" = "1" ]; then
     cli b messages "$A_ID" --limit 20 | grep -q "$message_id" ||
         fail "smoke message did not arrive"
 
-    if [ "$LAB_OPEN_LAN" = "1" ]; then
-        B_FP="$(cli a peers list | awk -v id="$B_ID" '$1 == id {print $2}')"
-        [ -n "$B_FP" ] || fail "missing peer fingerprint"
-        cli a pair forget "$B_ID" >/dev/null
-        sleep 1
-        if cli a peers list | grep -q "$B_ID"; then
-            fail "blocked peer was re-trusted"
-        fi
-        cli a pair unblock "$B_FP" >/dev/null
-        wait_for "cli a peers list | grep -q '$B_ID'" 300 ||
-            fail "unblocked peer did not re-trust"
+    B_FP="$(cli a users list | awk -v id="$B_ID" '$1 == id {print $2}')"
+    [ -n "$B_FP" ] || fail "missing user fingerprint"
+    cli a users forget "$B_ID" >/dev/null
+    sleep 1
+    if cli a users list | grep -q "$B_ID"; then
+        fail "blocked user was re-trusted"
     fi
+    cli a users unblock "$B_FP" >/dev/null
+    wait_for "cli a users list | grep -q '$B_ID'" 300 ||
+        fail "unblocked user did not re-trust"
 
     printf 'lab smoke passed: a=%s b=%s\n' "$A_ID" "$B_ID"
     exit 0
@@ -389,13 +558,12 @@ done
 printf 'Lab tab %s is ready.\n' "$TAB_NAME"
 printf 'Close the tab, run lab-stop, or press Ctrl-C here to stop.\n'
 misses=0
-while zellij_tab_exists; do
-    misses=0
-    sleep 1
-done
-# Three failed queries in a row mean the Zellij server is gone.
-while ! zellij_query_tabs >/dev/null 2>&1; do
-    misses=$((misses + 1))
-    [ "$misses" -ge 3 ] && break
+while :; do
+    if zellij_tab_exists; then
+        misses=0
+    else
+        misses=$((misses + 1))
+        [ "$misses" -ge 3 ] && break
+    fi
     sleep 1
 done

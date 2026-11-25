@@ -3,7 +3,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::StorageError;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PeerProfile {
+pub struct UserProfile {
     pub fingerprint: String,
     pub node_id: Option<String>,
     pub display_name: String,
@@ -13,9 +13,9 @@ pub struct PeerProfile {
     pub updated_at: i64,
 }
 
-pub fn upsert(connection: &Connection, profile: &PeerProfile) -> Result<(), StorageError> {
+pub fn upsert(connection: &Connection, profile: &UserProfile) -> Result<(), StorageError> {
     connection.execute(
-        "INSERT INTO peer_profiles
+        "INSERT INTO user_profiles
          (fingerprint, node_id, display_name, avatar_hash, avatar_mime, avatar, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(fingerprint) DO UPDATE SET
@@ -41,15 +41,15 @@ pub fn upsert(connection: &Connection, profile: &PeerProfile) -> Result<(), Stor
 pub fn get(
     connection: &Connection,
     fingerprint: &str,
-) -> Result<Option<PeerProfile>, StorageError> {
+) -> Result<Option<UserProfile>, StorageError> {
     connection
         .query_row(
             "SELECT fingerprint, node_id, display_name, avatar_hash, avatar_mime, avatar,
                     updated_at
-             FROM peer_profiles WHERE fingerprint = ?1",
+             FROM user_profiles WHERE fingerprint = ?1",
             params![fingerprint],
             |row| {
-                Ok(PeerProfile {
+                Ok(UserProfile {
                     fingerprint: row.get(0)?,
                     node_id: row.get(1)?,
                     display_name: row.get(2)?,

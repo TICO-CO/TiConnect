@@ -136,7 +136,7 @@ the UI, clicks fall back to notifications or are ignored.
 - Clicking a card raises the UI on the relevant view.
 - Incoming call and transfer cards appear when Stages 10 and 9 are present.
 - Disabling the overlay yields system notifications.
-- DND and per-peer policy are honored.
+- DND and per-user policy are honored.
 
 ## Demo
 

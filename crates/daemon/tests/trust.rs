@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use ticonnect_daemon::storage::{DatabaseHandle, NewPeer, PeerPolicy};
+use ticonnect_daemon::storage::{DatabaseHandle, NewUser, UserPolicy};
 use ticonnect_daemon::trust::{TrustError, TrustStore};
 use ticonnect_net::transport::TrustLookup;
 
@@ -15,12 +15,12 @@ async fn trust_store_loads_commits_forgets_and_reports_trust() {
 
     assert!(!TrustLookup::is_trusted(&store, "fingerprint-1"));
     store
-        .commit(NewPeer {
-            id: "peer-1".to_owned(),
+        .commit(NewUser {
+            id: "user-1".to_owned(),
             fingerprint: "fingerprint-1".to_owned(),
             public_key: None,
-            display_name: Some("Peer".to_owned()),
-            policy: PeerPolicy::Accept,
+            display_name: Some("User".to_owned()),
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -30,10 +30,10 @@ async fn trust_store_loads_commits_forgets_and_reports_trust() {
     assert!(TrustLookup::is_trusted(&store, "fingerprint-1"));
     assert_eq!(store.list().await.expect("list").len(), 1);
 
-    store.forget("peer-1").await.expect("forget");
+    store.forget("user-1").await.expect("forget");
     assert!(!TrustLookup::is_trusted(&store, "fingerprint-1"));
     assert!(matches!(
-        store.forget("peer-1").await,
+        store.forget("user-1").await,
         Err(TrustError::NotFound)
     ));
 
@@ -41,18 +41,18 @@ async fn trust_store_loads_commits_forgets_and_reports_trust() {
 }
 
 #[tokio::test]
-async fn trust_store_reloads_existing_peers() {
+async fn trust_store_reloads_existing_users() {
     let dir = temp_dir();
     let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
         .await
         .expect("database");
     database
-        .insert_peer(NewPeer {
-            id: "peer-1".to_owned(),
+        .insert_user(NewUser {
+            id: "user-1".to_owned(),
             fingerprint: "fingerprint-1".to_owned(),
             public_key: None,
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })

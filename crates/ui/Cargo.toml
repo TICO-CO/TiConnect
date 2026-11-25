@@ -1,6 +1,6 @@
 [package]
 name = "ticonnect-ui"
-description = "TiConnect GTK4 main window"
+description = "TiConnect WebKitGTK web UI host"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -12,17 +12,27 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow.workspace = true
+base64.workspace = true
+axum = { version = "0.8", features = ["ws"] }
 futures-util.workspace = true
 gdk-pixbuf = "0.22"
+getrandom = "0.4"
 gtk4.workspace = true
-libadwaita.workspace = true
+hex.workspace = true
+include_dir = "0.7"
+mime_guess = "2"
 png.workspace = true
-qrcodegen.workspace = true
-relm4.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 ticonnect-core.workspace = true
 ticonnect-runtime.workspace = true
 ticonnect-settings.workspace = true
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { workspace = true, features = ["fs", "io-util", "macros", "net", "process", "rt-multi-thread", "sync", "time"] }
 tracing.workspace = true
+webkit6 = "0.6"
 zbus.workspace = true
+
+[dev-dependencies]
+tokio-tungstenite = "0.29"

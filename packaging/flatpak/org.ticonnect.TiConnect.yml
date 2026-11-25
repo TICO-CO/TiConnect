@@ -1,3 +1,4 @@
+# WebKitGTK 6.0 must come from org.gnome.Platform or be added as a module.
 app-id: org.ticonnect.TiConnect
 runtime: org.gnome.Platform
 runtime-version: '48'
@@ -9,15 +10,37 @@ finish-args:
   - --socket=session-bus
   - --socket=wayland
   - --socket=fallback-x11
+  - --socket=pulseaudio
   - --device=dri
   - --filesystem=xdg-config/ticonnect:create
   - --filesystem=xdg-data/ticonnect:create
+  - --filesystem=xdg-download:ro
+  - --own-name=org.ticonnect.Daemon
+  - --own-name=org.ticonnect.UI
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
   - --talk-name=org.ticonnect.Daemon
+  - --env=TICONNECT_YTDLP=/app/bin/yt-dlp
+
+add-extensions:
+  org.freedesktop.Platform.ffmpeg-full:
+    version: '24.08'
+    directory: lib/ffmpeg
+    add-ld-path: .
+
+cleanup-commands:
+  - mkdir -p ${FLATPAK_DEST}/lib/ffmpeg
 
 modules:
+  - name: yt-dlp
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 yt-dlp /app/bin/yt-dlp
+    sources:
+      - type: file
+        url: https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp
+        sha256: 1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6
   - name: gtk4-layer-shell
     buildsystem: meson
     config-opts:

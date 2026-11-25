@@ -18,7 +18,7 @@ flowchart LR
     n_disc["DISC<br/>Discovery 4"]
     n_dt["DT<br/>Desktop capture and input 11"]
     n_id["ID<br/>Identity and trust 3"]
-    n_pair["PAIR<br/>Pairing 5"]
+    n_trust["TRUST<br/>Automatic trust 5"]
     n_tx["TX<br/>Transport 5"]
     n_vid["VID<br/>Video 11"]
   end
@@ -35,7 +35,7 @@ flowchart LR
     n_cli["CLI<br/>Command-line client 2"]
     n_ovl["OVL<br/>Overlay 8"]
     n_tray["TRAY<br/>Tray 6"]
-    n_ui["UI<br/>GTK4 user interface 7"]
+    n_ui["UI<br/>WebKitGTK user interface 7"]
   end
   subgraph assurance["Assurance"]
     n_asr["ASR<br/>Assurance and packaging 1"]
@@ -45,7 +45,6 @@ flowchart LR
   n_att -->|emits / event| n_ipc
   n_att -->|calls / sync| n_msg
   n_att -->|invokes / async| n_tx
-  n_aud -->|config-read / sync| n_cfg
   n_aud -->|invokes / async gate:CALL.policy| n_tx
   n_call -->|calls / sync gate:CALL.policy| n_aud
   n_call -->|emits / event| n_ipc
@@ -69,12 +68,7 @@ flowchart LR
   n_msg -->|calls / sync gate:POL.inbound, POL.receipts| n_pol
   n_msg -->|invokes / async| n_tx
   n_ovl -->|config-read, consumes / event, sync| n_cfg
-  n_ovl -->|calls / sync| n_ipc
   n_ovl -->|calls / sync| n_ui
-  n_pair -->|calls / sync gate:ID.trust-store, PAIR.confirm| n_id
-  n_pair -->|emits / event| n_ipc
-  n_pair -->|consumes, invokes / async, event| n_tx
-  n_pair -->|calls / sync| n_wire
   n_pol -->|config-read / sync| n_cfg
   n_pol -->|calls / sync| n_db
   n_pol -->|emits / event| n_ipc
@@ -86,11 +80,15 @@ flowchart LR
   n_rt -->|invokes / async| n_disc
   n_rt -->|calls / sync| n_ipc
   n_rt -->|calls / sync| n_log
-  n_rt -->|invokes / async| n_pair
+  n_rt -->|invokes / async| n_trust
   n_rt -->|invokes / async| n_tx
   n_tray -->|emits / event| n_ipc
   n_tray -->|calls / sync gate:POL.store| n_pol
   n_tray -->|calls / sync| n_ui
+  n_trust -->|calls / sync gate:ID.trust-store, TRUST.confirm| n_id
+  n_trust -->|emits / event| n_ipc
+  n_trust -->|consumes, invokes / async, event| n_tx
+  n_trust -->|calls / sync| n_wire
   n_tx -->|emits / event| n_att
   n_tx -->|emits / event gate:CALL.policy| n_aud
   n_tx -->|emits / event gate:CALL.policy| n_call
@@ -98,8 +96,8 @@ flowchart LR
   n_tx -->|calls / sync gate:ID.cert-binding, ID.trust-store| n_id
   n_tx -->|emits / event| n_ipc
   n_tx -->|emits / event| n_msg
-  n_tx -->|calls / sync gate:PAIR.endpoint| n_pair
   n_tx -->|emits / event gate:RD.consent| n_rd
+  n_tx -->|calls / sync gate:TRUST.endpoint| n_trust
   n_tx -->|emits / event gate:RD.consent| n_vid
   n_tx -->|calls / sync| n_wire
   n_ui -->|calls, consumes / event, sync| n_cfg
@@ -119,9 +117,8 @@ flowchart LR
 | `ATT` | `IPC` | emits | event |  | 1 |
 | `ATT` | `MSG` | calls | sync |  | 1 |
 | `ATT` | `TX` | invokes | async |  | 1 |
-| `AUD` | `CFG` | config-read | sync |  | 1 |
 | `AUD` | `TX` | invokes | async | CALL.policy | 1 |
-| `CALL` | `AUD` | calls | sync | CALL.policy | 5 |
+| `CALL` | `AUD` | calls | sync | CALL.policy | 4 |
 | `CALL` | `IPC` | emits | event |  | 1 |
 | `CALL` | `POL` | calls | sync | POL.inbound | 1 |
 | `CALL` | `TX` | calls, invokes | async, sync |  | 3 |
@@ -143,12 +140,7 @@ flowchart LR
 | `MSG` | `POL` | calls | sync | POL.inbound, POL.receipts | 2 |
 | `MSG` | `TX` | invokes | async |  | 2 |
 | `OVL` | `CFG` | config-read, consumes | event, sync |  | 2 |
-| `OVL` | `IPC` | calls | sync |  | 1 |
 | `OVL` | `UI` | calls | sync |  | 1 |
-| `PAIR` | `ID` | calls | sync | ID.trust-store, PAIR.confirm | 3 |
-| `PAIR` | `IPC` | emits | event |  | 2 |
-| `PAIR` | `TX` | consumes, invokes | async, event |  | 2 |
-| `PAIR` | `WIRE` | calls | sync |  | 1 |
 | `POL` | `CFG` | config-read | sync |  | 1 |
 | `POL` | `DB` | calls | sync |  | 1 |
 | `POL` | `IPC` | emits | event |  | 2 |
@@ -160,11 +152,15 @@ flowchart LR
 | `RT` | `DISC` | invokes | async |  | 1 |
 | `RT` | `IPC` | calls | sync |  | 1 |
 | `RT` | `LOG` | calls | sync |  | 1 |
-| `RT` | `PAIR` | invokes | async |  | 1 |
+| `RT` | `TRUST` | invokes | async |  | 1 |
 | `RT` | `TX` | invokes | async |  | 1 |
 | `TRAY` | `IPC` | emits | event |  | 1 |
 | `TRAY` | `POL` | calls | sync | POL.store | 1 |
 | `TRAY` | `UI` | calls | sync |  | 1 |
+| `TRUST` | `ID` | calls | sync | ID.trust-store, TRUST.confirm | 2 |
+| `TRUST` | `IPC` | emits | event |  | 2 |
+| `TRUST` | `TX` | consumes, invokes | async, event |  | 2 |
+| `TRUST` | `WIRE` | calls | sync |  | 1 |
 | `TX` | `ATT` | emits | event |  | 1 |
 | `TX` | `AUD` | emits | event | CALL.policy | 1 |
 | `TX` | `CALL` | emits | event | CALL.policy | 1 |
@@ -172,8 +168,8 @@ flowchart LR
 | `TX` | `ID` | calls | sync | ID.cert-binding, ID.trust-store | 2 |
 | `TX` | `IPC` | emits | event |  | 1 |
 | `TX` | `MSG` | emits | event |  | 1 |
-| `TX` | `PAIR` | calls | sync | PAIR.endpoint | 1 |
 | `TX` | `RD` | emits | event | RD.consent | 1 |
+| `TX` | `TRUST` | calls | sync | TRUST.endpoint | 1 |
 | `TX` | `VID` | emits | event | RD.consent | 1 |
 | `TX` | `WIRE` | calls | sync |  | 2 |
 | `UI` | `CFG` | calls, consumes | event, sync |  | 2 |

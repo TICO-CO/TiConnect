@@ -40,6 +40,7 @@ fn messaging_commands_are_exposed() {
     assert_success(&help);
     let stdout = String::from_utf8_lossy(&help.stdout);
     for command in [
+        "doctor",
         "send",
         "messages",
         "mark-read",
@@ -49,6 +50,8 @@ fn messaging_commands_are_exposed() {
         "transfer",
         "call",
         "remote",
+        "discover",
+        "network",
     ] {
         assert!(stdout.contains(command), "missing {command} in help");
     }

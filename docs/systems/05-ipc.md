@@ -55,8 +55,8 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 | `IPC.signal-bus` | `calls` | `sync` | `IPC.dto` | signal payload |  |  |
 | `IPC.version` | `calls` | `sync` | `IPC.schema` | compatibility check |  |  |
 | `DISC.dbus` | `emits` | `event` | `IPC.signal-bus` | CandidateFound and CandidateLost |  |  |
-| `PAIR.commit` | `emits` | `event` | `IPC.signal-bus` | PairingCompleted or PairingFailed |  |  |
-| `TX.session` | `emits` | `event` | `IPC.signal-bus` | PeerConnected and PeerDisconnected |  |  |
+| `TRUST.commit` | `emits` | `event` | `IPC.signal-bus` | Automatic trustCompleted or Automatic trustFailed |  |  |
+| `TX.session` | `emits` | `event` | `IPC.signal-bus` | UserConnected and UserDisconnected |  |  |
 | `MSG.events` | `emits` | `event` | `IPC.signal-bus` | MessageReceived and MessageStateChanged |  |  |
 | `POL.notify` | `emits` | `event` | `IPC.signal-bus` | notification event |  |  |
 | `POL.store` | `emits` | `event` | `IPC.signal-bus` | PolicyChanged |  |  |
@@ -67,10 +67,9 @@ Depends on core DTO types. Daemon implements the service. UI, overlay, tray, and
 | `RD.indicator` | `emits` | `event` | `IPC.signal-bus` | indicator visibility |  |  |
 | `UI.client` | `calls` | `sync` | `IPC.client` | daemon proxy |  |  |
 | `UI.client` | `consumes` | `event` | `IPC.signal-bus` | daemon signals |  |  |
-| `OVL.client` | `calls` | `sync` | `IPC.client` | daemon signal proxy |  |  |
 | `TRAY.item` | `emits` | `event` | `IPC.signal-bus` | tray status |  |  |
 | `CLI.daemon` | `calls` | `sync` | `IPC.client` | daemon proxy |  |  |
-| `PAIR.dbus` | `emits` | `event` | `IPC.signal-bus` | PairingStarted, PairingCompleted, and PairingFailed |  |  |
+| `TRUST.dbus` | `emits` | `event` | `IPC.signal-bus` | Automatic trustStarted, Automatic trustCompleted, and Automatic trustFailed |  |  |
 
 ## Invariants
 

@@ -1,6 +1,23 @@
 use std::collections::{BTreeSet, HashMap};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UserPlatform {
+    pub os: String,
+    pub desktop: String,
+    pub display_server: String,
+    pub app_version: String,
+}
+
+impl UserPlatform {
+    pub fn is_empty(&self) -> bool {
+        self.os.is_empty()
+            && self.desktop.is_empty()
+            && self.display_server.is_empty()
+            && self.app_version.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum CandidateSource {
     Mdns,
@@ -22,6 +39,7 @@ pub struct Candidate {
     fingerprint: String,
     display_name: String,
     avatar_hash: Option<String>,
+    platform: UserPlatform,
     addresses: BTreeSet<String>,
     port: u16,
     protocol_version: u16,
@@ -47,6 +65,7 @@ impl Candidate {
             fingerprint,
             display_name,
             avatar_hash: None,
+            platform: UserPlatform::default(),
             addresses,
             port,
             protocol_version,
@@ -75,6 +94,15 @@ impl Candidate {
     pub(crate) fn with_avatar_hash(mut self, avatar_hash: Option<String>) -> Self {
         self.avatar_hash = avatar_hash;
         self
+    }
+
+    pub(crate) fn with_platform(mut self, platform: UserPlatform) -> Self {
+        self.platform = platform;
+        self
+    }
+
+    pub fn platform(&self) -> &UserPlatform {
+        &self.platform
     }
 
     pub fn addresses(&self) -> impl Iterator<Item = &str> {
@@ -107,11 +135,14 @@ impl Candidate {
 
     fn absorb(&mut self, other: Self) {
         self.addresses.extend(other.addresses);
-        if self.display_name.is_empty() {
+        if !other.display_name.is_empty() {
             self.display_name = other.display_name;
         }
         if other.avatar_hash.is_some() {
             self.avatar_hash = other.avatar_hash;
+        }
+        if !other.platform.is_empty() {
+            self.platform = other.platform;
         }
         if self.port == 0 {
             self.port = other.port;
@@ -122,6 +153,7 @@ impl Candidate {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum CandidateChange {
     Found(Candidate),
     Updated,
@@ -146,7 +178,14 @@ impl CandidateCache {
     pub(crate) fn upsert(&mut self, candidate: Candidate) -> CandidateChange {
         let fingerprint = candidate.fingerprint().to_owned();
         if let Some(existing) = self.entries.get_mut(&fingerprint) {
+            let display_name_changed = !candidate.display_name.is_empty()
+                && existing.display_name != candidate.display_name;
+            let avatar_hash_changed =
+                candidate.avatar_hash.is_some() && existing.avatar_hash != candidate.avatar_hash;
             existing.absorb(candidate);
+            if display_name_changed || avatar_hash_changed {
+                return CandidateChange::Found(existing.clone());
+            }
             return CandidateChange::Updated;
         }
 
@@ -209,4 +248,60 @@ fn unix_millis() -> u64 {
         .map_or(0, |duration| {
             u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(display_name: &str, avatar_hash: Option<&str>) -> Candidate {
+        Candidate::new(
+            "node-1".to_owned(),
+            "fingerprint-1".to_owned(),
+            display_name.to_owned(),
+            BTreeSet::from(["127.0.0.1".to_owned()]),
+            4000,
+            1,
+            CandidateSource::Broadcast,
+            Instant::now(),
+        )
+        .with_avatar_hash(avatar_hash.map(str::to_owned))
+    }
+
+    #[test]
+    fn display_name_update_is_reported_as_found() {
+        let mut cache = CandidateCache::new(4);
+        cache.upsert(candidate("Old name", None));
+
+        let change = cache.upsert(candidate("New name", None));
+
+        match change {
+            CandidateChange::Found(updated) => assert_eq!(updated.display_name(), "New name"),
+            other => panic!("expected Found, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn avatar_update_is_reported_as_found() {
+        let mut cache = CandidateCache::new(4);
+        cache.upsert(candidate("Ada", Some("old-hash")));
+
+        let change = cache.upsert(candidate("Ada", Some("new-hash")));
+
+        match change {
+            CandidateChange::Found(updated) => assert_eq!(updated.avatar_hash(), Some("new-hash")),
+            other => panic!("expected Found, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unchanged_candidate_is_reported_as_updated() {
+        let mut cache = CandidateCache::new(4);
+        cache.upsert(candidate("Ada", None));
+
+        assert_eq!(
+            cache.upsert(candidate("Ada", None)),
+            CandidateChange::Updated
+        );
+    }
 }

@@ -9,3 +9,5 @@
 .DS_Store
 .env
 *.local.toml
+/crates/ui/web/node_modules/
+/crates/ui/web/dist/

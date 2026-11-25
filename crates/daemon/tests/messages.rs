@@ -5,7 +5,7 @@ use ticonnect_core::id::NodeId;
 use ticonnect_core::identity::IdentityKeyPair;
 use ticonnect_core::message::{MessageRecord, conversation_id};
 use ticonnect_daemon::storage::{
-    DatabaseHandle, InsertOutcome, MessageState, NewPeer, PeerPolicy, StorageError,
+    DatabaseHandle, InsertOutcome, MessageState, NewUser, StorageError, UserPolicy,
 };
 
 #[tokio::test]
@@ -15,31 +15,31 @@ async fn message_insert_history_and_state_are_transactional() {
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let identity = IdentityKeyPair::from_secret_bytes([81_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
+        .insert_user(NewUser {
+            id: user.to_string(),
             fingerprint: "fingerprint".to_owned(),
             public_key: Some(identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
+        .expect("user");
 
-    let conversation = conversation_id(local, peer);
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
-    let seq = database.allocate_seq(&peer.to_string()).await.expect("seq");
+    let seq = database.allocate_seq(&user.to_string()).await.expect("seq");
     assert_eq!(seq, 1);
     assert_eq!(
-        database.allocate_seq(&peer.to_string()).await.expect("seq"),
+        database.allocate_seq(&user.to_string()).await.expect("seq"),
         2
     );
 
@@ -112,48 +112,48 @@ async fn message_insert_history_and_state_are_transactional() {
 }
 
 #[tokio::test]
-async fn inbound_insert_advances_peer_state_and_outbox_expires() {
+async fn inbound_insert_advances_user_state_and_outbox_expires() {
     let dir = temp_dir();
     let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let identity = IdentityKeyPair::from_secret_bytes([82_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
+        .insert_user(NewUser {
+            id: user.to_string(),
             fingerprint: "fingerprint".to_owned(),
             public_key: Some(identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
-    let conversation = conversation_id(local, peer);
+        .expect("user");
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
-    let record = MessageRecord::text(&conversation, peer.to_string(), 5, 10, "incoming");
+    let record = MessageRecord::text(&conversation, user.to_string(), 5, 10, "incoming");
     let envelope = record.signed(&identity).expect("sign");
     database
         .insert_inbound(
             record.clone(),
             record.sent_at,
             envelope.signature().to_vec(),
-            &peer.to_string(),
+            &user.to_string(),
         )
         .await
         .expect("inbound");
     assert_eq!(
         database
-            .peer_state(&peer.to_string())
+            .user_state(&user.to_string())
             .await
-            .expect("peer state")
+            .expect("user state")
             .last_recv_seq,
         5
     );
@@ -165,7 +165,7 @@ async fn inbound_insert_advances_peer_state_and_outbox_expires() {
     assert_eq!(database.outbox_depth().await.expect("depth"), 1);
     assert!(
         database
-            .due_outbox(&peer.to_string(), 1)
+            .due_outbox(&user.to_string(), 1)
             .await
             .expect("due")
             .is_empty()
@@ -179,30 +179,242 @@ async fn inbound_insert_advances_peer_state_and_outbox_expires() {
 }
 
 #[tokio::test]
+async fn lifecycle_records_update_targets_and_stay_hidden() {
+    use ticonnect_core::message::MessageKind;
+
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let user = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([85_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "fingerprint".to_owned(),
+            public_key: Some(identity.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("user");
+    let conversation = conversation_id(local, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("conversation");
+
+    let target = MessageRecord::text(&conversation, local.to_string(), 1, 10, "original");
+    let target_envelope = target.signed(&identity).expect("sign target");
+    database
+        .insert_message(
+            target.clone(),
+            10,
+            target_envelope.signature().to_vec(),
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("target message");
+
+    let edit = MessageRecord::new(
+        &conversation,
+        local.to_string(),
+        2,
+        20,
+        MessageKind::Edit,
+        Some("edited".to_owned()),
+    );
+    let edit = MessageRecord {
+        target_id: Some(target.message_id.to_string()),
+        ..edit
+    };
+    let edit_envelope = edit.signed(&identity).expect("sign edit");
+    database
+        .insert_message(
+            edit,
+            20,
+            edit_envelope.signature().to_vec(),
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("edit record");
+    database
+        .apply_lifecycle(MessageRecord {
+            target_id: Some(target.message_id.to_string()),
+            ..MessageRecord::new(
+                &conversation,
+                local.to_string(),
+                2,
+                20,
+                MessageKind::Edit,
+                Some("edited".to_owned()),
+            )
+        })
+        .await
+        .expect("apply edit");
+
+    let updated = database
+        .get_message(&target.message_id.to_string())
+        .await
+        .expect("get target")
+        .expect("target");
+    assert_eq!(updated.record.body.as_deref(), Some("edited"));
+    assert_eq!(updated.edited_at, Some(20));
+    assert_eq!(
+        database.count_history(&conversation).await.expect("count"),
+        1
+    );
+    let history = database
+        .list_history(&conversation, 10, 0)
+        .await
+        .expect("history");
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].record.message_id, target.message_id);
+
+    let delete = MessageRecord {
+        target_id: Some(target.message_id.to_string()),
+        ..MessageRecord::new(
+            &conversation,
+            local.to_string(),
+            3,
+            30,
+            MessageKind::Delete,
+            None,
+        )
+    };
+    database
+        .apply_lifecycle(delete)
+        .await
+        .expect("apply delete");
+    let deleted = database
+        .get_message(&target.message_id.to_string())
+        .await
+        .expect("get target")
+        .expect("target");
+    assert_eq!(deleted.deleted_at, Some(30));
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
+async fn failed_outgoing_messages_can_be_requeued() {
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let user = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
+    database
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "fingerprint".to_owned(),
+            public_key: Some(identity.verifying_key().to_bytes()),
+            display_name: None,
+            policy: UserPolicy::Accept,
+            trusted_at: 1,
+            last_seen: None,
+        })
+        .await
+        .expect("user");
+    let conversation = conversation_id(local, user);
+    database
+        .ensure_conversation(&conversation, &user.to_string(), 1)
+        .await
+        .expect("conversation");
+
+    let outgoing = MessageRecord::text(&conversation, local.to_string(), 1, 10, "retry me");
+    let envelope = outgoing.signed(&identity).expect("sign outgoing");
+    database
+        .insert_message(
+            outgoing.clone(),
+            10,
+            envelope.signature().to_vec(),
+            Some(MessageState::Failed),
+        )
+        .await
+        .expect("outgoing message");
+    let requeued = database
+        .requeue_outbox(
+            &outgoing.message_id.to_string(),
+            &local.to_string(),
+            20,
+            100,
+        )
+        .await
+        .expect("requeue");
+    assert_eq!(requeued, Some(user.to_string()));
+    assert_eq!(
+        database
+            .message_state(&outgoing.message_id.to_string())
+            .await
+            .expect("state"),
+        Some(MessageState::Queued)
+    );
+    let due = database
+        .due_outbox(&user.to_string(), 20)
+        .await
+        .expect("due");
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].message_id, outgoing.message_id.to_string());
+
+    let incoming = MessageRecord::text(&conversation, user.to_string(), 2, 11, "incoming");
+    let incoming_envelope = incoming.signed(&identity).expect("sign incoming");
+    database
+        .insert_inbound(
+            incoming.clone(),
+            11,
+            incoming_envelope.signature().to_vec(),
+            &user.to_string(),
+        )
+        .await
+        .expect("incoming message");
+    assert!(
+        database
+            .requeue_outbox(
+                &incoming.message_id.to_string(),
+                &local.to_string(),
+                20,
+                100,
+            )
+            .await
+            .expect("requeue incoming")
+            .is_none()
+    );
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[tokio::test]
 async fn records_between_filters_by_sender() {
     let dir = temp_dir();
     let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
         .await
         .expect("database");
     let local = NodeId::generate();
-    let peer = NodeId::generate();
+    let user = NodeId::generate();
     let local_identity = IdentityKeyPair::from_secret_bytes([83_u8; 32]);
-    let peer_identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
+    let user_identity = IdentityKeyPair::from_secret_bytes([84_u8; 32]);
     database
-        .insert_peer(NewPeer {
-            id: peer.to_string(),
-            fingerprint: "peer-fingerprint".to_owned(),
-            public_key: Some(peer_identity.verifying_key().to_bytes()),
+        .insert_user(NewUser {
+            id: user.to_string(),
+            fingerprint: "user-fingerprint".to_owned(),
+            public_key: Some(user_identity.verifying_key().to_bytes()),
             display_name: None,
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
         .await
-        .expect("peer");
-    let conversation = conversation_id(local, peer);
+        .expect("user");
+    let conversation = conversation_id(local, user);
     database
-        .ensure_conversation(&conversation, &peer.to_string(), 1)
+        .ensure_conversation(&conversation, &user.to_string(), 1)
         .await
         .expect("conversation");
 
@@ -243,18 +455,18 @@ async fn records_between_filters_by_sender() {
 
     let incoming = MessageRecord::text(
         conversation.clone(),
-        peer.to_string(),
+        user.to_string(),
         1,
         1_700_000_000_000,
         "incoming",
     );
-    let incoming_envelope = incoming.signed(&peer_identity).expect("sign incoming");
+    let incoming_envelope = incoming.signed(&user_identity).expect("sign incoming");
     database
         .insert_inbound(
             incoming,
             1_700_000_000_100,
             incoming_envelope.signature().to_vec(),
-            &peer.to_string(),
+            &user.to_string(),
         )
         .await
         .expect("insert incoming");
@@ -266,12 +478,12 @@ async fn records_between_filters_by_sender() {
     assert_eq!(local_records.len(), 1);
     assert_eq!(local_records[0].record.body.as_deref(), Some("outgoing"));
 
-    let peer_records = database
-        .records_between(&conversation, &peer.to_string(), 1, 1, 10)
+    let user_records = database
+        .records_between(&conversation, &user.to_string(), 1, 1, 10)
         .await
-        .expect("peer records");
-    assert_eq!(peer_records.len(), 1);
-    assert_eq!(peer_records[0].record.body.as_deref(), Some("incoming"));
+        .expect("user records");
+    assert_eq!(user_records.len(), 1);
+    assert_eq!(user_records[0].record.body.as_deref(), Some("incoming"));
 
     drop(database);
     let _ = fs::remove_dir_all(dir);
@@ -291,4 +503,214 @@ fn temp_dir() -> PathBuf {
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     std::env::temp_dir().join(format!("ticonnect-messages-{}-{id}", std::process::id()))
+}
+
+#[tokio::test]
+async fn clearing_history_scopes_messages_and_unreferenced_attachments() {
+    use ticonnect_core::attachment::{AttachmentHash, AttachmentRef};
+    use ticonnect_core::message::MessageKind;
+    use ticonnect_daemon::storage::{AttachmentRecord, TransferPartial};
+
+    let dir = temp_dir();
+    let database = DatabaseHandle::spawn(dir.join("ticonnect.db"))
+        .await
+        .expect("database");
+    let local = NodeId::generate();
+    let first = NodeId::generate();
+    let second = NodeId::generate();
+    let identity = IdentityKeyPair::from_secret_bytes([83_u8; 32]);
+    for (id, fingerprint) in [
+        (first.to_string(), "first".to_owned()),
+        (second.to_string(), "second".to_owned()),
+    ] {
+        database
+            .insert_user(NewUser {
+                id,
+                fingerprint,
+                public_key: Some(identity.verifying_key().to_bytes()),
+                display_name: None,
+                policy: UserPolicy::Accept,
+                trusted_at: 1,
+                last_seen: None,
+            })
+            .await
+            .expect("user");
+    }
+
+    let first_conversation = conversation_id(local, first);
+    let second_conversation = conversation_id(local, second);
+    database
+        .ensure_conversation(&first_conversation, &first.to_string(), 1)
+        .await
+        .expect("first conversation");
+    database
+        .ensure_conversation(&second_conversation, &second.to_string(), 1)
+        .await
+        .expect("second conversation");
+
+    let first_record = MessageRecord::text(
+        first_conversation.clone(),
+        local.to_string(),
+        1,
+        1_700_000_000_000,
+        "first",
+    );
+    let envelope = first_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            first_record.clone(),
+            1_700_000_000_000,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("first message");
+    database
+        .enqueue_outbox(&first_record.message_id.to_string(), 0, i64::MAX)
+        .await
+        .expect("first outbox");
+
+    let hash = AttachmentHash::of(b"attachment");
+    let attachment = AttachmentRef::new(hash, "clip.webm", 10, "audio/webm").expect("attachment");
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: hash.to_hex(),
+            size: 10,
+            path: "/tmp/clip.webm".to_owned(),
+            mime: "audio/webm".to_owned(),
+            name: "clip.webm".to_owned(),
+            created_at: 1,
+        })
+        .await
+        .expect("attachment");
+    let attachment_record = MessageRecord::new(
+        first_conversation.clone(),
+        local.to_string(),
+        2,
+        1_700_000_000_001,
+        MessageKind::Audio,
+        None,
+    )
+    .with_attachment(&attachment)
+    .expect("attachment message");
+    let envelope = attachment_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            attachment_record.clone(),
+            1_700_000_000_001,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("attachment message");
+    database
+        .enqueue_outbox(&attachment_record.message_id.to_string(), 0, i64::MAX)
+        .await
+        .expect("attachment outbox");
+    database
+        .upsert_transfer_partial(TransferPartial {
+            hash: hash.to_hex(),
+            user_id: first.to_string(),
+            size: 10,
+            bytes_received: 4,
+            temp_path: "/tmp/clip.webm.part".to_owned(),
+            ranges: "0:4".to_owned(),
+            updated_at: 1,
+        })
+        .await
+        .expect("transfer partial");
+
+    let second_record = MessageRecord::text(
+        second_conversation.clone(),
+        local.to_string(),
+        1,
+        1_700_000_000_002,
+        "second",
+    );
+    let envelope = second_record.signed(&identity).expect("sign");
+    database
+        .insert_message(
+            second_record,
+            1_700_000_000_002,
+            envelope.signature().to_vec(),
+            Some(MessageState::Queued),
+        )
+        .await
+        .expect("second message");
+
+    let outcome = database
+        .clear_history(Some(&first.to_string()))
+        .await
+        .expect("clear first");
+    assert_eq!(outcome.messages, 2);
+    assert_eq!(outcome.attachments, vec![hash.to_hex()]);
+    assert_eq!(
+        database
+            .count_history(&first_conversation)
+            .await
+            .expect("first count"),
+        0
+    );
+    assert_eq!(
+        database
+            .count_history(&second_conversation)
+            .await
+            .expect("second count"),
+        1
+    );
+    assert!(
+        database
+            .get_attachment(&hash.to_hex())
+            .await
+            .expect("attachment")
+            .is_none()
+    );
+    assert!(
+        database
+            .get_transfer_partial(&hash.to_hex())
+            .await
+            .expect("partial")
+            .is_none()
+    );
+    assert_eq!(database.outbox_depth().await.expect("outbox depth"), 0);
+
+    let usage = database.storage_usage().await.expect("usage");
+    assert_eq!(usage.message_count, 1);
+    assert_eq!(usage.attachment_count, 0);
+    assert!(usage.database_bytes > 0);
+
+    let orphan_hash = AttachmentHash::of(b"orphan-attachment").to_hex();
+    database
+        .upsert_attachment(AttachmentRecord {
+            hash: orphan_hash.clone(),
+            size: 3,
+            path: "/tmp/orphan.bin".to_owned(),
+            mime: "application/octet-stream".to_owned(),
+            name: "orphan.bin".to_owned(),
+            created_at: 2,
+        })
+        .await
+        .expect("orphan attachment");
+
+    let outcome = database.clear_history(None).await.expect("clear all");
+    assert_eq!(outcome.messages, 1);
+    assert_eq!(outcome.attachments, vec![orphan_hash.clone()]);
+    assert!(
+        database
+            .get_attachment(&orphan_hash)
+            .await
+            .expect("orphan")
+            .is_none()
+    );
+    assert_eq!(
+        database
+            .storage_usage()
+            .await
+            .expect("usage")
+            .attachment_count,
+        0
+    );
+
+    drop(database);
+    let _ = fs::remove_dir_all(dir);
 }

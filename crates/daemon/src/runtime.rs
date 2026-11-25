@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use ticonnect_core::ipc;
@@ -9,16 +10,45 @@ use tokio::sync::watch;
 use zbus::object_server::SignalEmitter;
 
 use crate::attachments;
+use crate::auto_trust;
 use crate::calls;
 use crate::config_watch;
 use crate::discovery_service;
 use crate::messaging::{self, MessagingEvent};
-use crate::pairing_service;
 use crate::profile;
 use crate::reconnect_service;
 use crate::remote;
 use crate::service::{DaemonService, DaemonState};
 use crate::tray;
+use crate::watch_party;
+
+const MESSAGE_SOUND_COOLDOWN: Duration = Duration::from_secs(5);
+
+struct MessageSoundCooldown {
+    last_played: Option<Instant>,
+}
+
+impl MessageSoundCooldown {
+    fn new() -> Self {
+        Self { last_played: None }
+    }
+
+    fn try_play(&mut self, now: Instant) -> bool {
+        if self
+            .last_played
+            .is_some_and(|last| now.duration_since(last) < MESSAGE_SOUND_COOLDOWN)
+        {
+            return false;
+        }
+        self.last_played = Some(now);
+        true
+    }
+}
+
+async fn ui_is_running(connection: &zbus::Connection) -> Result<bool> {
+    let dbus = zbus::fdo::DBusProxy::new(connection).await?;
+    Ok(dbus.name_has_owner(ipc::UI_BUS_NAME.try_into()?).await?)
+}
 
 #[derive(Clone)]
 pub struct Shutdown {
@@ -61,7 +91,7 @@ impl Default for Shutdown {
 pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     let service = DaemonService::new(state.clone());
 
-    let connection = zbus::connection::Builder::session()
+    let connection = ipc::connection_builder()
         .name(ipc::DAEMON_BUS_NAME)
         .allow_name_replacements(false)
         .replace_existing_names(false)
@@ -79,7 +109,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
         tracing::warn!(%error, "failed to start discovery");
     }
     let discovery_task = discovery_service::spawn(connection.clone(), state.clone());
-    let pairing_task = pairing_service::spawn(connection.clone(), state.pairing().clone());
+    let auto_trust_task = auto_trust::spawn(connection.clone(), state.auto_trust().clone());
     let profile_task = profile::spawn(
         connection.clone(),
         state.discovery().clone(),
@@ -96,6 +126,26 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     let (remote_sender, remote_receiver) = tokio::sync::mpsc::unbounded_channel();
     state.messaging().set_remote_sender(remote_sender);
     let remote_task = remote::spawn(state.remote().as_ref().clone(), remote_receiver);
+    let (watch_party_sender, watch_party_receiver) = tokio::sync::mpsc::unbounded_channel();
+    state.messaging().set_watch_party_sender(watch_party_sender);
+    let watch_party_task = watch_party::spawn(state.watch_party().clone(), watch_party_receiver);
+    let mut watch_party_events = state.watch_party().subscribe();
+    let watch_party_connection = connection.clone();
+    let watch_party_event_task = tokio::spawn(async move {
+        loop {
+            match watch_party_events.recv().await {
+                Ok(event) => {
+                    if let Err(error) =
+                        crate::service::emit_watch_party_event(&watch_party_connection, event).await
+                    {
+                        tracing::warn!(%error, "failed to emit watch party signal");
+                    }
+                }
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+            }
+        }
+    });
     let mut remote_events = state.remote().subscribe();
     let remote_connection = connection.clone();
     let remote_event_task = tokio::spawn(async move {
@@ -159,11 +209,27 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     });
     let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
     let message_sound = RodioNotificationSound::new();
+    let message_sound_connection = connection.clone();
     let mut message_events = state.messaging().subscribe();
     let message_sound_task = tokio::spawn(async move {
+        let mut cooldown = MessageSoundCooldown::new();
         loop {
             match message_events.recv().await {
                 Ok(MessagingEvent::MessageReceived { notify: true, .. }) => {
+                    match ui_is_running(&message_sound_connection).await {
+                        Ok(true) => continue,
+                        Ok(false) => {}
+                        Err(error) => {
+                            tracing::warn!(
+                                %error,
+                                "failed to check UI status; skipping message sound"
+                            );
+                            continue;
+                        }
+                    }
+                    if !cooldown.try_play(Instant::now()) {
+                        continue;
+                    }
                     if let Err(error) = message_sound.play() {
                         tracing::warn!(%error, "failed to play message sound");
                     }
@@ -189,7 +255,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     watcher.abort();
     state.discovery().stop_and_wait().await;
     discovery_task.abort();
-    pairing_task.abort();
+    auto_trust_task.abort();
     profile_task.abort();
     messaging_task.abort();
     message_sound_task.abort();
@@ -198,6 +264,8 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     calls_task.abort();
     call_event_task.abort();
     remote_task.abort();
+    watch_party_task.abort();
+    watch_party_event_task.abort();
     remote_event_task.abort();
     tray_task.abort();
     reconnect_task.abort();
@@ -265,5 +333,27 @@ mod tests {
         let shutdown = Shutdown::new();
         shutdown.request();
         shutdown.wait().await;
+    }
+
+    #[test]
+    fn message_sound_cooldown_allows_first_play() {
+        let mut cooldown = MessageSoundCooldown::new();
+        assert!(cooldown.try_play(Instant::now()));
+    }
+
+    #[test]
+    fn message_sound_cooldown_skips_quick_repeat() {
+        let mut cooldown = MessageSoundCooldown::new();
+        let first = Instant::now();
+        assert!(cooldown.try_play(first));
+        assert!(!cooldown.try_play(first + Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn message_sound_cooldown_allows_after_interval() {
+        let mut cooldown = MessageSoundCooldown::new();
+        let first = Instant::now();
+        assert!(cooldown.try_play(first));
+        assert!(cooldown.try_play(first + MESSAGE_SOUND_COOLDOWN));
     }
 }

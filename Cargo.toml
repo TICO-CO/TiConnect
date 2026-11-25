@@ -3,13 +3,14 @@ resolver = "3"
 members = ["crates/*", "xtask"]
 
 [workspace.package]
-version = "0.0.6"
+version = "0.1.0"
 edition = "2024"
 rust-version = "1.95"
 license = "GPL-3.0-or-later"
 
 [workspace.dependencies]
 anyhow = "1"
+base64 = "0.22"
 ticonnect-core = { path = "crates/core" }
 ticonnect-logging = { path = "crates/logging" }
 ticonnect-settings = { path = "crates/settings" }
@@ -28,7 +29,7 @@ clap = { version = "4", features = ["derive"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
-postcard = { version = "1", features = ["alloc"] }
+postcard = { version = "1", default-features = false, features = ["alloc"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 thiserror = "2"
@@ -38,7 +39,7 @@ blake3 = "1"
 futures-util = "0.3"
 ed25519-dalek = { version = "2", features = ["rand_core", "zeroize"] }
 hex = "0.4"
-notify = "7"
+notify = "9"
 rand_core = { version = "0.6", features = ["getrandom"] }
 rusqlite = { version = "0.42", features = ["bundled"] }
 uuid = { version = "1", features = ["rng", "v7", "serde"] }
@@ -50,13 +51,11 @@ spake2 = "0.4"
 subtle = "2"
 quinn = { version = "0.11", default-features = false, features = ["runtime-tokio", "rustls-ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "logging"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 x509-parser = { version = "0.18", features = ["verify"] }
 gtk4 = { version = "0.11", default-features = false, features = ["v4_14"] }
 gtk4-layer-shell = "0.8"
-libadwaita = { version = "0.9", default-features = false, features = ["v1_5"] }
-relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
-qrcodegen = "1.8"
 png = "0.18"
 notify-rust = "4.19"
 x11rb = { version = "0.14", features = ["xtest"] }

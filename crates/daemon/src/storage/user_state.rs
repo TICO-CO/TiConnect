@@ -1,0 +1,71 @@
+use rusqlite::{Connection, OptionalExtension, params};
+
+use super::StorageError;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct UserState {
+    pub last_sent_seq: u64,
+    pub last_recv_seq: u64,
+}
+
+pub fn get(connection: &Connection, user_id: &str) -> Result<UserState, StorageError> {
+    let state = connection
+        .query_row(
+            "SELECT last_sent_seq, last_recv_seq FROM user_state WHERE user_id = ?1",
+            params![user_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+        )
+        .optional()?;
+    let Some((sent, recv)) = state else {
+        return Ok(UserState::default());
+    };
+    Ok(UserState {
+        last_sent_seq: u64::try_from(sent)
+            .map_err(|_| StorageError::InvalidData(format!("last_sent_seq is negative: {sent}")))?,
+        last_recv_seq: u64::try_from(recv)
+            .map_err(|_| StorageError::InvalidData(format!("last_recv_seq is negative: {recv}")))?,
+    })
+}
+
+pub fn ensure(connection: &Connection, user_id: &str) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT OR IGNORE INTO user_state (user_id, last_sent_seq, last_recv_seq)
+         VALUES (?1, 0, 0)",
+        params![user_id],
+    )?;
+    Ok(())
+}
+
+pub fn allocate_seq(connection: &Connection, user_id: &str) -> Result<u64, StorageError> {
+    let transaction = connection.unchecked_transaction()?;
+    ensure(&transaction, user_id)?;
+    let current: i64 = transaction.query_row(
+        "SELECT last_sent_seq FROM user_state WHERE user_id = ?1",
+        params![user_id],
+        |row| row.get(0),
+    )?;
+    let next = current
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidData("sequence overflow".to_owned()))?;
+    transaction.execute(
+        "UPDATE user_state SET last_sent_seq = ?2 WHERE user_id = ?1",
+        params![user_id, next],
+    )?;
+    transaction.commit()?;
+    u64::try_from(next).map_err(|_| StorageError::InvalidData("sequence overflow".to_owned()))
+}
+
+pub fn advance_recv(connection: &Connection, user_id: &str, seq: u64) -> Result<(), StorageError> {
+    ensure(connection, user_id)?;
+    connection.execute(
+        "UPDATE user_state
+         SET last_recv_seq = MAX(last_recv_seq, ?2)
+         WHERE user_id = ?1",
+        params![
+            user_id,
+            i64::try_from(seq)
+                .map_err(|_| StorageError::InvalidData("sequence overflow".to_owned()))?
+        ],
+    )?;
+    Ok(())
+}

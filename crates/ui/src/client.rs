@@ -4,15 +4,16 @@ use futures_util::StreamExt;
 use ticonnect_core::ipc;
 use ticonnect_core::ipc::client::DaemonProxy;
 use ticonnect_core::ipc::events::{
-    self, Call, Candidate, ConversationSummary, Message, MessageState, Peer, PeerPolicy,
-    RemoteSession,
+    self, AudioDevice, Call, CallEndReason, CallLog, CallMetrics, Candidate, ConversationSummary,
+    Message, MessageState, RemoteEndReason, RemoteSession, StorageUsage, User, UserPolicy,
+    WatchParty, WatchPartyEndReason,
 };
-pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, PairingStart, Status};
+pub use ticonnect_core::ipc::events::{DaemonEvent, Identity, Status};
 use tokio::sync::{mpsc, oneshot};
 use zbus::OwnedVariant;
 
 use crate::error::{Error, Result};
-use crate::model::{BlockedPeer, PeerPresentation, SettingsForm, short_id};
+use crate::model::{BlockedUser, SettingsForm};
 
 type Reply<T> = oneshot::Sender<Result<T>>;
 
@@ -28,29 +29,28 @@ enum Command {
     },
     ClearAvatar(Reply<()>),
     GetStatus(Reply<Status>),
-    ListPeers(Reply<Vec<Peer>>),
+    GetNetworkStatus(Reply<ticonnect_core::ipc::events::NetworkStatus>),
+    RunLanCheck(Reply<ticonnect_core::ipc::events::NetworkStatus>),
+    ListUsers(Reply<Vec<User>>),
+    GetUser {
+        user_id: String,
+        reply: Reply<ticonnect_core::ipc::events::UserDetails>,
+    },
     ListCandidates(Reply<Vec<Candidate>>),
     ListConversationSummaries(Reply<Vec<ConversationSummary>>),
-    ListBlockedPeers(Reply<Vec<BlockedPeer>>),
+    ListBlockedUsers(Reply<Vec<BlockedUser>>),
     ListSettings(Reply<SettingsForm>),
-    StartPairing(Reply<PairingStart>),
-    PairWithPin {
-        node_id: String,
-        pin: String,
+    BlockUser {
+        user_id: String,
         reply: Reply<()>,
     },
-    PairWithQr {
-        payload: String,
-        reply: Reply<()>,
-    },
-    CancelPairing(Reply<()>),
-    BlockPeer {
-        peer_id: String,
-        reply: Reply<()>,
-    },
-    UnblockPeer {
+    UnblockUser {
         fingerprint: String,
         reply: Reply<()>,
+    },
+    GetMessage {
+        message_id: String,
+        reply: Reply<Message>,
     },
     ListMessages {
         conversation_id: String,
@@ -62,14 +62,35 @@ enum Command {
         conversation_id: String,
         reply: Reply<u32>,
     },
+    ClearHistory {
+        user_id: String,
+        reply: Reply<u32>,
+    },
+    StorageUsage(Reply<StorageUsage>),
     SendMessage {
-        peer_id: String,
+        user_id: String,
         body: String,
+        reply_to: String,
         reply: Reply<String>,
     },
+    RetryMessage {
+        message_id: String,
+        reply: Reply<bool>,
+    },
+    EditMessage {
+        message_id: String,
+        body: String,
+        reply: Reply<()>,
+    },
+    DeleteMessage {
+        message_id: String,
+        reply: Reply<()>,
+    },
     SendAttachment {
-        peer_id: String,
+        user_id: String,
         path: String,
+        mime: String,
+        reply_to: String,
         reply: Reply<String>,
     },
     AttachmentPath {
@@ -86,13 +107,17 @@ enum Command {
         message_ids: Vec<String>,
         reply: Reply<()>,
     },
-    SetPeerPolicy {
-        peer_id: String,
-        policy: PeerPolicy,
+    MarkConversationRead {
+        conversation_id: String,
+        reply: Reply<()>,
+    },
+    SetUserPolicy {
+        user_id: String,
+        policy: UserPolicy,
         reply: Reply<()>,
     },
     SetTyping {
-        peer_id: String,
+        user_id: String,
         typing: bool,
         reply: Reply<()>,
     },
@@ -101,7 +126,7 @@ enum Command {
         reply: Reply<()>,
     },
     StartCall {
-        peer_id: String,
+        user_id: String,
         reply: Reply<String>,
     },
     AcceptCall {
@@ -116,14 +141,26 @@ enum Command {
         call_id: String,
         reply: Reply<()>,
     },
+    SetCallMuted {
+        call_id: String,
+        input_muted: bool,
+        output_muted: bool,
+        reply: Reply<()>,
+    },
     GetCallState(Reply<Option<Call>>),
+    GetCallMetrics(Reply<CallMetrics>),
+    ListCallLogs {
+        user_id: String,
+        limit: u32,
+        reply: Reply<Vec<CallLog>>,
+    },
+    ListAudioDevices(Reply<Vec<AudioDevice>>),
     RequestRemoteSession {
-        peer_id: String,
+        user_id: String,
         reply: Reply<RemoteSession>,
     },
     AcceptRemoteSession {
         session_id: String,
-        pin: String,
         reply: Reply<()>,
     },
     DenyRemoteSession {
@@ -134,7 +171,45 @@ enum Command {
         session_id: String,
         reply: Reply<()>,
     },
+    SetRemoteInput {
+        session_id: String,
+        allowed: bool,
+        reply: Reply<()>,
+    },
     GetRemoteSession(Reply<Option<RemoteSession>>),
+    StartWatchParty {
+        user_ids: Vec<String>,
+        video_id: String,
+        reply: Reply<WatchParty>,
+    },
+    InviteWatchParty {
+        party_id: String,
+        user_ids: Vec<String>,
+        reply: Reply<WatchParty>,
+    },
+    AcceptWatchParty {
+        party_id: String,
+        reply: Reply<WatchParty>,
+    },
+    DeclineWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    LeaveWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    PublishWatchParty {
+        party_id: String,
+        position_ms: u64,
+        playing: bool,
+        reply: Reply<WatchParty>,
+    },
+    EndWatchParty {
+        party_id: String,
+        reply: Reply<()>,
+    },
+    GetWatchParty(Reply<Option<WatchParty>>),
 }
 
 #[derive(Clone)]
@@ -143,6 +218,13 @@ pub struct LinkHandle {
 }
 
 impl LinkHandle {
+    #[doc(hidden)]
+    pub fn offline() -> Self {
+        let (commands, receiver) = mpsc::unbounded_channel();
+        drop(receiver);
+        Self { commands }
+    }
+
     pub async fn identity(&self) -> Result<Identity> {
         self.request(Command::GetIdentity).await
     }
@@ -169,51 +251,45 @@ impl LinkHandle {
         self.request(Command::GetStatus).await
     }
 
-    pub async fn list_peers(&self) -> Result<Vec<Peer>> {
-        self.request(Command::ListPeers).await
+    pub async fn network_status(&self) -> Result<ticonnect_core::ipc::events::NetworkStatus> {
+        self.request(Command::GetNetworkStatus).await
+    }
+
+    pub async fn run_lan_check(&self) -> Result<ticonnect_core::ipc::events::NetworkStatus> {
+        self.request(Command::RunLanCheck).await
+    }
+
+    pub async fn list_users(&self) -> Result<Vec<User>> {
+        self.request(Command::ListUsers).await
+    }
+
+    pub async fn get_user(
+        &self,
+        user_id: String,
+    ) -> Result<ticonnect_core::ipc::events::UserDetails> {
+        self.request(|reply| Command::GetUser { user_id, reply })
+            .await
     }
 
     pub async fn list_candidates(&self) -> Result<Vec<Candidate>> {
         self.request(Command::ListCandidates).await
     }
 
-    pub async fn list_blocked_peers(&self) -> Result<Vec<BlockedPeer>> {
-        self.request(Command::ListBlockedPeers).await
+    pub async fn list_blocked_users(&self) -> Result<Vec<BlockedUser>> {
+        self.request(Command::ListBlockedUsers).await
     }
 
     pub async fn list_settings(&self) -> Result<SettingsForm> {
         self.request(Command::ListSettings).await
     }
 
-    pub async fn start_pairing(&self) -> Result<PairingStart> {
-        self.request(Command::StartPairing).await
-    }
-
-    pub async fn pair_with_pin(&self, node_id: String, pin: String) -> Result<()> {
-        self.request(|reply| Command::PairWithPin {
-            node_id,
-            pin,
-            reply,
-        })
-        .await
-    }
-
-    pub async fn pair_with_qr(&self, payload: String) -> Result<()> {
-        self.request(|reply| Command::PairWithQr { payload, reply })
+    pub async fn block_user(&self, user_id: String) -> Result<()> {
+        self.request(|reply| Command::BlockUser { user_id, reply })
             .await
     }
 
-    pub async fn cancel_pairing(&self) -> Result<()> {
-        self.request(Command::CancelPairing).await
-    }
-
-    pub async fn block_peer(&self, peer_id: String) -> Result<()> {
-        self.request(|reply| Command::BlockPeer { peer_id, reply })
-            .await
-    }
-
-    pub async fn unblock_peer(&self, fingerprint: String) -> Result<()> {
-        self.request(|reply| Command::UnblockPeer { fingerprint, reply })
+    pub async fn unblock_user(&self, fingerprint: String) -> Result<()> {
+        self.request(|reply| Command::UnblockUser { fingerprint, reply })
             .await
     }
 
@@ -232,6 +308,11 @@ impl LinkHandle {
         .await
     }
 
+    pub async fn get_message(&self, message_id: String) -> Result<Message> {
+        self.request(|reply| Command::GetMessage { message_id, reply })
+            .await
+    }
+
     pub async fn count_messages(&self, conversation_id: String) -> Result<u32> {
         self.request(|reply| Command::CountMessages {
             conversation_id,
@@ -240,19 +321,87 @@ impl LinkHandle {
         .await
     }
 
-    pub async fn send_message(&self, peer_id: String, body: String) -> Result<String> {
+    pub async fn clear_history(&self, user_id: String) -> Result<u32> {
+        self.request(|reply| Command::ClearHistory { user_id, reply })
+            .await
+    }
+
+    pub async fn storage_usage(&self) -> Result<StorageUsage> {
+        self.request(Command::StorageUsage).await
+    }
+
+    pub async fn send_message(&self, user_id: String, body: String) -> Result<String> {
         self.request(|reply| Command::SendMessage {
-            peer_id,
+            user_id,
+            body,
+            reply_to: String::new(),
+            reply,
+        })
+        .await
+    }
+
+    pub async fn send_message_reply(
+        &self,
+        user_id: String,
+        body: String,
+        reply_to: String,
+    ) -> Result<String> {
+        self.request(|reply| Command::SendMessage {
+            user_id,
+            body,
+            reply_to,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn retry_message(&self, message_id: String) -> Result<bool> {
+        self.request(|reply| Command::RetryMessage { message_id, reply })
+            .await
+    }
+
+    pub async fn edit_message(&self, message_id: String, body: String) -> Result<()> {
+        self.request(|reply| Command::EditMessage {
+            message_id,
             body,
             reply,
         })
         .await
     }
 
-    pub async fn send_attachment(&self, peer_id: String, path: String) -> Result<String> {
+    pub async fn delete_message(&self, message_id: String) -> Result<()> {
+        self.request(|reply| Command::DeleteMessage { message_id, reply })
+            .await
+    }
+
+    pub async fn send_attachment(
+        &self,
+        user_id: String,
+        path: String,
+        mime: String,
+    ) -> Result<String> {
         self.request(|reply| Command::SendAttachment {
-            peer_id,
+            user_id,
             path,
+            mime,
+            reply_to: String::new(),
+            reply,
+        })
+        .await
+    }
+
+    pub async fn send_attachment_reply(
+        &self,
+        user_id: String,
+        path: String,
+        mime: String,
+        reply_to: String,
+    ) -> Result<String> {
+        self.request(|reply| Command::SendAttachment {
+            user_id,
+            path,
+            mime,
+            reply_to,
             reply,
         })
         .await
@@ -281,18 +430,26 @@ impl LinkHandle {
         .await
     }
 
-    pub async fn set_peer_policy(&self, peer_id: String, policy: PeerPolicy) -> Result<()> {
-        self.request(|reply| Command::SetPeerPolicy {
-            peer_id,
+    pub async fn mark_conversation_read(&self, conversation_id: String) -> Result<()> {
+        self.request(|reply| Command::MarkConversationRead {
+            conversation_id,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_user_policy(&self, user_id: String, policy: UserPolicy) -> Result<()> {
+        self.request(|reply| Command::SetUserPolicy {
+            user_id,
             policy,
             reply,
         })
         .await
     }
 
-    pub async fn set_typing(&self, peer_id: String, typing: bool) -> Result<()> {
+    pub async fn set_typing(&self, user_id: String, typing: bool) -> Result<()> {
         self.request(|reply| Command::SetTyping {
-            peer_id,
+            user_id,
             typing,
             reply,
         })
@@ -304,8 +461,8 @@ impl LinkHandle {
             .await
     }
 
-    pub async fn start_call(&self, peer_id: String) -> Result<String> {
-        self.request(|reply| Command::StartCall { peer_id, reply })
+    pub async fn start_call(&self, user_id: String) -> Result<String> {
+        self.request(|reply| Command::StartCall { user_id, reply })
             .await
     }
 
@@ -324,22 +481,50 @@ impl LinkHandle {
             .await
     }
 
+    pub async fn set_call_muted(
+        &self,
+        call_id: String,
+        input_muted: bool,
+        output_muted: bool,
+    ) -> Result<()> {
+        self.request(|reply| Command::SetCallMuted {
+            call_id,
+            input_muted,
+            output_muted,
+            reply,
+        })
+        .await
+    }
+
     pub async fn call_state(&self) -> Result<Option<Call>> {
         self.request(Command::GetCallState).await
     }
 
-    pub async fn request_remote_session(&self, peer_id: String) -> Result<RemoteSession> {
-        self.request(|reply| Command::RequestRemoteSession { peer_id, reply })
-            .await
+    pub async fn call_metrics(&self) -> Result<CallMetrics> {
+        self.request(Command::GetCallMetrics).await
     }
 
-    pub async fn accept_remote_session(&self, session_id: String, pin: String) -> Result<()> {
-        self.request(|reply| Command::AcceptRemoteSession {
-            session_id,
-            pin,
+    pub async fn list_call_logs(&self, user_id: String, limit: u32) -> Result<Vec<CallLog>> {
+        self.request(|reply| Command::ListCallLogs {
+            user_id,
+            limit,
             reply,
         })
         .await
+    }
+
+    pub async fn list_audio_devices(&self) -> Result<Vec<AudioDevice>> {
+        self.request(Command::ListAudioDevices).await
+    }
+
+    pub async fn request_remote_session(&self, user_id: String) -> Result<RemoteSession> {
+        self.request(|reply| Command::RequestRemoteSession { user_id, reply })
+            .await
+    }
+
+    pub async fn accept_remote_session(&self, session_id: String) -> Result<()> {
+        self.request(|reply| Command::AcceptRemoteSession { session_id, reply })
+            .await
     }
 
     pub async fn deny_remote_session(&self, session_id: String) -> Result<()> {
@@ -352,8 +537,82 @@ impl LinkHandle {
             .await
     }
 
+    pub async fn set_remote_input(&self, session_id: String, allowed: bool) -> Result<()> {
+        self.request(|reply| Command::SetRemoteInput {
+            session_id,
+            allowed,
+            reply,
+        })
+        .await
+    }
+
     pub async fn remote_session(&self) -> Result<Option<RemoteSession>> {
         self.request(Command::GetRemoteSession).await
+    }
+
+    pub async fn start_watch_party(
+        &self,
+        user_ids: Vec<String>,
+        video_id: String,
+    ) -> Result<WatchParty> {
+        self.request(|reply| Command::StartWatchParty {
+            user_ids,
+            video_id,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn invite_watch_party(
+        &self,
+        party_id: String,
+        user_ids: Vec<String>,
+    ) -> Result<WatchParty> {
+        self.request(|reply| Command::InviteWatchParty {
+            party_id,
+            user_ids,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn accept_watch_party(&self, party_id: String) -> Result<WatchParty> {
+        self.request(|reply| Command::AcceptWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn decline_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::DeclineWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn leave_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::LeaveWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn publish_watch_party(
+        &self,
+        party_id: String,
+        position_ms: u64,
+        playing: bool,
+    ) -> Result<WatchParty> {
+        self.request(|reply| Command::PublishWatchParty {
+            party_id,
+            position_ms,
+            playing,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn end_watch_party(&self, party_id: String) -> Result<()> {
+        self.request(|reply| Command::EndWatchParty { party_id, reply })
+            .await
+    }
+
+    pub async fn watch_party(&self) -> Result<Option<WatchParty>> {
+        self.request(Command::GetWatchParty).await
     }
 
     async fn request<T>(&self, make: impl FnOnce(Reply<T>) -> Command) -> Result<T> {
@@ -369,7 +628,7 @@ impl LinkHandle {
 
 pub fn spawn_link(events: mpsc::UnboundedSender<DaemonEvent>) -> LinkHandle {
     let (commands, receiver) = mpsc::unbounded_channel();
-    relm4::spawn(run_link(receiver, events));
+    tokio::spawn(run_link(receiver, events));
     LinkHandle { commands }
 }
 
@@ -381,6 +640,7 @@ async fn run_link(
     loop {
         match connect().await {
             Ok((connection, proxy)) => {
+                crate::timing::mark("daemon link connected");
                 backoff.reset();
                 let _ = events.send(DaemonEvent::Connected);
                 let (lost_sender, mut lost_receiver) = mpsc::unbounded_channel();
@@ -392,7 +652,15 @@ async fn run_link(
                             let Some(command) = command else {
                                 return;
                             };
-                            handle_command(&proxy, command).await;
+                            match command {
+                                Command::RunLanCheck(reply) => {
+                                    let proxy = proxy.clone();
+                                    tokio::spawn(async move {
+                                        handle_command(&proxy, Command::RunLanCheck(reply)).await;
+                                    });
+                                }
+                                command => handle_command(&proxy, command).await,
+                            }
                         }
                         reason = lost_receiver.recv() => {
                             let reason = reason.unwrap_or_else(|| "daemon connection closed".to_owned());
@@ -411,7 +679,7 @@ async fn run_link(
 }
 
 async fn connect() -> Result<(zbus::Connection, DaemonProxy<'static>)> {
-    let connection = zbus::Connection::session().await.map_err(bus_error)?;
+    let connection = ipc::connect().await.map_err(bus_error)?;
     let proxy = DaemonProxy::new(&connection).await.map_err(bus_error)?;
     proxy.ping().await.map_err(bus_error)?;
     Ok((connection, proxy))
@@ -422,7 +690,7 @@ fn spawn_listener(
     events: mpsc::UnboundedSender<DaemonEvent>,
     lost: mpsc::UnboundedSender<String>,
 ) {
-    relm4::spawn(async move {
+    tokio::spawn(async move {
         if let Err(error) = listen(connection, events, lost.clone()).await {
             let _ = lost.send(error.to_string());
         }
@@ -440,24 +708,23 @@ async fn listen(
         .receive_message_state_changed()
         .await
         .map_err(bus_error)?;
+    let mut message_edited = proxy.receive_message_edited().await.map_err(bus_error)?;
+    let mut message_deleted = proxy.receive_message_deleted().await.map_err(bus_error)?;
     let mut conversation_changed = proxy
         .receive_conversation_changed()
         .await
         .map_err(bus_error)?;
     let mut typing_changed = proxy.receive_typing_changed().await.map_err(bus_error)?;
-    let mut peer_profile_changed = proxy
-        .receive_peer_profile_changed()
+    let mut user_profile_changed = proxy
+        .receive_user_profile_changed()
         .await
         .map_err(bus_error)?;
     let mut self_profile_changed = proxy
         .receive_self_profile_changed()
         .await
         .map_err(bus_error)?;
-    let mut connected = proxy.receive_peer_connected().await.map_err(bus_error)?;
-    let mut disconnected = proxy.receive_peer_disconnected().await.map_err(bus_error)?;
-    let mut pairing_started = proxy.receive_pairing_started().await.map_err(bus_error)?;
-    let mut pairing_completed = proxy.receive_pairing_completed().await.map_err(bus_error)?;
-    let mut pairing_failed = proxy.receive_pairing_failed().await.map_err(bus_error)?;
+    let mut connected = proxy.receive_user_connected().await.map_err(bus_error)?;
+    let mut disconnected = proxy.receive_user_disconnected().await.map_err(bus_error)?;
     let mut policy_changed = proxy.receive_policy_changed().await.map_err(bus_error)?;
     let mut settings_changed = proxy.receive_settings_changed().await.map_err(bus_error)?;
     let mut sync_completed = proxy.receive_sync_completed().await.map_err(bus_error)?;
@@ -467,6 +734,7 @@ async fn listen(
         .receive_call_state_changed()
         .await
         .map_err(bus_error)?;
+    let mut call_mute_changed = proxy.receive_call_mute_changed().await.map_err(bus_error)?;
     let mut call_ended = proxy.receive_call_ended().await.map_err(bus_error)?;
     let mut remote_requested = proxy
         .receive_remote_session_requested()
@@ -484,6 +752,19 @@ async fn listen(
         .receive_remote_indicator_changed()
         .await
         .map_err(bus_error)?;
+    let mut remote_input = proxy
+        .receive_remote_input_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut watch_party_requested = proxy
+        .receive_watch_party_requested()
+        .await
+        .map_err(bus_error)?;
+    let mut watch_party_changed = proxy
+        .receive_watch_party_changed()
+        .await
+        .map_err(bus_error)?;
+    let mut watch_party_ended = proxy.receive_watch_party_ended().await.map_err(bus_error)?;
     let mut transfer_done = proxy.receive_transfer_done().await.map_err(bus_error)?;
     let mut transfer_failed = proxy.receive_transfer_failed().await.map_err(bus_error)?;
     let mut candidate_found = proxy.receive_candidate_found().await.map_err(bus_error)?;
@@ -498,38 +779,84 @@ async fn listen(
         tokio::select! {
             signal = messages.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(message) = events::parse_message(&args.message, None) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(message) =
+                    parse_event(events::parse_message(&args.message, None), "message_received")
+                {
                     let _ = events.send(DaemonEvent::MessageReceived(message));
                 }
             }
             signal = states.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let Some(state) =
+                    parse_event(MessageState::parse(args.state), "message_state_changed")
+                else {
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::MessageStateChanged {
                     message_id: args.message_id.to_owned(),
-                    state: MessageState::parse(args.state),
+                    state,
+                });
+            }
+            signal = message_edited.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::MessageEdited {
+                    message_id: args.message_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
+                    body: args.body.to_owned(),
+                    edited_at: args.edited_at,
+                });
+            }
+            signal = message_deleted.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::MessageDeleted {
+                    message_id: args.message_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                 });
             }
             signal = conversation_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::ConversationChanged {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                 });
             }
             signal = typing_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TypingChanged {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                     typing: args.typing,
                 });
             }
-            signal = peer_profile_changed.next() => {
+            signal = user_profile_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PeerProfileChanged {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::UserProfileChanged {
                     fingerprint: args.fingerprint.to_owned(),
                 });
             }
@@ -539,119 +866,214 @@ async fn listen(
             }
             signal = connected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(DaemonEvent::PeerConnected(peer));
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_connected")
+                {
+                    let _ = events.send(DaemonEvent::UserConnected(user));
                 }
             }
             signal = disconnected.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(peer) = events::parse_peer(&args.peer) {
-                    let _ = events.send(DaemonEvent::PeerDisconnected(peer));
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(user) =
+                    parse_event(events::parse_user(&args.user), "user_disconnected")
+                {
+                    let _ = events.send(DaemonEvent::UserDisconnected(user));
                 }
-            }
-            signal = pairing_started.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(start) = events::parse_pairing(&args.pairing) {
-                    let _ = events.send(DaemonEvent::PairingStarted(start));
-                }
-            }
-            signal = pairing_completed.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PairingCompleted {
-                    peer_id: args.peer_id.to_owned(),
-                    fingerprint: args.fingerprint.to_owned(),
-                });
-            }
-            signal = pairing_failed.next() => {
-                let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                let _ = events.send(DaemonEvent::PairingFailed(args.reason.to_owned()));
             }
             signal = policy_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let Some(policy) = parse_event(UserPolicy::parse(args.policy), "policy_changed")
+                else {
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::PolicyChanged {
-                    peer_id: args.peer_id.to_owned(),
-                    policy: PeerPolicy::parse(args.policy),
+                    user_id: args.user_id.to_owned(),
+                    policy,
                 });
             }
             signal = settings_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::SettingsChanged(args.key.to_owned()));
             }
             signal = incoming_call.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(call) = events::parse_call(&args.call) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(call) =
+                    parse_event(events::parse_call(&args.call), "incoming_call")
+                {
                     let _ = events.send(DaemonEvent::IncomingCall(call));
                 }
             }
             signal = call_state_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CallStateChanged {
                     call_id: args.call_id.to_owned(),
                     state: args.state.to_owned(),
                 });
             }
+            signal = call_mute_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::CallMuteChanged {
+                    call_id: args.call_id.to_owned(),
+                    input_muted: args.input_muted,
+                    output_muted: args.output_muted,
+                });
+            }
             signal = call_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CallEnded {
                     call_id: args.call_id.to_owned(),
-                    reason: args.reason.to_owned(),
+                    reason: CallEndReason::parse(args.reason),
                 });
             }
             signal = remote_requested.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(session) = events::parse_remote_session(&args.session) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(session) = parse_event(
+                    events::parse_remote_session(&args.session),
+                    "remote_session_requested",
+                ) {
                     let _ = events.send(DaemonEvent::RemoteSessionRequested(session));
                 }
             }
             signal = remote_started.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteSessionStarted(args.session_id.to_owned()));
             }
             signal = remote_ended.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteSessionEnded {
                     session_id: args.session_id.to_owned(),
-                    reason: args.reason.to_owned(),
+                    reason: RemoteEndReason::parse(args.reason),
                 });
             }
             signal = remote_indicator.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::RemoteIndicatorChanged {
                     session_id: args.session_id.to_owned(),
                     visible: args.visible,
                 });
             }
+            signal = remote_input.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::RemoteInputChanged {
+                    session_id: args.session_id.to_owned(),
+                    allowed: args.allowed,
+                });
+            }
             signal = transfer_progress.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferProgress {
                     hash: args.hash.to_owned(),
                     bytes: args.bytes,
                     total: args.total,
                 });
             }
+            signal = watch_party_requested.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_requested",
+                ) {
+                    let _ = events.send(DaemonEvent::WatchPartyRequested(party));
+                }
+            }
+            signal = watch_party_changed.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(party) = parse_event(
+                    events::parse_watch_party(&args.party),
+                    "watch_party_changed",
+                ) {
+                    let _ = events.send(DaemonEvent::WatchPartyChanged(party));
+                }
+            }
+            signal = watch_party_ended.next() => {
+                let Some(signal) = signal else { break };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                let _ = events.send(DaemonEvent::WatchPartyEnded {
+                    party_id: args.party_id.to_owned(),
+                    reason: WatchPartyEndReason::parse(args.reason),
+                });
+            }
             signal = transfer_done.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferDone(args.hash.to_owned()));
             }
             signal = transfer_failed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::TransferFailed {
                     hash: args.hash.to_owned(),
                     reason: args.reason.to_owned(),
@@ -659,28 +1081,43 @@ async fn listen(
             }
             signal = sync_completed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::SyncCompleted {
-                    peer_id: args.peer_id.to_owned(),
+                    user_id: args.user_id.to_owned(),
                     count: args.count,
                 });
             }
             signal = candidate_found.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
-                if let Ok(candidate) = events::parse_candidate(&args.candidate) {
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
+                if let Some(candidate) = parse_event(
+                    events::parse_candidate(&args.candidate),
+                    "candidate_found",
+                ) {
                     let _ = events.send(DaemonEvent::Candidates(vec![candidate]));
                 }
             }
             signal = candidate_lost.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 let _ = events.send(DaemonEvent::CandidateLost(args.fingerprint.to_owned()));
                 tracing::debug!(fingerprint = %args.fingerprint, "candidate lost");
             }
             signal = owner_changed.next() => {
                 let Some(signal) = signal else { break };
-                let Ok(args) = signal.args() else { continue };
+                let Ok(args) = signal.args() else {
+                    tracing::warn!("failed to read daemon signal arguments");
+                    continue;
+                };
                 if args.name == ipc::DAEMON_BUS_NAME {
                     let _ = lost.send("daemon restarting".to_owned());
                     return Ok(());
@@ -722,9 +1159,30 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
-        Command::ListPeers(reply) => {
-            let result = match proxy.list_peers().await {
-                Ok(values) => events::parse_peers(&values).map_err(payload_error),
+        Command::GetNetworkStatus(reply) => {
+            let result = match proxy.get_network_status().await {
+                Ok(values) => events::parse_network_status(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::RunLanCheck(reply) => {
+            let result = match proxy.run_lan_check().await {
+                Ok(values) => events::parse_network_status(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::ListUsers(reply) => {
+            let result = match proxy.list_users().await {
+                Ok(values) => events::parse_users(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::GetUser { user_id, reply } => {
+            let result = match proxy.get_user(&user_id).await {
+                Ok(values) => events::parse_user_details(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
@@ -751,63 +1209,39 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         }
         Command::ListSettings(reply) => {
             let result = match proxy.list_settings().await {
-                Ok(values) => Ok(parse_settings(&values)),
+                Ok(values) => parse_settings(&values),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
-        Command::StartPairing(reply) => {
-            let result = match proxy.start_pairing().await {
-                Ok(values) => events::parse_pairing(&values).map_err(payload_error),
+        Command::ListBlockedUsers(reply) => {
+            let result = match proxy.list_blocked_users().await {
+                Ok(values) => parse_blocked_users(&values),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
-        Command::PairWithPin {
-            node_id,
-            pin,
-            reply,
-        } => {
+        Command::BlockUser { user_id, reply } => {
             let result = proxy
-                .pair_with_pin(&node_id, &pin)
+                .forget_user(&user_id)
                 .await
                 .map(|_| ())
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::PairWithQr { payload, reply } => {
+        Command::UnblockUser { fingerprint, reply } => {
             let result = proxy
-                .pair_with_qr(&payload)
+                .unblock_user(&fingerprint)
                 .await
                 .map(|_| ())
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::CancelPairing(reply) => {
-            let result = proxy.cancel_pairing().await.map_err(bus_error);
-            let _ = reply.send(result);
-        }
-        Command::ListBlockedPeers(reply) => {
-            let result = match proxy.list_blocked_peers().await {
-                Ok(values) => Ok(parse_blocked_peers(&values)),
+        Command::GetMessage { message_id, reply } => {
+            let result = match proxy.get_message(&message_id).await {
+                Ok(values) => events::parse_message(&values, None).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
-            let _ = reply.send(result);
-        }
-        Command::BlockPeer { peer_id, reply } => {
-            let result = proxy
-                .forget_peer(&peer_id)
-                .await
-                .map(|_| ())
-                .map_err(bus_error);
-            let _ = reply.send(result);
-        }
-        Command::UnblockPeer { fingerprint, reply } => {
-            let result = proxy
-                .unblock_peer(&fingerprint)
-                .await
-                .map(|_| ())
-                .map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::ListMessages {
@@ -835,21 +1269,57 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::SendMessage {
-            peer_id,
-            body,
-            reply,
-        } => {
-            let result = proxy.send_message(&peer_id, &body).await.map_err(bus_error);
+        Command::ClearHistory { user_id, reply } => {
+            let result = proxy.clear_history(&user_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::SendAttachment {
-            peer_id,
-            path,
+        Command::StorageUsage(reply) => {
+            let result = match proxy.get_storage_usage().await {
+                Ok(values) => events::parse_storage_usage(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::SendMessage {
+            user_id,
+            body,
+            reply_to,
             reply,
         } => {
             let result = proxy
-                .send_attachment(&peer_id, &path, "")
+                .send_message(&user_id, &body, &reply_to)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::RetryMessage { message_id, reply } => {
+            let result = proxy.retry_message(&message_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::EditMessage {
+            message_id,
+            body,
+            reply,
+        } => {
+            let result = proxy
+                .edit_message(&message_id, &body)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::DeleteMessage { message_id, reply } => {
+            let result = proxy.delete_message(&message_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SendAttachment {
+            user_id,
+            path,
+            mime,
+            reply_to,
+            reply,
+        } => {
+            let result = proxy
+                .send_attachment(&user_id, &path, &mime, &reply_to)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -881,31 +1351,41 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::SetPeerPolicy {
-            peer_id,
+        Command::MarkConversationRead {
+            conversation_id,
+            reply,
+        } => {
+            let result = proxy
+                .mark_conversation_read(&conversation_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetUserPolicy {
+            user_id,
             policy,
             reply,
         } => {
             let result = proxy
-                .set_peer_policy(&peer_id, policy.as_str())
+                .set_user_policy(&user_id, policy.as_str())
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SetTyping {
-            peer_id,
+            user_id,
             typing,
             reply,
         } => {
-            let result = proxy.set_typing(&peer_id, typing).await.map_err(bus_error);
+            let result = proxy.set_typing(&user_id, typing).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::SetDnd { enabled, reply } => {
             let result = proxy.set_dnd(enabled).await.map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::StartCall { peer_id, reply } => {
-            let result = proxy.start_call(&peer_id).await.map_err(bus_error);
+        Command::StartCall { user_id, reply } => {
+            let result = proxy.start_call(&user_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
         Command::AcceptCall { call_id, reply } => {
@@ -920,20 +1400,123 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             let result = proxy.hangup_call(&call_id).await.map_err(bus_error);
             let _ = reply.send(result);
         }
-        Command::RequestRemoteSession { peer_id, reply } => {
-            let result = match proxy.request_remote_session(&peer_id).await {
+        Command::SetCallMuted {
+            call_id,
+            input_muted,
+            output_muted,
+            reply,
+        } => {
+            let result = proxy
+                .set_call_muted(&call_id, input_muted, output_muted)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::ListCallLogs {
+            user_id,
+            limit,
+            reply,
+        } => {
+            let result = match proxy.list_call_logs(&user_id, limit).await {
+                Ok(values) => values
+                    .iter()
+                    .map(|values| events::parse_call_log(values).map_err(payload_error))
+                    .collect::<Result<Vec<_>>>(),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::ListAudioDevices(reply) => {
+            let result = match proxy.list_audio_devices().await {
+                Ok(values) => values
+                    .iter()
+                    .map(|values| events::parse_audio_device(values).map_err(payload_error))
+                    .collect::<Result<Vec<_>>>(),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::StartWatchParty {
+            user_ids,
+            video_id,
+            reply,
+        } => {
+            let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
+            let result = match proxy.start_watch_party(&ids, &video_id).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::InviteWatchParty {
+            party_id,
+            user_ids,
+            reply,
+        } => {
+            let ids: Vec<&str> = user_ids.iter().map(String::as_str).collect();
+            let result = match proxy.invite_watch_party(&party_id, &ids).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::AcceptWatchParty { party_id, reply } => {
+            let result = match proxy.accept_watch_party(&party_id).await {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::DeclineWatchParty { party_id, reply } => {
+            let result = proxy
+                .decline_watch_party(&party_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::LeaveWatchParty { party_id, reply } => {
+            let result = proxy.leave_watch_party(&party_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::PublishWatchParty {
+            party_id,
+            position_ms,
+            playing,
+            reply,
+        } => {
+            let result = match proxy
+                .publish_watch_party(&party_id, position_ms, playing)
+                .await
+            {
+                Ok(values) => events::parse_watch_party(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::EndWatchParty { party_id, reply } => {
+            let result = proxy.end_watch_party(&party_id).await.map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::GetWatchParty(reply) => {
+            let result = match proxy.get_watch_party().await {
+                Ok(values) if values.is_empty() => Ok(None),
+                Ok(values) => events::parse_watch_party(&values)
+                    .map(Some)
+                    .map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
+        Command::RequestRemoteSession { user_id, reply } => {
+            let result = match proxy.request_remote_session(&user_id).await {
                 Ok(values) => events::parse_remote_session(&values).map_err(payload_error),
                 Err(error) => Err(bus_error(error)),
             };
             let _ = reply.send(result);
         }
-        Command::AcceptRemoteSession {
-            session_id,
-            pin,
-            reply,
-        } => {
+        Command::AcceptRemoteSession { session_id, reply } => {
             let result = proxy
-                .accept_remote_session(&session_id, &pin)
+                .accept_remote_session(&session_id)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -948,6 +1531,17 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         Command::EndRemoteSession { session_id, reply } => {
             let result = proxy
                 .end_remote_session(&session_id)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetRemoteInput {
+            session_id,
+            allowed,
+            reply,
+        } => {
+            let result = proxy
+                .set_remote_input(&session_id, allowed)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);
@@ -970,6 +1564,13 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
             };
             let _ = reply.send(result);
         }
+        Command::GetCallMetrics(reply) => {
+            let result = match proxy.get_call_metrics().await {
+                Ok(values) => events::parse_call_metrics(&values).map_err(payload_error),
+                Err(error) => Err(bus_error(error)),
+            };
+            let _ = reply.send(result);
+        }
     }
 }
 
@@ -981,39 +1582,39 @@ fn payload_error(error: events::ParseError) -> Error {
     Error::InvalidResponse(error.to_string())
 }
 
-fn parse_settings(values: &HashMap<String, OwnedVariant>) -> SettingsForm {
-    SettingsForm::new(events::settings_map(values))
+fn parse_settings(values: &HashMap<String, OwnedVariant>) -> Result<SettingsForm> {
+    events::settings_map(values)
+        .map(SettingsForm::new)
+        .map_err(payload_error)
 }
 
-fn parse_blocked_peers(values: &[HashMap<String, OwnedVariant>]) -> Vec<BlockedPeer> {
+fn parse_blocked_users(values: &[HashMap<String, OwnedVariant>]) -> Result<Vec<BlockedUser>> {
     values
         .iter()
-        .map(|peer| BlockedPeer {
-            fingerprint: variant_string(peer, ipc::PEER_FINGERPRINT),
-            node_id: variant_string(peer, ipc::PEER_ID),
-            display_name: variant_string(peer, ipc::PEER_DISPLAY_NAME),
-            blocked_at: peer
-                .get(ipc::BLOCKED_AT)
-                .and_then(|value| u64::try_from(value).ok())
-                .unwrap_or_default(),
+        .map(|user| {
+            Ok(BlockedUser {
+                fingerprint: events::required_string(user, ipc::USER_FINGERPRINT)?,
+                node_id: events::required_string(user, ipc::USER_ID)?,
+                display_name: events::optional_string(user, ipc::USER_DISPLAY_NAME)?,
+                blocked_at: events::optional_u64(user, ipc::BLOCKED_AT)?,
+            })
         })
-        .collect()
+        .collect::<std::result::Result<Vec<_>, _>>()
+        .map_err(payload_error)
 }
 
-fn variant_string(values: &HashMap<String, OwnedVariant>, key: &str) -> String {
-    values
-        .get(key)
-        .and_then(|value| <&str>::try_from(value).ok())
-        .unwrap_or_default()
-        .to_owned()
+fn parse_event<T>(result: events::Result<T>, name: &'static str) -> Option<T> {
+    match result {
+        Ok(value) => Some(value),
+        Err(error) => {
+            tracing::warn!(%error, %name, "failed to parse daemon event");
+            None
+        }
+    }
 }
 
 pub fn parse_activation_view(value: &str) -> Result<&'static str> {
-    crate::model::pairing_view(value)
-}
-
-pub fn peer_error_label(peer: &Peer) -> String {
-    format!("{} ({})", peer.display_label(), short_id(&peer.id))
+    crate::model::activation_view(value)
 }
 
 #[cfg(test)]
@@ -1029,7 +1630,7 @@ mod tests {
     #[test]
     fn invalid_required_field_is_reported() {
         let values = HashMap::new();
-        assert!(events::required_string(&values, ipc::PEER_ID).is_err());
+        assert!(events::required_string(&values, ipc::USER_ID).is_err());
     }
 
     #[test]
@@ -1043,7 +1644,13 @@ mod tests {
         let mut values = HashMap::new();
         values.insert("x".to_owned(), OwnedVariant::from(true));
         values.insert("y".to_owned(), OwnedVariant::from(7_u32));
-        assert_eq!(events::display_value(&values["x"]), "true");
-        assert_eq!(events::display_value(&values["y"]), "7");
+        assert_eq!(
+            events::display_value(&values["x"], "x").expect("bool"),
+            "true"
+        );
+        assert_eq!(
+            events::display_value(&values["y"], "y").expect("integer"),
+            "7"
+        );
     }
 }

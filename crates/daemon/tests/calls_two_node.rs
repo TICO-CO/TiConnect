@@ -19,7 +19,7 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
         .start_call(&second.node_id().to_string())
         .await
         .expect("start call");
-    assert_eq!(call.state, CallState::Ringing);
+    assert_eq!(call.state, CallState::Connecting);
     assert_eq!(first.calls.state().expect("outgoing state").id, call.id);
 
     let incoming = recv_event(&mut second_events, |event| match event {
@@ -28,11 +28,30 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     })
     .await
     .expect("incoming call");
-    assert_eq!(incoming.peer_id, first.node_id().to_string());
+    assert_eq!(incoming.user_id, first.node_id().to_string());
     assert_eq!(incoming.state, CallState::Ringing);
+    recv_event(&mut first_events, |event| match event {
+        CallEvent::StateChanged(info) if info.id == call.id && info.state == CallState::Ringing => {
+            Some(())
+        }
+        _ => None,
+    })
+    .await
+    .expect("caller ringing");
+    assert_eq!(
+        first.calls.state().expect("caller ringing state").state,
+        CallState::Ringing
+    );
 
     let accepted = second.calls.accept_call(call.id).await.expect("accept");
     assert_eq!(accepted.state, CallState::InCall);
+    let repeated = second
+        .calls
+        .accept_call(call.id)
+        .await
+        .expect("repeat accept");
+    assert_eq!(repeated.state, CallState::InCall);
+    assert_eq!(repeated.connected_at, accepted.connected_at);
     assert_eq!(
         second.calls.state().expect("callee state").state,
         CallState::InCall
@@ -45,6 +64,13 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     })
     .await
     .expect("caller in-call");
+
+    let muted = first
+        .calls
+        .set_muted(call.id, true, false)
+        .expect("mute input");
+    assert!(muted.input_muted);
+    assert!(!muted.output_muted);
 
     first.calls.hangup_call(call.id).await.expect("hangup");
     assert!(first.calls.state().is_none());
@@ -69,6 +95,74 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
     })
     .await
     .expect("callee cleanup");
+
+    let logs = first
+        .database
+        .list_call_logs(None, 10)
+        .await
+        .expect("call logs");
+    assert_eq!(logs.len(), 1);
+    assert_eq!(logs[0].id, call.id.to_string());
+    assert_eq!(logs[0].user_id, second.node_id().to_string());
+    assert_eq!(logs[0].direction, "outgoing");
+    assert_eq!(logs[0].reason, "hangup");
+    let cleared = first
+        .database
+        .clear_call_logs(Some(&second.node_id().to_string()))
+        .await
+        .expect("clear call logs");
+    assert_eq!(cleared, 1);
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
+async fn hangup_cancels_ringing_call_and_persists_both_sides() {
+    let first = TestNode::start("call-cancel-first").await;
+    let second = TestNode::start("call-cancel-second").await;
+    connect_pair(&first, &second).await;
+
+    let call = first
+        .calls
+        .start_call(&second.node_id().to_string())
+        .await
+        .expect("start call");
+    wait_true(Duration::from_secs(5), || async {
+        second.calls.state().is_some()
+    })
+    .await
+    .expect("callee ringing");
+
+    first
+        .calls
+        .hangup_call(call.id)
+        .await
+        .expect("cancel ringing");
+    assert!(first.calls.state().is_none());
+    wait_true(Duration::from_secs(5), || async {
+        second.calls.state().is_none()
+    })
+    .await
+    .expect("callee cleanup");
+
+    for node in [&first, &second] {
+        wait_true(Duration::from_secs(5), || async {
+            node.database
+                .list_call_logs(None, 10)
+                .await
+                .is_ok_and(|logs| logs.len() == 1)
+        })
+        .await
+        .expect("call log persisted");
+        let logs = node
+            .database
+            .list_call_logs(None, 10)
+            .await
+            .expect("call logs");
+        assert_eq!(logs[0].id, call.id.to_string());
+        assert_eq!(logs[0].reason, "hangup");
+    }
 
     first.shutdown().await;
     second.shutdown().await;
@@ -126,9 +220,9 @@ async fn ignore_policy_rejects_incoming_call_and_caller_can_cancel() {
     connect_pair(&first, &second).await;
     second
         .messaging
-        .set_peer_policy(
+        .set_user_policy(
             &first.node_id().to_string(),
-            ticonnect_daemon::storage::PeerPolicy::Ignore,
+            ticonnect_daemon::storage::UserPolicy::Ignore,
         )
         .await
         .expect("ignore caller");

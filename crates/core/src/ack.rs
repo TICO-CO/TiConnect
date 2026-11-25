@@ -86,11 +86,11 @@ mod tests {
     #[test]
     fn ack_records_carry_target_and_kind() {
         let sender = NodeId::generate();
-        let peer = NodeId::generate();
+        let user = NodeId::generate();
         let target = MessageId::generate();
         let record = record(
             AckKind::Read,
-            conversation_id(sender, peer),
+            conversation_id(sender, user),
             sender.to_string(),
             3,
             42,

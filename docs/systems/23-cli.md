@@ -37,7 +37,7 @@ Client process. Talks to daemon over D-Bus and settings directly. No storage or 
 - quit
 - id
 - settings
-- peers
+- users
 - discover
 - pair
 - send
@@ -69,4 +69,4 @@ Client process. Talks to daemon over D-Bus and settings directly. No storage or 
 ## Open decisions
 
 - JSON schema versioning
-- interactive pairing UX
+- interactive trust UX

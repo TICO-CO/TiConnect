@@ -23,6 +23,9 @@ OUT_DIR="${3:-dist}"
     exit 1
 }
 
+YT_DLP_VERSION="${YT_DLP_VERSION:-2026.08.19}"
+YT_DLP_SHA256="${YT_DLP_SHA256:-1fa6733c37ea6fb51c99ad8fe785e7b7e5f3246c9b980230329d4fb72ed8d4d6}"
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mkdir -p "$OUT_DIR"
 OUT_DIR="$(cd "$OUT_DIR" && pwd)"
@@ -147,6 +150,11 @@ if [ -d /usr/lib/x86_64-linux-gnu/alsa-lib ]; then
     cp -a /usr/lib/x86_64-linux-gnu/alsa-lib "$APPDIR/usr/lib/"
 fi
 
+curl -fsSL -o "$APPDIR/usr/bin/yt-dlp" \
+    "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp"
+printf '%s  %s\n' "$YT_DLP_SHA256" "$APPDIR/usr/bin/yt-dlp" | sha256sum -c -
+chmod 755 "$APPDIR/usr/bin/yt-dlp"
+
 install -m644 "$ROOT/packaging/flatpak/org.ticonnect.TiConnect.svg" \
     "$APPDIR/org.ticonnect.TiConnect.svg"
 install -m644 "$ROOT/packaging/flatpak/org.ticonnect.TiConnect.svg" \
@@ -194,6 +202,10 @@ fi
 
 if [ -f "$HERE/usr/share/alsa/alsa.conf" ]; then
     export ALSA_CONFIG_PATH="$HERE/usr/share/alsa/alsa.conf"
+fi
+
+if [ -z "${TICONNECT_YTDLP:-}" ] && [ -x "$HERE/usr/bin/yt-dlp" ]; then
+    export TICONNECT_YTDLP="$HERE/usr/bin/yt-dlp"
 fi
 
 export APPDIR="${APPDIR:-$HERE}"

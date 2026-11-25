@@ -3,10 +3,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use ticonnect_core::id::NodeId;
-use ticonnect_core::message::conversation_id;
+use ticonnect_core::message::{MessageRecord, conversation_id};
 use ticonnect_daemon::identity::Identity;
 use ticonnect_daemon::messaging::MessagingService;
-use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewPeer, PeerPolicy};
+use ticonnect_daemon::storage::{DatabaseHandle, MessageState, NewUser, UserPolicy};
 use ticonnect_daemon::trust::TrustStore;
 use ticonnect_net::transport::{DialTarget, Transport, TransportConfig};
 use ticonnect_settings::Settings;
@@ -16,6 +16,7 @@ struct Node {
     node_id: NodeId,
     transport: Arc<Transport>,
     trust: Arc<TrustStore>,
+    database: DatabaseHandle,
     messaging: MessagingService,
 }
 
@@ -29,12 +30,12 @@ async fn two_nodes_exchange_messages_and_receipts() {
 
     first
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: second.node_id.to_string(),
             fingerprint: second.transport.fingerprint().to_hex(),
             public_key: Some(second_identity.key_pair().verifying_key().to_bytes()),
             display_name: Some("Second".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -42,12 +43,12 @@ async fn two_nodes_exchange_messages_and_receipts() {
         .expect("trust second");
     second
         .trust
-        .commit(NewPeer {
+        .commit(NewUser {
             id: first.node_id.to_string(),
             fingerprint: first.transport.fingerprint().to_hex(),
             public_key: Some(first_identity.key_pair().verifying_key().to_bytes()),
             display_name: Some("First".to_owned()),
-            policy: PeerPolicy::Accept,
+            policy: UserPolicy::Accept,
             trusted_at: 1,
             last_seen: None,
         })
@@ -67,17 +68,17 @@ async fn two_nodes_exchange_messages_and_receipts() {
 
     first
         .messaging
-        .on_peer_connected(session.peer().clone())
+        .on_user_connected(session.user().clone())
         .await;
     let remote = second
         .transport
         .sessions()
         .into_iter()
-        .find(|session| session.peer().node_id == first.node_id)
+        .find(|session| session.user().node_id == first.node_id)
         .expect("second session")
-        .peer()
+        .user()
         .clone();
-    second.messaging.on_peer_connected(remote).await;
+    second.messaging.on_user_connected(remote).await;
 
     wait_for(Duration::from_secs(10), || async {
         first.messaging.sync_ready(&second.node_id.to_string())
@@ -89,7 +90,7 @@ async fn two_nodes_exchange_messages_and_receipts() {
     let conversation = conversation_id(first.node_id, second.node_id);
     let message_id = first
         .messaging
-        .send_message(&second.node_id.to_string(), "hello")
+        .send_message(&second.node_id.to_string(), "hello", None)
         .await
         .expect("send");
 
@@ -135,14 +136,156 @@ async fn two_nodes_exchange_messages_and_receipts() {
     .await
     .expect("read receipt");
 
+    first
+        .messaging
+        .edit_message(&message_id.to_string(), "edited".to_owned())
+        .await
+        .expect("edit message");
+    wait_for(Duration::from_secs(10), || async {
+        second
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages.first().is_some_and(|message| {
+                    message.record.body.as_deref() == Some("edited") && message.edited_at.is_some()
+                })
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("edit received");
+
+    first
+        .messaging
+        .delete_message(&message_id.to_string())
+        .await
+        .expect("delete message");
+    wait_for(Duration::from_secs(10), || async {
+        second
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages
+                    .first()
+                    .is_some_and(|message| message.deleted_at.is_some())
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("delete received");
+
+    let question_id = first
+        .messaging
+        .send_message(&second.node_id.to_string(), "question", None)
+        .await
+        .expect("send question");
+    wait_for(Duration::from_secs(10), || async {
+        second
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages
+                    .iter()
+                    .any(|message| message.record.message_id.to_string() == question_id.to_string())
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("question received");
+
+    assert!(
+        second
+            .messaging
+            .send_message(
+                &first.node_id.to_string(),
+                "answer",
+                Some("missing-message-id".to_owned()),
+            )
+            .await
+            .is_err(),
+        "reply to unknown message is rejected",
+    );
     second
         .messaging
-        .set_peer_policy(&first.node_id.to_string(), PeerPolicy::Ignore)
+        .send_message(
+            &first.node_id.to_string(),
+            "answer",
+            Some(question_id.to_string()),
+        )
+        .await
+        .expect("send reply");
+    wait_for(Duration::from_secs(10), || async {
+        first
+            .messaging
+            .list_messages(&conversation, 10, 0)
+            .await
+            .map(|messages| {
+                messages.iter().any(|message| {
+                    message.record.body.as_deref() == Some("answer")
+                        && message.record.reply_to.as_deref()
+                            == Some(question_id.to_string()).as_deref()
+                })
+            })
+            .unwrap_or(false)
+    })
+    .await
+    .expect("reply received");
+
+    // Edit window: a message older than 5 minutes cannot be edited.
+    let stale_sent_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis() as i64
+        - 6 * 60 * 1000;
+    let stale_seq = first
+        .database
+        .allocate_seq(&second.node_id.to_string())
+        .await
+        .expect("stale seq");
+    let stale_record = MessageRecord::text(
+        conversation.clone(),
+        first.node_id.to_string(),
+        stale_seq,
+        stale_sent_at,
+        "stale",
+    );
+    let stale_envelope = stale_record
+        .signed(first_identity.key_pair())
+        .expect("sign stale");
+    first
+        .database
+        .insert_message(
+            stale_record.clone(),
+            stale_sent_at,
+            stale_envelope.signature().to_vec(),
+            Some(MessageState::Sent),
+        )
+        .await
+        .expect("insert stale");
+    let stale_err = first
+        .messaging
+        .edit_message(&stale_record.message_id.to_string(), "too late".to_owned())
+        .await
+        .expect_err("stale edit is rejected");
+    assert!(
+        matches!(
+            stale_err,
+            ticonnect_daemon::messaging::MessagingError::EditWindowExpired(_)
+        ),
+        "unexpected error: {stale_err}"
+    );
+
+    second
+        .messaging
+        .set_user_policy(&first.node_id.to_string(), UserPolicy::Ignore)
         .await
         .expect("ignore first");
     first
         .messaging
-        .send_message(&second.node_id.to_string(), "ignored")
+        .send_message(&second.node_id.to_string(), "ignored", None)
         .await
         .expect("send ignored");
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -153,7 +296,7 @@ async fn two_nodes_exchange_messages_and_receipts() {
             .await
             .expect("history")
             .len(),
-        1
+        3
     );
 
     first.transport.shutdown().await;
@@ -198,6 +341,7 @@ async fn node(label: &str) -> Node {
         node_id: public.node_id(),
         transport,
         trust,
+        database: database.clone(),
         messaging,
     }
 }

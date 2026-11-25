@@ -116,8 +116,55 @@ async fn two_discovery_instances_find_each_other_over_loopback() {
     assert_eq!(candidate_b.fingerprint(), fingerprint_a);
     assert_eq!(candidate_b.node_id(), node_a);
 
+    let status_a = discovery_a.status();
+    let status_b = discovery_b.status();
+    assert!(status_a.beacons_sent > 0);
+    assert!(status_b.beacons_sent > 0);
+    assert!(status_a.beacons_received > 0);
+    assert!(status_b.beacons_received > 0);
+    assert!(status_a.last_beacon_sent_at > 0);
+    assert!(status_a.last_beacon_received_at > 0);
+
     discovery_a.stop_and_wait().await;
     discovery_b.stop_and_wait().await;
+}
+
+#[tokio::test]
+async fn probe_sends_a_beacon_without_waiting_for_the_interval() {
+    let port = free_port().await;
+    let mut config = DiscoveryConfig::new("Desk", NodeId::generate().to_string(), fingerprint(8))
+        .with_beacon_override(port, [SocketAddr::from(([127, 0, 0, 1], 9))]);
+    config.mdns = false;
+    config.beacon_interval = Duration::from_secs(30);
+
+    let discovery = LanDiscovery::new(config);
+    discovery.start().expect("start discovery");
+
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if discovery.status().beacons_sent > 0 {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("initial beacon");
+
+    let before = discovery.status().beacons_sent;
+    discovery.probe();
+    timeout(Duration::from_secs(2), async {
+        loop {
+            if discovery.status().beacons_sent > before {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("probe beacon");
+
+    discovery.stop_and_wait().await;
 }
 
 #[tokio::test]

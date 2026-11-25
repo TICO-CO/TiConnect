@@ -237,15 +237,10 @@ wait_until() {
 }
 
 pair_nodes() {
-    local start pin
     wait_until "cli b discover list | grep -q '$A_ID'" 60 || fail "node-b did not discover node-a"
     wait_until "cli a discover list | grep -q '$B_ID'" 60 || fail "node-a did not discover node-b"
-    start="$(cli a pair start)"
-    pin="$(printf '%s\n' "$start" | sed -n 's/^pin: //p')"
-    [ -n "$pin" ] || fail "pair start failed"
-    cli b pair with-pin "$A_ID" "$pin" >/dev/null
-    wait_until "cli a peers list | grep -q '$B_ID'" 30 || fail "node-a did not trust node-b"
-    wait_until "cli b peers list | grep -q '$A_ID'" 30 || fail "node-b did not trust node-a"
+    wait_until "cli a users list | grep -q '$B_ID'" 30 || fail "node-a did not trust node-b"
+    wait_until "cli b users list | grep -q '$A_ID'" 30 || fail "node-b did not trust node-a"
     wait_until "[ \"\$(cli a status | awk '/^active_sessions:/ {print \$2}')\" -ge 1 ]" 30 || fail "no session"
 }
 
@@ -326,10 +321,10 @@ scenario_call() {
 }
 
 scenario_remote() {
-    log "remote consent/PIN/kill switch"
+    log "remote consent/kill switch"
     monitor_start a remote-signals
     monitor_start b remote-signals
-    local request session pin
+    local request session
     request="$(cli a remote request "$B_ID")"
     session="$(printf '%s\n' "$request" | awk -F': ' '/session_id/ {print $2}')"
     [ -n "$session" ] || fail "remote request failed"
@@ -338,10 +333,7 @@ scenario_remote() {
         sleep 0.5
     done
     monitor_expect remote-signals "RemoteSessionRequested" || fail "missing RemoteSessionRequested signal"
-    pin="$(cli b remote status | awk '/^pin:/ {print $2}')"
-    [ -n "$pin" ] || fail "host did not generate PIN"
-    cli b remote accept "$session" "" >/dev/null
-    cli a remote accept "$session" "$pin" >/dev/null
+    cli b remote accept "$session" >/dev/null
     for _ in $(seq 1 30); do
         if cli a remote status | grep -q '^state: active'; then break; fi
         sleep 0.5
@@ -370,17 +362,39 @@ scenario_remote() {
 
 scenario_ui() {
     log "UI and overlay startup"
-    [ -x "$ROOT/target/debug/ticonnect-ui" ] || fail "ticonnect-ui binary missing"
+    [ -x "$ROOT/target/debug/ticonnect" ] || fail "ticonnect binary missing"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
-    TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect-ui" >"$WORK/ui.log" 2>&1 &
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+    WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+    TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect" ui >"$WORK/ui.log" 2>&1 &
     UI_PID=$!
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
+    WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
     TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect-ovl" >"$WORK/overlay.log" 2>&1 &
     OVL_PID=$!
     sleep 3
     kill -0 "$UI_PID" 2>/dev/null || fail "UI exited"
+
+    ui_port=""
+    for _ in $(seq 1 40); do
+        kill -0 "$UI_PID" 2>/dev/null || fail "UI exited"
+        ui_port="$(ss -ltnp 2>/dev/null | awk -v pid="$UI_PID" '$0 ~ "pid=" pid { print $4; exit }')"
+        ui_port="${ui_port##*:}"
+        if [ -n "$ui_port" ] && curl -fsS "http://127.0.0.1:$ui_port/" -o "$WORK/ui-index.html"; then
+            break
+        fi
+        ui_port=""
+        sleep 0.25
+    done
+    [ -n "$ui_port" ] || fail "UI bridge did not become ready"
+    grep -q '<title>TiConnect</title>' "$WORK/ui-index.html" || fail "UI index invalid"
+    assets="$(grep -oE '(src|href)="[^"]+\.(js|css)"' "$WORK/ui-index.html" | cut -d'"' -f2)"
+    [ -n "$assets" ] || fail "UI bundle references missing"
+    for path in $assets; do
+        curl -fsS "http://127.0.0.1:$ui_port$path" >/dev/null || fail "UI asset missing: $path"
+    done
     if [ "$SESSION" = weston ]; then
         if ! kill -0 "$OVL_PID" 2>/dev/null; then
             log "Weston has no layer-shell support; overlay fallback exited as expected"

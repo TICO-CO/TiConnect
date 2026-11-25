@@ -14,10 +14,10 @@ pub enum StorageError {
     #[error("database integrity check failed: {0}")]
     Integrity(String),
 
-    #[error("peer fingerprint already exists: {0}")]
+    #[error("user fingerprint already exists: {0}")]
     DuplicateFingerprint(String),
 
-    #[error("invalid peer policy: {0}")]
+    #[error("invalid user policy: {0}")]
     InvalidPolicy(String),
 
     #[error("invalid message state: {0}")]
