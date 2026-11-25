@@ -45,6 +45,7 @@ export interface Bootstrap {
     appearance: string;
     autostart: boolean;
     version: string;
+    dev_build: boolean;
     online: boolean;
 }
 

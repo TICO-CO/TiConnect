@@ -25,6 +25,8 @@
             return name.includes(query.trim().toLowerCase());
         }),
     );
+    const version = $derived(app.bootstrap?.version ?? '');
+    const devBuild = $derived(app.bootstrap?.dev_build ?? false);
 
     function summaryFor(userId: string) {
         return app.summaries.find((summary) => summary.user_id === userId) ?? null;
@@ -247,9 +249,23 @@
         </div>
         <footer class="-mx-3 mt-auto -mb-3 border-t border-line bg-surface p-3">
             <div class="flex h-9 items-center justify-between">
-                <span class="logo-mark size-[34px] shrink-0" role="img" aria-label="TiConnect"
-                ></span>
-                <div class="flex items-center gap-1">
+                <div class="flex min-w-0 items-center gap-2.5">
+                    <span class="logo-mark size-[34px] shrink-0" role="img" aria-label="TiConnect"
+                    ></span>
+                    {#if version}
+                        <span
+                            class="inline-flex h-4 min-w-0 items-center gap-1 text-xs leading-4 font-bold text-ink-3"
+                        >
+                            <span class="truncate">{version}</span>
+                            {#if devBuild}
+                                <span class="shrink-0 text-[11px] tracking-[0.06em] uppercase"
+                                    >· DEV</span
+                                >
+                            {/if}
+                        </span>
+                    {/if}
+                </div>
+                <div class="flex shrink-0 items-center gap-1">
                     <button
                         class="inline-flex size-8 shrink-0 items-center justify-center rounded-pill border border-transparent bg-transparent text-ink hover:bg-surface-2"
                         onclick={() => app.navigate({ kind: 'watch-party' })}

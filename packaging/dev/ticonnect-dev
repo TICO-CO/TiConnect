@@ -17,6 +17,11 @@ esac
 
 export TICONNECT_CONFIG_DIR="${TICONNECT_CONFIG_DIR:-$config_dir}"
 export TICONNECT_DATA_DIR="${TICONNECT_DATA_DIR:-$data_dir}"
+export TICONNECT_DEV_BUILD=1
+export TICONNECT_UI_TITLE="${TICONNECT_UI_TITLE:-TiConnect Dev}"
+if [ -z "${LD_LIBRARY_PATH:-}" ] && [ -n "${NIX_LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH"
+fi
 export TICONNECT_LOG_FILE="${TICONNECT_LOG_FILE:-$state_dir/daemon.log}"
 export TICONNECT_TRANSPORT__PORT="${TICONNECT_TRANSPORT__PORT:-$transport_port}"
 

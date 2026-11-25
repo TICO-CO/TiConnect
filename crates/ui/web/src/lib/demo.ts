@@ -103,7 +103,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
     },
     appearance: 'dark',
     autostart: true,
-    version: '0.0.6',
+    version: '0.1.1',
+    dev_build: true,
     online: true,
 };
 
@@ -234,7 +235,7 @@ export const DEMO_DETAILS: UserDetails = {
     os: 'Linux · Ubuntu 24.04',
     desktop: 'GNOME 48',
     display_server: 'Wayland',
-    app_version: 'TiConnect 0.0.6',
+    app_version: 'TiConnect 0.1.1',
 };
 
 export const DEMO_PARTY: WatchParty = {

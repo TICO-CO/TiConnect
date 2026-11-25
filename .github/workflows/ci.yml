@@ -41,6 +41,7 @@ jobs:
       - name: Packaging validation
         run: |
           desktop-file-validate packaging/flatpak/org.ticonnect.TiConnect.desktop
+          desktop-file-validate packaging/dev/org.ticonnect.TiConnect.Dev.desktop
           appstreamcli validate --no-net packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml
           units="$(mktemp -d)"
           for unit in packaging/systemd/*.service; do

@@ -118,6 +118,9 @@ async fn dispatch_inner(
                 "appearance": settings.get("appearance.color_scheme").unwrap_or("system"),
                 "autostart": autostart,
                 "version": env!("CARGO_PKG_VERSION"),
+                "dev_build": cfg!(debug_assertions)
+                    || state.origins.dev_mode()
+                    || std::env::var_os("TICONNECT_DEV_BUILD").is_some(),
                 "online": state.online(),
             }))
         }

@@ -26,6 +26,18 @@ fn window_title_from(label: Option<&str>) -> String {
         .to_owned()
 }
 
+fn application_id_from(dev_build: bool) -> &'static str {
+    if dev_build {
+        "org.ticonnect.UI.Dev"
+    } else {
+        "org.ticonnect.UI"
+    }
+}
+
+fn application_id() -> &'static str {
+    application_id_from(std::env::var_os("TICONNECT_DEV_BUILD").is_some())
+}
+
 fn audio_only_media_allowed(is_audio: bool, is_video: bool) -> bool {
     is_audio && !is_video
 }
@@ -143,7 +155,7 @@ pub fn run() -> anyhow::Result<()> {
     runtime.spawn(activation::serve(activation_sender));
 
     let app = gtk::Application::builder()
-        .application_id("org.ticonnect.UI")
+        .application_id(application_id())
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(move |_| apply_appearance(appearance));
@@ -228,7 +240,7 @@ fn glib_timeout_add(
 
 #[cfg(test)]
 mod tests {
-    use super::{audio_only_media_allowed, window_title_from, youtube_frame};
+    use super::{application_id_from, audio_only_media_allowed, window_title_from, youtube_frame};
 
     #[test]
     fn media_permissions_allow_only_audio_capture() {
@@ -255,5 +267,11 @@ mod tests {
             window_title_from(Some("TiConnect · Lab Node A")),
             "TiConnect · Lab Node A"
         );
+    }
+
+    #[test]
+    fn dev_build_uses_a_separate_application_id() {
+        assert_eq!(application_id_from(false), "org.ticonnect.UI");
+        assert_eq!(application_id_from(true), "org.ticonnect.UI.Dev");
     }
 }

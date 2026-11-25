@@ -6,6 +6,8 @@
   builds.
 - Find the Nix D-Bus session configuration when starting the private bus for
   `ticonnect-dev`.
+- Install a separate **TiConnect Dev** app-menu launcher and icon during
+  `make install-dev`.
 
 ## 0.1.0 — 2026-11-24
 

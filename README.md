@@ -230,11 +230,12 @@ make install-dev
 ticonnect-dev
 ```
 
-`make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`.
-The payload, config, data, state, and private D-Bus live under `*-dev` paths, so
-the dev install can run beside a normal installation without replacing
-`ticonnect`, desktop entries, systemd units, or autostart files. The dev
-transport port defaults to `45881`.
+`make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`
+and adds a separate **TiConnect Dev** launcher and icon. Launch it from the app
+menu or run `ticonnect-dev`. The payload, config, data, state, and private D-Bus
+live under `*-dev` paths, so the dev install can run beside a normal
+installation without replacing `ticonnect`, its desktop entry, systemd units,
+or autostart files. The dev transport port defaults to `45881`.
 
 To reuse an existing debug binary instead of rebuilding release:
 
@@ -252,7 +253,7 @@ DEV_PURGE=1 make uninstall-dev
 For a two-node development environment, use `make lab`; see
 [`docs/local-testing.md`](docs/local-testing.md). Paths are overridable with
 `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`, `DEV_DATA_DIR`, `DEV_STATE_DIR`,
-`DEV_RUNTIME_DIR`, and `DEV_TRANSPORT_PORT`.
+`DEV_RUNTIME_DIR`, `DEV_TRANSPORT_PORT`, `DEV_DESKTOP`, and `DEV_ICON`.
 
 ## Release
 

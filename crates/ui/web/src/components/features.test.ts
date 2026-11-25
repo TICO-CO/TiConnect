@@ -40,7 +40,7 @@ const DETAILS: UserDetails = {
     os: 'Linux',
     desktop: 'GNOME',
     display_server: 'Wayland',
-    app_version: '0.0.6',
+    app_version: '0.1.1',
 };
 const STORAGE: StorageUsage = {
     message_count: 4,
@@ -49,7 +49,7 @@ const STORAGE: StorageUsage = {
     database_bytes: 4096,
 };
 
-function makeApp(): AppState {
+function makeApp(devBuild = false): AppState {
     const app = new AppState();
     const bootstrap: Bootstrap = {
         identity: {
@@ -98,7 +98,8 @@ function makeApp(): AppState {
         },
         appearance: 'system',
         autostart: false,
-        version: '0.0.6',
+        version: '0.1.1',
+        dev_build: devBuild,
         online: true,
     };
     app.bootstrap = bootstrap;
@@ -406,6 +407,32 @@ describe('feature surfaces', () => {
         expect(
             settings.compareDocumentPosition(logo) & Node.DOCUMENT_POSITION_FOLLOWING,
         ).toBeTruthy();
+    });
+
+    it('shows the version beside the logo in the expanded rail only', () => {
+        const app = makeApp();
+        const expanded = render(UsersRail, { app });
+
+        const version = screen.getByText('0.1.1');
+        const logo = screen.getByRole('img', { name: 'TiConnect' });
+        expect(
+            logo.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(screen.queryByText('· DEV')).toBeNull();
+        expanded.unmount();
+
+        app.collapsed = true;
+        render(UsersRail, { app });
+
+        expect(screen.queryByText('0.1.1')).toBeNull();
+    });
+
+    it('marks development builds beside the version', () => {
+        const app = makeApp(true);
+        render(UsersRail, { app });
+
+        expect(screen.getByText('0.1.1')).toBeTruthy();
+        expect(screen.getByText('· DEV')).toBeTruthy();
     });
 
     it('shows message timeline loading and failure states', async () => {

@@ -763,7 +763,8 @@ describe('group watch party behavior', () => {
             settings: {},
             appearance: 'system',
             autostart: false,
-            version: '0.0.6',
+            version: '0.1.1',
+            dev_build: false,
             online: true,
         };
         client.request.mockImplementation(async (method: string) => {

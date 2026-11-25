@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TiConnect Dev
+Comment=LAN-only messaging, calls, and remote desktop (development build)
+Exec=ticonnect-dev
+TryExec=ticonnect-dev
+Icon=org.ticonnect.TiConnect.Dev
+Terminal=false
+Categories=Network;Chat;InstantMessaging;
+StartupNotify=true
+StartupWMClass=org.ticonnect.UI.Dev
