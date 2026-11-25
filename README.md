@@ -82,29 +82,36 @@ sudo ldconfig
 Architecture docs are generated. After editing `docs/systems/graph/` or
 `docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
+For a release build and user installation, see [From source](#from-source).
+
 ## Install
+
+Release artifacts are attached to
+[GitHub Releases](https://github.com/TICO-CO/TiConnect/releases). Set the tag
+for the release you want, then use the matching section:
+
+```sh
+TAG=v0.1.1
+```
 
 ### AppImage
 
-Download `ticonnect-<tag>-x86_64.AppImage`, then install the per-user app
-integration:
-
 ```sh
-chmod +x ticonnect-v0.1.1-x86_64.AppImage
-./ticonnect-v0.1.1-x86_64.AppImage --install-user
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-${TAG}-x86_64.AppImage"
+chmod +x "ticonnect-${TAG}-x86_64.AppImage"
+"./ticonnect-${TAG}-x86_64.AppImage" --install-user
 ```
 
-Launch TiConnect from the app menu. `--uninstall-user` removes the app
-integration and keeps your configuration, identity, database, attachments, and
-logs. Use `--uninstall-user --purge` to remove those too.
+Launch TiConnect from the app menu. Without FUSE, or on NixOS, add
+`--appimage-extract-and-run` before `--install-user`. `--uninstall-user` removes
+the app integration and keeps your configuration, identity, database,
+attachments, and logs. Use `--uninstall-user --purge` to remove those too.
 
 ### Flatpak
 
-Install the tester bundle from the latest release, then run the preflight check
-and launch the app:
-
 ```sh
-flatpak install --user ./org.ticonnect.TiConnect-<tag>.flatpak
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/org.ticonnect.TiConnect-${TAG}.flatpak"
+flatpak install --user "./org.ticonnect.TiConnect-${TAG}.flatpak"
 flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
@@ -113,8 +120,14 @@ See `docs/tester-quickstart.md` for the two-machine test checklist.
 
 ### Arch
 
-Install the package from the latest release with `pacman -U`. The package adds
-the app-menu entry, icon, systemd user units, and autostart entries.
+```sh
+PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
+sudo pacman -U "$PKG"
+```
+
+The package adds the app-menu entry, icon, systemd user units, and autostart
+entries. Uninstall with `sudo pacman -Rns ticonnect`.
 
 ### Nix
 
@@ -122,7 +135,31 @@ the app-menu entry, icon, systemd user units, and autostart entries.
 nix profile install github:TICO-CO/TiConnect#ticonnect
 ```
 
-The NixOS module is available at `inputs.ticonnect.nixosModules.default`.
+The NixOS module is available at `inputs.ticonnect.nixosModules.default`. Set
+`services.ticonnect.enable = true` in the module that imports it.
+
+### From source
+
+Build and install the release binary as a user. Nix provides the recommended
+development environment:
+
+```sh
+git clone https://github.com/TICO-CO/TiConnect.git
+cd TiConnect
+nix develop
+cargo build --release --bin ticonnect
+make install-user
+```
+
+Outside Nix, install the dependencies listed in
+[`docs/install.md#from-source`](docs/install.md#from-source); `gtk4-layer-shell`
+is required for the overlay. `make install-user` installs `ticonnect` to
+`~/.local/bin` plus the app-menu entry, icon, metainfo, systemd user units, and
+autostart entries. It does not start or enable services. Ensure `~/.local/bin`
+is on your `PATH`.
+
+For an isolated development install that can run beside the release app, see
+[Dev install](#dev-install).
 
 ## Use
 
@@ -185,21 +222,37 @@ starts the daemon when it is absent.
 
 ### Dev install
 
+Enter the Nix development shell, then install and run the isolated dev build:
+
+```sh
+nix develop
+make install-dev
+ticonnect-dev
+```
+
 `make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`.
 The payload, config, data, state, and private D-Bus live under `*-dev` paths, so
 the dev install can run beside a normal installation without replacing
 `ticonnect`, desktop entries, systemd units, or autostart files. The dev
 transport port defaults to `45881`.
 
+To reuse an existing debug binary instead of rebuilding release:
+
 ```sh
-make install-dev
-ticonnect-dev
+TICONNECT_BIN=target/debug/ticonnect make install-dev
+```
+
+Remove the dev install with:
+
+```sh
 make uninstall-dev
 DEV_PURGE=1 make uninstall-dev
 ```
 
-Paths are overridable with `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`,
-`DEV_DATA_DIR`, `DEV_STATE_DIR`, `DEV_RUNTIME_DIR`, and `DEV_TRANSPORT_PORT`.
+For a two-node development environment, use `make lab`; see
+[`docs/local-testing.md`](docs/local-testing.md). Paths are overridable with
+`DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`, `DEV_DATA_DIR`, `DEV_STATE_DIR`,
+`DEV_RUNTIME_DIR`, and `DEV_TRANSPORT_PORT`.
 
 ## Release
 
