@@ -123,7 +123,7 @@
             <a class="logo-mark size-[34px] shrink-0" href="#/chat" aria-label="TiConnect"></a>
         </footer>
     {:else}
-        <header class="flex h-[30px] items-center justify-between px-3">
+        <header class="flex h-[30px] items-center justify-between">
             <span
                 class="font-text text-xs leading-4 font-bold tracking-[0.1em] text-ink-2 uppercase"
                 >Chats</span
