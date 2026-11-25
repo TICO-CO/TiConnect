@@ -1,0 +1,9 @@
+[advisories]
+# ksni 0.3.x pins zbus 5, whose zbus_names and zvariant crates are marked
+# unmaintained with no fixed release available. The tray is the only user of
+# that zbus generation; the rest of the workspace uses zbus 6.
+ignore = [
+    "RUSTSEC-2026-0370",
+    "RUSTSEC-2026-0371",
+    "RUSTSEC-2026-0372",
+]
