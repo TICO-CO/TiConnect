@@ -8,8 +8,7 @@ use std::time::Duration;
 use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId, CallSignalFrame, CallState};
 use ticonnect_core::id::NodeId;
-use ticonnect_media::audio::LevelMeter;
-use ticonnect_media::jitter::{JitterBuffer, JitterFrame};
+use ticonnect_media::audio::{AudioPlayout, LevelMeter};
 use ticonnect_net::transport::{Session, Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
@@ -18,7 +17,7 @@ use crate::messaging::now_unix_ms;
 use crate::storage::{CallRecord, DatabaseHandle, StorageError, UserPolicy};
 use crate::trust::{TrustError, TrustStore};
 
-use session::{AudioReceiver, MediaError, MediaSession};
+use session::{MediaError, MediaSession};
 use state::{CallInfo, CallRegistry, CallStateError, CallTransition, EndReason};
 
 const MEDIA_UNAVAILABLE_CODE: u8 = 1;
@@ -39,6 +38,8 @@ pub struct CallMetrics {
     pub frames_sent: u64,
     pub frames_received: u64,
     pub packets_lost: u64,
+    pub packets_concealed: u64,
+    pub playback_underruns: u64,
     pub bytes_sent: u64,
     pub output_level: u16,
 }
@@ -48,6 +49,7 @@ pub struct CallMetricsHandle {
     frames_sent: AtomicU64,
     frames_received: AtomicU64,
     packets_lost: AtomicU64,
+    packets_concealed: AtomicU64,
     bytes_sent: AtomicU64,
     output_level: LevelMeter,
 }
@@ -58,6 +60,8 @@ impl CallMetricsHandle {
             frames_sent: self.frames_sent.load(Ordering::Relaxed),
             frames_received: self.frames_received.load(Ordering::Relaxed),
             packets_lost: self.packets_lost.load(Ordering::Relaxed),
+            packets_concealed: self.packets_concealed.load(Ordering::Relaxed),
+            playback_underruns: 0,
             bytes_sent: self.bytes_sent.load(Ordering::Relaxed),
             output_level: self.output_level.permille(),
         }
@@ -75,6 +79,10 @@ impl CallMetricsHandle {
 
     pub fn note_lost(&self) {
         self.packets_lost.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn note_concealed(&self, count: u64) {
+        self.packets_concealed.fetch_add(count, Ordering::Relaxed);
     }
 
     pub fn note_output_samples(&self, samples: &[f32]) {
@@ -108,8 +116,8 @@ struct Inner {
     events: tokio::sync::broadcast::Sender<CallEvent>,
     registry: Mutex<CallRegistry>,
     media: Mutex<Option<MediaSession>>,
-    audio: Mutex<Option<AudioReceiver>>,
-    jitter: Mutex<JitterBuffer>,
+    audio: Mutex<Option<AudioPlayout>>,
+    playout_task: Mutex<Option<JoinHandle<()>>>,
     media_enabled: std::sync::atomic::AtomicBool,
     metrics: Arc<CallMetricsHandle>,
 }
@@ -134,7 +142,7 @@ impl CallService {
                 registry: Mutex::new(CallRegistry::default()),
                 media: Mutex::new(None),
                 audio: Mutex::new(None),
-                jitter: Mutex::new(JitterBuffer::default()),
+                playout_task: Mutex::new(None),
                 media_enabled: std::sync::atomic::AtomicBool::new(true),
                 metrics: Arc::new(CallMetricsHandle::default()),
             }),
@@ -168,7 +176,17 @@ impl CallService {
     }
 
     pub fn metrics(&self) -> CallMetrics {
-        self.inner.metrics.snapshot()
+        let mut metrics = self.inner.metrics.snapshot();
+        if let Some(media) = self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            metrics.playback_underruns = media.output_underruns();
+        }
+        metrics
     }
 
     pub fn state(&self) -> Option<CallInfo> {
@@ -444,56 +462,61 @@ impl CallService {
         let call_id = packet.id();
         self.ensure_active(call_id, &user.node_id.to_string())?;
         self.inner.metrics.note_received();
+        if let Some(audio) = self
+            .inner
+            .audio
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
         {
-            let mut jitter = self
-                .inner
-                .jitter
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner);
-            jitter.push(packet);
-            let lost_before = jitter.lost();
-            while let Some(frame) = jitter.pop() {
-                let samples = match frame {
-                    JitterFrame::Packet(packet) => {
-                        let mut audio = self
-                            .inner
-                            .audio
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner);
-                        match audio.as_mut() {
-                            Some(audio) => audio.decode(&packet).unwrap_or_default(),
-                            None => Vec::new(),
-                        }
-                    }
-                    JitterFrame::Lost(_) => {
-                        let mut audio = self
-                            .inner
-                            .audio
-                            .lock()
-                            .unwrap_or_else(PoisonError::into_inner);
-                        match audio.as_mut() {
-                            Some(audio) => audio.conceal().unwrap_or_default(),
-                            None => Vec::new(),
-                        }
-                    }
-                };
-                self.inner.metrics.note_output_samples(&samples);
-                if let Some(media) = self
-                    .inner
-                    .media
-                    .lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .as_mut()
-                {
-                    media.push_audio(&samples);
-                }
-            }
-            let lost_after = jitter.lost();
-            for _ in lost_before..lost_after {
-                self.inner.metrics.note_lost();
-            }
+            audio.push(packet);
         }
         Ok(())
+    }
+
+    pub fn playout_tick(&self) {
+        let (samples, lost, concealed) = {
+            let mut audio = self
+                .inner
+                .audio
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            let Some(audio) = audio.as_mut() else {
+                return;
+            };
+            let lost_before = audio.lost();
+            let concealed_before = audio.concealed();
+            let samples = match audio.tick() {
+                Ok(samples) => samples,
+                Err(error) => {
+                    tracing::debug!(%error, "call audio playout failed");
+                    return;
+                }
+            };
+            (
+                samples,
+                audio.lost().saturating_sub(lost_before),
+                audio.concealed().saturating_sub(concealed_before),
+            )
+        };
+        for _ in 0..lost {
+            self.inner.metrics.note_lost();
+        }
+        self.inner.metrics.note_concealed(concealed);
+        let Some(samples) = samples else {
+            return;
+        };
+        self.inner.metrics.note_output_samples(&samples);
+        if let Some(media) = self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+            && let Err(error) = media.push_audio(&samples)
+        {
+            tracing::debug!(%error, "call audio playback failed");
+        }
     }
 
     pub async fn handle_disconnect(&self, user: &UserInfo) {
@@ -602,16 +625,35 @@ impl CallService {
         {
             media.stop();
         }
+        if let Some(audio) = self
+            .inner
+            .audio
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            tracing::info!(
+                received = audio.received(),
+                lost = audio.lost(),
+                concealed = audio.concealed(),
+                jitter_ms = audio.jitter_ms(),
+                "call playout finished"
+            );
+        }
         *self
             .inner
             .audio
             .lock()
             .unwrap_or_else(PoisonError::into_inner) = None;
-        *self
+        if let Some(task) = self
             .inner
-            .jitter
+            .playout_task
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = JitterBuffer::default();
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            task.abort();
+        }
     }
 
     fn start_media(&self, call: &state::ActiveCall) -> Result<(), CallError> {
@@ -647,6 +689,16 @@ impl CallService {
             tracing::warn!(call_id = %call.id, user_id = %call.user_id, %error, "failed to start call media");
             CallError::Media(error)
         })?;
+        let playout = AudioPlayout::new().map_err(MediaError::Playout)?;
+        if let Some(task) = self
+            .inner
+            .playout_task
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
+            task.abort();
+        }
         *self
             .inner
             .media
@@ -656,7 +708,24 @@ impl CallService {
             .inner
             .audio
             .lock()
-            .unwrap_or_else(PoisonError::into_inner) = AudioReceiver::new().ok();
+            .unwrap_or_else(PoisonError::into_inner) = Some(playout);
+        let service = self.clone();
+        let task = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(Duration::from_millis(20));
+            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Burst);
+            loop {
+                ticker.tick().await;
+                if service.state().is_none() {
+                    break;
+                }
+                service.playout_tick();
+            }
+        });
+        *self
+            .inner
+            .playout_task
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(task);
         Ok(())
     }
 

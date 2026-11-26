@@ -405,6 +405,8 @@ async fn run_command(command: Command) -> Result<()> {
                         ipc::CALL_FRAMES_SENT,
                         ipc::CALL_FRAMES_RECEIVED,
                         ipc::CALL_PACKETS_LOST,
+                        ipc::CALL_PACKETS_CONCEALED,
+                        ipc::CALL_PLAYBACK_UNDERRUNS,
                         ipc::CALL_BYTES_SENT,
                     ] {
                         println!("{key}: {}", message_value(&metrics, key));

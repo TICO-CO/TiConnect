@@ -1,4 +1,4 @@
-use opus::{Application, Bitrate, Channels};
+use opus::{Application, Bitrate, Channels, Signal};
 use thiserror::Error;
 
 use crate::audio::{OPUS_CHANNELS, OPUS_FRAME_SAMPLES, OPUS_SAMPLE_RATE};
@@ -25,6 +25,18 @@ impl OpusEncoder {
         .map_err(|error| OpusError::Codec(error.to_string()))?;
         encoder
             .set_bitrate(Bitrate::Bits(bitrate))
+            .map_err(|error| OpusError::Codec(error.to_string()))?;
+        encoder
+            .set_complexity(10)
+            .map_err(|error| OpusError::Codec(error.to_string()))?;
+        encoder
+            .set_signal(Signal::Voice)
+            .map_err(|error| OpusError::Codec(error.to_string()))?;
+        encoder
+            .set_inband_fec(true)
+            .map_err(|error| OpusError::Codec(error.to_string()))?;
+        encoder
+            .set_packet_loss_perc(10)
             .map_err(|error| OpusError::Codec(error.to_string()))?;
         Ok(Self {
             encoder,
@@ -83,13 +95,21 @@ impl OpusDecoder {
     }
 
     pub fn decode(&mut self, packet: &[u8]) -> Result<Vec<f32>, OpusError> {
+        self.decode_with_fec(packet, false)
+    }
+
+    pub fn decode_with_fec(
+        &mut self,
+        packet: &[u8],
+        decode_fec: bool,
+    ) -> Result<Vec<f32>, OpusError> {
         if packet.is_empty() {
             return self.conceal();
         }
         let mut output = vec![0.0_f32; OPUS_FRAME_SAMPLES * 3];
         let samples = self
             .decoder
-            .decode_float(packet, &mut output, false)
+            .decode_float(packet, &mut output, decode_fec)
             .map_err(|error| OpusError::Codec(error.to_string()))?;
         output.truncate(samples);
         Ok(output)
@@ -130,6 +150,31 @@ mod tests {
         assert!(!packet.is_empty());
         let output = decoder.decode(&packet).expect("decode");
         assert!(!output.is_empty());
+    }
+
+    #[test]
+    fn fec_decodes_the_frame_before_a_lost_packet() {
+        let mut encoder = OpusEncoder::default_voip().expect("encoder");
+        let packets = encoder
+            .push_samples(&vec![0.1; OPUS_FRAME_SAMPLES * 3])
+            .expect("encode");
+        let mut decoder = OpusDecoder::default_voip().expect("decoder");
+        assert!(
+            !decoder
+                .decode(&packets[0])
+                .expect("first packet")
+                .is_empty()
+        );
+        let recovered = decoder
+            .decode_with_fec(&packets[2], true)
+            .expect("fec packet");
+        assert!(!recovered.is_empty());
+        assert!(
+            !decoder
+                .decode(&packets[2])
+                .expect("current packet")
+                .is_empty()
+        );
     }
 
     #[test]

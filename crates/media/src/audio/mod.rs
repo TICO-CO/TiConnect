@@ -1,6 +1,7 @@
 pub mod capture;
 pub mod device;
 pub mod playback;
+pub mod playout;
 pub mod resample;
 
 use std::sync::atomic::{AtomicU16, AtomicU64, Ordering};
@@ -10,7 +11,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub use capture::{CaptureHandle, CaptureSource, start_capture};
 pub use device::{AudioDevice, AudioDevices, DeviceError};
 pub use playback::{PlaybackHandle, PlaybackSink, start_playback};
-pub use resample::Resampler;
+pub use playout::{AudioPlayout, AudioPlayoutError};
+pub use resample::{ResampleError, Resampler};
 
 pub const OPUS_SAMPLE_RATE: u32 = 48_000;
 pub const OPUS_CHANNELS: u8 = 1;
@@ -176,7 +178,10 @@ fn now_ms() -> u64 {
 }
 
 #[derive(Clone, Default)]
-pub struct SharedBuffer(Arc<Mutex<Vec<f32>>>);
+pub struct SharedBuffer {
+    samples: Arc<Mutex<Vec<f32>>>,
+    underruns: Arc<AtomicU64>,
+}
 
 impl SharedBuffer {
     pub fn new() -> Self {
@@ -184,7 +189,7 @@ impl SharedBuffer {
     }
 
     pub fn push(&self, samples: &[f32]) {
-        let mut buffer = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut buffer = self.samples.lock().unwrap_or_else(PoisonError::into_inner);
         if buffer.len() + samples.len() > OPUS_SAMPLE_RATE as usize * 2 {
             let capacity = OPUS_SAMPLE_RATE as usize * 2;
             let overflow = buffer.len() + samples.len() - capacity;
@@ -195,20 +200,39 @@ impl SharedBuffer {
     }
 
     pub fn drain(&self, count: usize) -> Vec<f32> {
-        let mut buffer = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut buffer = self.samples.lock().unwrap_or_else(PoisonError::into_inner);
         let take = count.min(buffer.len());
         buffer.drain(..take).collect()
     }
 
+    pub fn drain_into(&self, output: &mut [f32]) -> usize {
+        let mut buffer = self.samples.lock().unwrap_or_else(PoisonError::into_inner);
+        let had_data = !buffer.is_empty();
+        let take = output.len().min(buffer.len());
+        output[..take].copy_from_slice(&buffer[..take]);
+        buffer.drain(..take);
+        if had_data && take < output.len() {
+            self.underruns.fetch_add(1, Ordering::Relaxed);
+        }
+        take
+    }
+
     pub fn clear(&self) {
-        self.0
+        self.samples
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clear();
     }
 
     pub fn depth(&self) -> usize {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).len()
+        self.samples
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .len()
+    }
+
+    pub fn underruns(&self) -> u64 {
+        self.underruns.load(Ordering::Relaxed)
     }
 }
 

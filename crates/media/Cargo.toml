@@ -11,6 +11,7 @@ cpal = "0.18"
 openh264 = "0.9"
 opus = "0.4"
 rodio = { version = "0.23", default-features = false, features = ["playback", "symphonia-wav", "symphonia-vorbis", "symphonia-mp3"] }
+rubato.workspace = true
 thiserror.workspace = true
 ticonnect-core.workspace = true
 tracing.workspace = true

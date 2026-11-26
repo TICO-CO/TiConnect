@@ -958,6 +958,14 @@ impl DaemonService {
                 OwnedVariant::from(metrics.packets_lost),
             ),
             (
+                ipc::CALL_PACKETS_CONCEALED.to_owned(),
+                OwnedVariant::from(metrics.packets_concealed),
+            ),
+            (
+                ipc::CALL_PLAYBACK_UNDERRUNS.to_owned(),
+                OwnedVariant::from(metrics.playback_underruns),
+            ),
+            (
                 ipc::CALL_BYTES_SENT.to_owned(),
                 OwnedVariant::from(metrics.bytes_sent),
             ),

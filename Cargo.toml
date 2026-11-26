@@ -58,6 +58,7 @@ gtk4 = { version = "0.11", default-features = false, features = ["v4_14"] }
 gtk4-layer-shell = "0.8"
 png = "0.18"
 notify-rust = "4.19"
+rubato = { version = "5.1", default-features = false }
 x11rb = { version = "0.14", features = ["xtest"] }
 ashpd = { version = "0.14", features = ["remote_desktop", "screencast"] }
 reis = "0.7"
