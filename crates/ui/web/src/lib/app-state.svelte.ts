@@ -81,6 +81,7 @@ interface DemoSeed {
 }
 
 const HISTORY_PAGE_SIZE = 100;
+const LIVE_SETTING_SAVE_DELAY_MS = 80;
 const RECORDING_LEVEL_SAMPLE_MS = 100;
 const RECORDING_RMS_GAIN = 4;
 const RECORDING_LEVEL_ATTACK = 0.6;
@@ -184,6 +185,8 @@ export class AppState {
     private callLevelTimer: number | null = null;
     private callLevelPending = false;
     private typingTimer: number | null = null;
+    private liveSettingTimers = new Map<string, number>();
+    private pendingLiveSettings = new Map<string, string>();
     private toastTimers = new SvelteMap<string, number>();
     private messageOffset = 0;
     private readMessageIds = new SvelteSet<string>();
@@ -240,6 +243,7 @@ export class AppState {
             window.clearTimeout(timer);
         }
         this.toastTimers.clear();
+        this.cancelLiveSettings();
         this.cancelRecording();
         this.client?.close();
         this.releaseAvatars();
@@ -2247,6 +2251,54 @@ export class AppState {
         this.settingsSaveError = '';
     }
 
+    setDraftSettingLive(key: string, value: string): void {
+        this.setDraftSetting(key, value);
+        if (this.client === null) {
+            this.settings = { ...this.settings, [key]: value };
+            this.settingsSave = this.settingsDirty ? 'dirty' : 'saved';
+            return;
+        }
+        this.pendingLiveSettings.set(key, value);
+        if (this.liveSettingTimers.has(key)) {
+            return;
+        }
+        const timer = window.setTimeout(() => {
+            this.liveSettingTimers.delete(key);
+            const pending = this.pendingLiveSettings.get(key);
+            this.pendingLiveSettings.delete(key);
+            if (pending !== undefined) {
+                void this.saveLiveSetting(key, pending);
+            }
+        }, LIVE_SETTING_SAVE_DELAY_MS);
+        this.liveSettingTimers.set(key, timer);
+    }
+
+    private async saveLiveSetting(key: string, value: string): Promise<void> {
+        const client = this.client;
+        if (client === null) {
+            return;
+        }
+        const result = await client.request('settings_save', { key, value });
+        if (!result.ok) {
+            this.settingsSave = 'error';
+            this.settingsSaveError = result.error.message;
+            return;
+        }
+        this.settings = { ...this.settings, [key]: value };
+        if (!this.settingsDirty) {
+            this.settingsSave = 'saved';
+            this.settingsSaveError = '';
+        }
+    }
+
+    private cancelLiveSettings(): void {
+        for (const timer of this.liveSettingTimers.values()) {
+            window.clearTimeout(timer);
+        }
+        this.liveSettingTimers.clear();
+        this.pendingLiveSettings.clear();
+    }
+
     setAutostart(value: boolean): void {
         this.autostartDraft = value;
         this.settingsSave = 'dirty';
@@ -2266,6 +2318,7 @@ export class AppState {
     }
 
     async saveSettings(): Promise<void> {
+        this.cancelLiveSettings();
         if (this.client === null) {
             this.settings = { ...this.settingsDraft };
             this.autostart = this.autostartDraft;
@@ -2310,6 +2363,7 @@ export class AppState {
     }
 
     revertSettings(): void {
+        this.cancelLiveSettings();
         this.settingsDraft = { ...this.settings };
         this.autostartDraft = this.autostart;
         this.settingsSave = 'idle';
@@ -2572,6 +2626,9 @@ export class AppState {
                 break;
             }
             case 'settings_changed':
+                if (this.settingsDirty || this.liveSettingTimers.size > 0) {
+                    break;
+                }
                 void this.loadSettings();
                 break;
             case 'transfer_progress':

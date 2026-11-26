@@ -194,12 +194,14 @@ pub struct DndSettings {
 #[serde(default)]
 pub struct NotificationsSettings {
     pub message_sounds: bool,
+    pub call_sounds: bool,
 }
 
 impl Default for NotificationsSettings {
     fn default() -> Self {
         Self {
             message_sounds: true,
+            call_sounds: true,
         }
     }
 }
@@ -291,6 +293,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "video.keyframe_interval",
     "dnd.enabled",
     "notifications.message_sounds",
+    "notifications.call_sounds",
     "appearance.color_scheme",
 ];
 
@@ -759,6 +762,15 @@ impl Settings {
         self.active.notifications.message_sounds = enabled;
     }
 
+    pub fn call_sounds_enabled(&self) -> bool {
+        self.active.notifications.call_sounds
+    }
+
+    pub fn set_call_sounds_enabled(&mut self, enabled: bool) {
+        self.changes.notifications = true;
+        self.active.notifications.call_sounds = enabled;
+    }
+
     pub fn stored_appearance_color_scheme(&self) -> Option<Appearance> {
         self.active
             .appearance
@@ -812,6 +824,7 @@ impl Settings {
             "video.keyframe_interval" => Ok(SettingValue::Integer(self.video_keyframe_interval())),
             "dnd.enabled" => Ok(SettingValue::Bool(self.dnd_enabled())),
             "notifications.message_sounds" => Ok(SettingValue::Bool(self.message_sounds_enabled())),
+            "notifications.call_sounds" => Ok(SettingValue::Bool(self.call_sounds_enabled())),
             "appearance.color_scheme" => {
                 Ok(SettingValue::String(self.appearance().as_str().to_owned()))
             }
@@ -972,6 +985,9 @@ impl Settings {
             "dnd.enabled" => self.set_dnd_enabled(parse_bool(key, value)?),
             "notifications.message_sounds" => {
                 self.set_message_sounds_enabled(parse_bool(key, value)?);
+            }
+            "notifications.call_sounds" => {
+                self.set_call_sounds_enabled(parse_bool(key, value)?);
             }
             "appearance.color_scheme" => {
                 let appearance = Appearance::parse(value).ok_or_else(|| Error::InvalidSetting {

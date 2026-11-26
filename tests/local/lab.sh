@@ -108,6 +108,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
+configure_audio() {
+    if [ -n "${ALSA_PLUGIN_DIR:-}" ] || [ -n "${ALSA_CONFIG_PATH:-}" ]; then
+        return 0
+    fi
+    local plugin_dir
+    plugin_dir="$(ls -d /nix/store/*alsa-plugins*/lib/alsa-lib 2>/dev/null | head -n 1 || true)"
+    [ -n "$plugin_dir" ] || return 0
+    cat >"$WORK/asound.conf" <<'CONF'
+pcm.!default {
+    type pulse
+}
+ctl.!default {
+    type pulse
+}
+CONF
+    export ALSA_CONFIG_PATH="$WORK/asound.conf"
+    export ALSA_PLUGIN_DIR="$plugin_dir"
+    printf 'lab: ALSA audio plugins: %s\n' "$plugin_dir"
+}
+
 start_bus() {
     local bus="$1"
     local name="${bus##*/}"
@@ -471,6 +491,7 @@ EOF
     chmod 755 "$WORK/bin/lab-pair"
 }
 
+configure_audio
 start_bus "$BUS_A"
 start_bus "$BUS_B"
 

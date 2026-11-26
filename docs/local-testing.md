@@ -77,6 +77,10 @@ For real call audio, use headphones and run `call-audio hardware` in both lab
 panes, or start the lab with `LAB_CALL_AUDIO=hardware make lab`. Use
 `call-audio silent` to return to null devices.
 
+On Nix, the lab exports the Nix ALSA plugin directory so daemon sounds such as
+message chimes, ringtones, and dial tones work with the host PipeWire/Pulse
+server. Call voice audio still follows the `LAB_CALL_AUDIO` setting above.
+
 Group watch parties need at least three nodes. The daemon integration test
 starts three nodes itself:
 

@@ -79,6 +79,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
     settings: {
         'identity.display_name': 'MIKA-PC',
         'dnd.enabled': 'false',
+        'notifications.call_sounds': 'true',
+        'notifications.message_sounds': 'true',
         'read_receipts.enabled': 'true',
         'typing.enabled': 'true',
         'overlay.enabled': 'true',

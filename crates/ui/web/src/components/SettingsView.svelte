@@ -34,7 +34,7 @@
     const subtitle = $derived(
         {
             user: 'Your identity on this network',
-            notifications: 'Do not disturb, overlay and message toasts',
+            notifications: 'Do not disturb, sounds, overlay and message toasts',
             calls: 'Shortcuts and ringing timeout',
             audio: 'Microphone and speaker levels',
             remote: 'Consent, session limits and video quality',
@@ -77,6 +77,10 @@
 
     function setValue(key: string, next: string): void {
         app.setDraftSetting(key, next);
+    }
+
+    function setLiveValue(key: string, next: string): void {
+        app.setDraftSettingLive(key, next);
     }
 
     function deviceOptions(kind: string): AudioDevice[] {
@@ -508,6 +512,26 @@
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
                     >
                         <div class="flex flex-col gap-0.5">
+                            <strong class="text-sm">Call sounds</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Ringtone and dial tone during calls</span
+                            >
+                        </div>
+                        <button
+                            class="toggle"
+                            aria-label="Call sounds"
+                            aria-pressed={enabled('notifications.call_sounds', true)}
+                            onclick={() =>
+                                setEnabled(
+                                    'notifications.call_sounds',
+                                    !enabled('notifications.call_sounds', true),
+                                )}
+                        ></button>
+                    </div>
+                    <div
+                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
+                    >
+                        <div class="flex flex-col gap-0.5">
                             <strong class="text-sm">Message sounds</strong><span
                                 class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Chime when TiConnect is not focused</span
@@ -702,13 +726,13 @@
                             value={value('audio.output_volume', '100')}
                             aria-label="Output volume"
                             oninput={(event) =>
-                                setValue(
+                                setLiveValue(
                                     'audio.output_volume',
                                     (event.currentTarget as HTMLInputElement).value,
                                 )}
                         />
                         <span class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                            >Per-user levels scale this output</span
+                            >Calls, messages, media and sounds · per-user levels scale this</span
                         >
                     </div>
                 </section>

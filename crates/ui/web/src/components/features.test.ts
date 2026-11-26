@@ -95,6 +95,8 @@ function makeApp(devBuild = false): AppState {
             'discovery.mdns': 'true',
             'discovery.broadcast': 'true',
             'discovery.beacon_interval_secs': '5',
+            'notifications.call_sounds': 'true',
+            'notifications.message_sounds': 'true',
         },
         appearance: 'system',
         autostart: false,
@@ -256,6 +258,15 @@ describe('feature surfaces', () => {
         expect(app.settingsDraft['notifications.message_sounds']).toBe('false');
     });
 
+    it('edits call sounds from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'notifications' };
+        render(SettingsView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Call sounds' }));
+        expect(app.settingsDraft['notifications.call_sounds']).toBe('false');
+    });
+
     it('edits discovery controls from Settings', async () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'about' };
@@ -329,6 +340,7 @@ describe('feature surfaces', () => {
         const outputVolume = screen.getByLabelText('Output volume');
         await fireEvent.input(outputVolume, { target: { value: '64' } });
         expect(app.settingsDraft['audio.output_volume']).toBe('64');
+        expect(app.settings['audio.output_volume']).toBe('64');
     });
 
     it('shows LAN access state and firewall ports in Settings', () => {

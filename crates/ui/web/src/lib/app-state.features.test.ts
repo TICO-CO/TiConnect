@@ -450,6 +450,30 @@ describe('AppState feature behavior', () => {
         expect(document.documentElement.dataset.theme).toBe('dark');
     });
 
+    it('saves live volume changes after the debounce', async () => {
+        vi.useFakeTimers();
+        const { app, client } = makeApp();
+        app.settings = { 'audio.output_volume': '100' };
+        app.settingsDraft = { 'audio.output_volume': '100' };
+
+        app.setDraftSettingLive('audio.output_volume', '70');
+        app.setDraftSettingLive('audio.output_volume', '35');
+
+        expect(client.request).not.toHaveBeenCalledWith('settings_save', {
+            key: 'audio.output_volume',
+            value: '35',
+        });
+
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(client.request).toHaveBeenCalledWith('settings_save', {
+            key: 'audio.output_volume',
+            value: '35',
+        });
+        expect(app.settings['audio.output_volume']).toBe('35');
+        expect(app.settingsSave).toBe('saved');
+    });
+
     it('applies system, light, and dark appearance', () => {
         const { app } = makeApp();
         app.settingsDraft = { 'appearance.color_scheme': 'dark' };

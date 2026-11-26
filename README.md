@@ -406,7 +406,7 @@ Settings keys:
 | `calls.mute_shortcut` | string | `Ctrl+M` | Microphone mute shortcut; empty disables |
 | `calls.output_mute_shortcut` | string | `Ctrl+Shift+M` | Output mute shortcut; empty disables |
 | `audio.input_volume` | integer | `100` | Microphone gain percentage; valid range `0..=100` |
-| `audio.output_volume` | integer | `100` | Playback gain percentage; valid range `0..=100` |
+| `audio.output_volume` | integer | `100` | Master playback gain for calls, messages, media, and sounds; valid range `0..=100` |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
 | `remote.request_timeout_secs` | integer | `300` | Consent request expiry; valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
@@ -414,6 +414,7 @@ Settings keys:
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
 | `notifications.message_sounds` | bool | `true` | Chime for new messages when the UI is not focused |
+| `notifications.call_sounds` | bool | `true` | Ringtone for incoming calls and dial tone for outgoing calls |
 | `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
 
 ## Identity
@@ -499,8 +500,9 @@ Settings keys:
   storage, receipt creation, or notification. DND suppresses notifications but
   not storage.
 - The daemon plays the bundled `gotmail.mp3` chime for inbound notifiable
-  messages when the UI is closed or its window is not focused. Mute, ignore,
-  DND, and `notifications.message_sounds = false` silence it.
+  messages when the UI is closed or its window is not focused. Its volume
+  follows `audio.output_volume`. Mute, ignore, DND, and
+  `notifications.message_sounds = false` silence it.
 - The tray is optional. When StatusNotifierItem support is unavailable the
   daemon continues headless.
 
@@ -535,8 +537,11 @@ confirms before calling it.
 - Audio uses 48 kHz mono Opus with 20 ms frames over QUIC datagrams, a bounded
   jitter buffer, packet-loss concealment, and a playback ring. Microphones open
   only after call acceptance.
-- Incoming calls are shown in the UI and overlay without an audio ringtone.
-  DND suppresses notification sounds but still reports the call.
+- The daemon loops the incoming ringtone while a call is ringing and the
+  outgoing dial tone while an outgoing call is connecting or ringing. Their
+  volume follows `audio.output_volume`. DND and
+  `notifications.call_sounds = false` suppress both sounds but still report the
+  call.
 - Microphone and output mute are daemon-owned; the UI and overlay reflect the
   same state. Mute shortcuts are configurable with `calls.mute_shortcut` and
   `calls.output_mute_shortcut`.
@@ -544,9 +549,9 @@ confirms before calling it.
   An unavailable configured device fails the call with an error instead of
   silently switching devices.
 - `audio.input_volume` applies microphone gain to calls and voice recordings;
-  `audio.output_volume` applies playback gain to calls, voice messages, and the
-  watch-party player. Per-user levels scale this output rather than overriding
-  it.
+  `audio.output_volume` applies playback gain to calls, voice messages, the
+  watch-party player, message chimes, and call tones. Per-user levels scale this
+  output rather than overriding it.
 - Call history is stored in SQLite and survives restarts.
 - D-Bus: `StartCall`, `AcceptCall`, `DeclineCall`, `HangupCall`,
   `SetCallMuted`, `SetCallVolume`, `GetCallState`, `ListCallLogs`,

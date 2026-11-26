@@ -473,10 +473,19 @@ fn key_api_sets_and_reads_typed_values() {
                 .expect("get sounds"),
             crate::SettingValue::Bool(true)
         );
+        assert_eq!(
+            settings
+                .get_setting("notifications.call_sounds")
+                .expect("get call sounds"),
+            crate::SettingValue::Bool(true)
+        );
         settings.set_setting("dnd.enabled", "yes").expect("set dnd");
         settings
             .set_setting("notifications.message_sounds", "false")
             .expect("set sounds");
+        settings
+            .set_setting("notifications.call_sounds", "false")
+            .expect("set call sounds");
         settings
             .set_setting("outbox.ttl_days", "30")
             .expect("set ttl");
@@ -497,6 +506,12 @@ fn key_api_sets_and_reads_typed_values() {
             settings
                 .get_setting("notifications.message_sounds")
                 .expect("get sounds"),
+            crate::SettingValue::Bool(false)
+        );
+        assert_eq!(
+            settings
+                .get_setting("notifications.call_sounds")
+                .expect("get call sounds"),
             crate::SettingValue::Bool(false)
         );
         assert_eq!(
@@ -585,6 +600,10 @@ fn key_api_rejects_unknown_and_invalid_values() {
         ));
         assert!(matches!(
             settings.set_setting("notifications.message_sounds", "maybe"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("notifications.call_sounds", "maybe"),
             Err(crate::Error::InvalidSetting { .. })
         ));
         assert!(matches!(

@@ -25,6 +25,30 @@ fi
 export TICONNECT_LOG_FILE="${TICONNECT_LOG_FILE:-$state_dir/daemon.log}"
 export TICONNECT_TRANSPORT__PORT="${TICONNECT_TRANSPORT__PORT:-$transport_port}"
 
+if [ -z "${ALSA_PLUGIN_DIR:-}" ] && [ -z "${ALSA_CONFIG_PATH:-}" ]; then
+    alsa_plugin_dir="$(
+        ls -d /nix/store/*alsa-plugins*/lib/alsa-lib 2>/dev/null | head -n 1 || true
+    )"
+    if [ -n "$alsa_plugin_dir" ]; then
+        mkdir -p "$runtime_dir"
+        chmod 700 "$runtime_dir"
+        alsa_config="$runtime_dir/asound.conf"
+        (
+            umask 077
+            cat >"$alsa_config" <<'CONF'
+pcm.!default {
+    type pulse
+}
+ctl.!default {
+    type pulse
+}
+CONF
+        )
+        export ALSA_CONFIG_PATH="$alsa_config"
+        export ALSA_PLUGIN_DIR="$alsa_plugin_dir"
+    fi
+fi
+
 if [ -z "${TICONNECT_IPC_BUS_ADDRESS:-}" ]; then
     bus="$runtime_dir/bus"
     pid_file="$runtime_dir/bus.pid"
