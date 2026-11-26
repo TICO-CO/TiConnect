@@ -80,6 +80,7 @@ The GTK UI owns `org.ticonnect.UI` on the TiConnect IPC bus.
 | Method | Signature | Behavior |
 |---|---|---|
 | `Activate` | `(s) -> ()` | Raises the window and switches to `users`, `chat`, `settings`, `remote`, or `watch-party`. Empty means `chat`; unknown views return `InvalidArgs`. |
+| `IsActive` | `() -> b` | Reports whether the main window is focused. |
 
 The tray uses `Activate("chat")`. Closing the UI does not affect the daemon.
 Starting a second UI forwards `Activate("chat")` to the running instance and exits.

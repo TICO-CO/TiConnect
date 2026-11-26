@@ -190,6 +190,20 @@ pub struct DndSettings {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct NotificationsSettings {
+    pub message_sounds: bool,
+}
+
+impl Default for NotificationsSettings {
+    fn default() -> Self {
+        Self {
+            message_sounds: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Appearance {
@@ -276,6 +290,7 @@ pub const SETTING_KEYS: &[&str] = &[
     "video.fps",
     "video.keyframe_interval",
     "dnd.enabled",
+    "notifications.message_sounds",
     "appearance.color_scheme",
 ];
 
@@ -479,6 +494,16 @@ settings_schema! {
         };
         set(&mut self, value: DndSettings) -> set_dnd as active {
             active.dnd = value;
+        };
+    };
+
+    #[serde(default)]
+    notifications: NotificationsSettings = NotificationsSettings::default() => {
+        get(&self) -> &NotificationsSettings as active {
+            &active.notifications
+        };
+        set(&mut self, value: NotificationsSettings) -> set_notifications as active {
+            active.notifications = value;
         };
     };
 
@@ -725,6 +750,15 @@ impl Settings {
         self.active.dnd.enabled = enabled;
     }
 
+    pub fn message_sounds_enabled(&self) -> bool {
+        self.active.notifications.message_sounds
+    }
+
+    pub fn set_message_sounds_enabled(&mut self, enabled: bool) {
+        self.changes.notifications = true;
+        self.active.notifications.message_sounds = enabled;
+    }
+
     pub fn stored_appearance_color_scheme(&self) -> Option<Appearance> {
         self.active
             .appearance
@@ -777,6 +811,7 @@ impl Settings {
             "video.fps" => Ok(SettingValue::Integer(self.video_fps())),
             "video.keyframe_interval" => Ok(SettingValue::Integer(self.video_keyframe_interval())),
             "dnd.enabled" => Ok(SettingValue::Bool(self.dnd_enabled())),
+            "notifications.message_sounds" => Ok(SettingValue::Bool(self.message_sounds_enabled())),
             "appearance.color_scheme" => {
                 Ok(SettingValue::String(self.appearance().as_str().to_owned()))
             }
@@ -935,6 +970,9 @@ impl Settings {
                 self.set_video_keyframe_interval(interval);
             }
             "dnd.enabled" => self.set_dnd_enabled(parse_bool(key, value)?),
+            "notifications.message_sounds" => {
+                self.set_message_sounds_enabled(parse_bool(key, value)?);
+            }
             "appearance.color_scheme" => {
                 let appearance = Appearance::parse(value).ok_or_else(|| Error::InvalidSetting {
                     key: key.to_owned(),

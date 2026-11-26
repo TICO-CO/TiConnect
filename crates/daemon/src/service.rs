@@ -2242,8 +2242,18 @@ mod tests {
 
         let settings = service.list_settings().await.expect("settings");
         assert!(settings.contains_key("dnd.enabled"));
+        assert!(settings.contains_key("notifications.message_sounds"));
         assert!(
             !bool::try_from(service.get_setting("dnd.enabled").await.expect("dnd")).expect("bool")
+        );
+        assert!(
+            bool::try_from(
+                service
+                    .get_setting("notifications.message_sounds")
+                    .await
+                    .expect("sounds")
+            )
+            .expect("bool")
         );
     }
 

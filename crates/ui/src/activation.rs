@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tokio::sync::broadcast;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -11,10 +14,15 @@ pub enum ActivationEvent {
 #[derive(Clone)]
 struct UiService {
     sender: broadcast::Sender<ActivationEvent>,
+    active: Arc<AtomicBool>,
 }
 
 #[zbus::interface(name = "org.ticonnect.UI")]
 impl UiService {
+    fn is_active(&self) -> bool {
+        self.active.load(Ordering::Relaxed)
+    }
+
     async fn activate(&self, view: String) -> zbus::fdo::Result<()> {
         if let Some(user_id) = view.strip_prefix("chat:") {
             user_id
@@ -34,7 +42,10 @@ impl UiService {
     }
 }
 
-pub async fn serve(sender: broadcast::Sender<ActivationEvent>) -> zbus::Result<()> {
+pub async fn serve(
+    sender: broadcast::Sender<ActivationEvent>,
+    active: Arc<AtomicBool>,
+) -> zbus::Result<()> {
     let registered = ticonnect_core::ipc::connection_builder()
         .allow_name_replacements(false)
         .replace_existing_names(false)
@@ -43,6 +54,7 @@ pub async fn serve(sender: broadcast::Sender<ActivationEvent>) -> zbus::Result<(
             "/org/ticonnect/UI",
             UiService {
                 sender: sender.clone(),
+                active,
             },
         )
         .build()
@@ -71,5 +83,24 @@ pub async fn serve(sender: broadcast::Sender<ActivationEvent>) -> zbus::Result<(
             let _ = sender.send(ActivationEvent::Primary);
             Err(error)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_shared_active_flag() {
+        let (sender, _) = broadcast::channel(1);
+        let active = Arc::new(AtomicBool::new(false));
+        let service = UiService {
+            sender,
+            active: Arc::clone(&active),
+        };
+
+        assert!(!service.is_active());
+        active.store(true, Ordering::Relaxed);
+        assert!(service.is_active());
     }
 }

@@ -247,6 +247,15 @@ describe('feature surfaces', () => {
         expect(themeColor.content).toBe('#182b2f');
     });
 
+    it('edits message sounds from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'notifications' };
+        render(SettingsView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message sounds' }));
+        expect(app.settingsDraft['notifications.message_sounds']).toBe('false');
+    });
+
     it('edits discovery controls from Settings', async () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'about' };

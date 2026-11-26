@@ -8,7 +8,6 @@ export const MAX_VOLUME = 100;
 export interface Preferences {
     userDescription: string;
     presence: string;
-    sounds: boolean;
     autoplay: boolean;
     queueLimit: number;
     playerPosition: string;
@@ -24,7 +23,6 @@ export interface Preferences {
 export const DEFAULT_PREFERENCES: Preferences = {
     userDescription: '',
     presence: 'online',
-    sounds: true,
     autoplay: true,
     queueLimit: 3,
     playerPosition: 'Bot-right, above message toasts',

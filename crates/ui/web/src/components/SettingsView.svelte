@@ -510,14 +510,18 @@
                         <div class="flex flex-col gap-0.5">
                             <strong class="text-sm">Message sounds</strong><span
                                 class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                                >Soft chime for new messages</span
+                                >Chime when TiConnect is not focused</span
                             >
                         </div>
                         <button
                             class="toggle"
                             aria-label="Message sounds"
-                            aria-pressed={preferencesDraft.sounds}
-                            onclick={() => setPreference('sounds', !preferencesDraft.sounds)}
+                            aria-pressed={enabled('notifications.message_sounds', true)}
+                            onclick={() =>
+                                setEnabled(
+                                    'notifications.message_sounds',
+                                    !enabled('notifications.message_sounds', true),
+                                )}
                         ></button>
                     </div>
                 </section>

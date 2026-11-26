@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gtk4 as gtk;
@@ -152,7 +154,8 @@ pub fn run() -> anyhow::Result<()> {
     ))?;
     timing::mark("bridge ready");
     let activation_receiver = activation_sender.subscribe();
-    runtime.spawn(activation::serve(activation_sender));
+    let ui_active = Arc::new(AtomicBool::new(false));
+    runtime.spawn(activation::serve(activation_sender, ui_active.clone()));
 
     let app = gtk::Application::builder()
         .application_id(application_id())
@@ -171,6 +174,7 @@ pub fn run() -> anyhow::Result<()> {
         let window = Rc::clone(&window);
         let url = url.clone();
         let origins = origins.clone();
+        let ui_active = Arc::clone(&ui_active);
         app.connect_activate(move |app| {
             if let Some(window) = window.borrow().as_ref() {
                 window.present();
@@ -184,7 +188,12 @@ pub fn run() -> anyhow::Result<()> {
                 .default_height(720)
                 .build();
             *window.borrow_mut() = Some(application_window.clone());
+            let active = Arc::clone(&ui_active);
+            application_window.connect_is_active_notify(move |window| {
+                active.store(window.is_active(), Ordering::Relaxed);
+            });
             application_window.present();
+            ui_active.store(application_window.is_active(), Ordering::Relaxed);
             timing::mark("window presented");
             let url = url.clone();
             let origins = origins.clone();

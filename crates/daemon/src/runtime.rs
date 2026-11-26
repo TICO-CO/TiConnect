@@ -45,9 +45,29 @@ impl MessageSoundCooldown {
     }
 }
 
-async fn ui_is_running(connection: &zbus::Connection) -> Result<bool> {
-    let dbus = zbus::fdo::DBusProxy::new(connection).await?;
-    Ok(dbus.name_has_owner(ipc::UI_BUS_NAME.try_into()?).await?)
+async fn ui_is_active(connection: &zbus::Connection) -> Result<bool> {
+    let dbus = zbus::fdo::DBusProxy::new(connection)
+        .await
+        .context("create D-Bus proxy")?;
+    if !dbus
+        .name_has_owner(ipc::UI_BUS_NAME.try_into()?)
+        .await
+        .context("query UI bus owner")?
+    {
+        return Ok(false);
+    }
+    let proxy = zbus::Proxy::new(
+        connection,
+        ipc::UI_BUS_NAME,
+        ipc::UI_PATH,
+        ipc::UI_INTERFACE,
+    )
+    .await
+    .context("create UI proxy")?;
+    proxy
+        .call("IsActive", &())
+        .await
+        .context("query UI active state")
 }
 
 #[derive(Clone)]
@@ -210,19 +230,23 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
     let messaging_task = messaging::spawn(connection.clone(), state.messaging().as_ref().clone());
     let message_sound = RodioNotificationSound::new();
     let message_sound_connection = connection.clone();
+    let message_sound_state = Arc::clone(&state);
     let mut message_events = state.messaging().subscribe();
     let message_sound_task = tokio::spawn(async move {
         let mut cooldown = MessageSoundCooldown::new();
         loop {
             match message_events.recv().await {
                 Ok(MessagingEvent::MessageReceived { notify: true, .. }) => {
-                    match ui_is_running(&message_sound_connection).await {
+                    if !message_sound_state.settings().message_sounds_enabled() {
+                        continue;
+                    }
+                    match ui_is_active(&message_sound_connection).await {
                         Ok(true) => continue,
                         Ok(false) => {}
                         Err(error) => {
                             tracing::warn!(
                                 %error,
-                                "failed to check UI status; skipping message sound"
+                                "failed to check UI focus; skipping message sound"
                             );
                             continue;
                         }

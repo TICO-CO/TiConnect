@@ -287,11 +287,12 @@ in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded i
 the binary.
 
 The UI owns `org.ticonnect.UI` on the TiConnect IPC bus and exposes
-`Activate(s view)`. Views are `chat`, `users`, `settings`, `remote`, and
-`watch-party`; an empty value means `chat`. `Activate("chat:<node-id>")` opens
-one conversation; the tray and overlay use it for notification clicks. The tray
-uses `Activate("chat")`. Starting a second UI forwards activation to the running
-instance.
+`Activate(s view)` and `IsActive()`. Views are `chat`, `users`, `settings`,
+`remote`, and `watch-party`; an empty value means `chat`.
+`Activate("chat:<node-id>")` opens one conversation; the tray and overlay use it
+for notification clicks. The tray uses `Activate("chat")`. `IsActive()` reports
+whether the main window is focused. Starting a second UI forwards activation to
+the running instance.
 
 Frontend styling lives in `crates/ui/web`. Build the bundle with `make
 web-build`. Interactive `make lab` starts Vite automatically and hot-reloads
@@ -412,6 +413,7 @@ Settings keys:
 | `video.fps` | integer | `30` | Valid range `5..=60` |
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
+| `notifications.message_sounds` | bool | `true` | Chime for new messages when the UI is not focused |
 | `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
 
 ## Identity
@@ -497,7 +499,8 @@ Settings keys:
   storage, receipt creation, or notification. DND suppresses notifications but
   not storage.
 - The daemon plays the bundled `gotmail.mp3` chime for inbound notifiable
-  messages, so it rings with the UI closed. Mute, ignore, and DND silence it.
+  messages when the UI is closed or its window is not focused. Mute, ignore,
+  DND, and `notifications.message_sounds = false` silence it.
 - The tray is optional. When StatusNotifierItem support is unavailable the
   daemon continues headless.
 
