@@ -667,7 +667,7 @@
                             value={value('audio.input_volume', '100')}
                             aria-label="Input volume"
                             oninput={(event) =>
-                                setValue(
+                                setLiveValue(
                                     'audio.input_volume',
                                     (event.currentTarget as HTMLInputElement).value,
                                 )}

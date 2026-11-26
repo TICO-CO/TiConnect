@@ -336,6 +336,7 @@ describe('feature surfaces', () => {
         const inputVolume = screen.getByLabelText('Input volume');
         await fireEvent.input(inputVolume, { target: { value: '72' } });
         expect(app.settingsDraft['audio.input_volume']).toBe('72');
+        expect(app.settings['audio.input_volume']).toBe('72');
 
         const outputVolume = screen.getByLabelText('Output volume');
         await fireEvent.input(outputVolume, { target: { value: '64' } });

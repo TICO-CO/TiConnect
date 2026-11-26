@@ -185,8 +185,8 @@ export class AppState {
     private callLevelTimer: number | null = null;
     private callLevelPending = false;
     private typingTimer: number | null = null;
-    private liveSettingTimers = new Map<string, number>();
-    private pendingLiveSettings = new Map<string, string>();
+    private liveSettingTimers = new SvelteMap<string, number>();
+    private pendingLiveSettings = new SvelteMap<string, string>();
     private toastTimers = new SvelteMap<string, number>();
     private messageOffset = 0;
     private readMessageIds = new SvelteSet<string>();
