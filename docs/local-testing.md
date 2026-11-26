@@ -94,8 +94,11 @@ nix develop -c gst-inspect-1.0 appsink
 nix develop -c gst-inspect-1.0 pulsesrc
 ```
 
-Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
-stops. Run the automated harness check with:
+Private D-Bus failures print the relevant `dbus-bus-*.log`; the harness resolves
+the session config next to the `dbus-daemon` binary before falling back to
+`--session`, which matters in Nix environments. Set `LAB_KEEP=1 make lab` to keep
+the work directory and logs after the lab stops. Run the automated harness check
+with:
 
 ```sh
 make lab-smoke

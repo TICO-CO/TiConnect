@@ -4,7 +4,7 @@
     import type { AppState, AudioDevice, ConfirmRequest, Preferences } from '../lib';
     import { dateLabel, fileSize, fingerprintLabel } from '../lib';
     import { DEFAULT_PREFERENCES } from '../lib';
-    import { SETTINGS_SECTIONS, type SettingsSection } from '../lib';
+    import { routeHash, SETTINGS_SECTIONS, type SettingsSection } from '../lib';
     import Avatar from './Avatar.svelte';
     import ConfirmDialog from './ConfirmDialog.svelte';
     import Icon from './Icon.svelte';
@@ -35,7 +35,8 @@
         {
             user: 'Your identity on this network',
             notifications: 'Do not disturb, overlay and message toasts',
-            calls: 'Devices, shortcuts and ringing timeout',
+            calls: 'Shortcuts and ringing timeout',
+            audio: 'Microphone and speaker levels',
             remote: 'Consent, session limits and video quality',
             media: 'YouTube overlay, incoming videos, watch parties',
             storage: 'Outbox, attachments and local history',
@@ -79,7 +80,13 @@
     }
 
     function deviceOptions(kind: string): AudioDevice[] {
-        const devices = app.audioDevices.filter((device) => device.kind === kind);
+        const devices = app.audioDevices.filter(
+            (device, index, all) =>
+                device.kind === kind &&
+                all.findIndex(
+                    (candidate) => candidate.kind === kind && candidate.id === device.id,
+                ) === index,
+        );
         const current = value(`calls.${kind}_device`);
         if (current === '' || devices.some((device) => device.id === current)) {
             return devices;
@@ -199,13 +206,17 @@
         </div>
         <nav class="mt-3.5 flex flex-col gap-0.5" aria-label="Settings sections">
             {#each SETTINGS_SECTIONS as item (item.id)}
-                <button
-                    class="-mx-3 flex h-[42px] w-80 shrink-0 items-center rounded-none px-[26px] text-left text-[15px] font-bold text-ink-2 hover:bg-surface hover:text-ink aria-[current=page]:bg-ink aria-[current=page]:text-base aria-[current=page]:hover:bg-ink aria-[current=page]:hover:text-base"
-                    onclick={() => app.navigate({ kind: 'settings', section: item.id })}
+                <a
+                    class="-mx-3 flex h-[42px] w-80 shrink-0 items-center rounded-none px-[26px] text-left text-[15px] font-bold text-ink-2 no-underline hover:bg-surface hover:text-ink aria-[current=page]:bg-ink aria-[current=page]:text-base aria-[current=page]:hover:bg-ink aria-[current=page]:hover:text-base"
+                    href={routeHash({ kind: 'settings', section: item.id })}
+                    onclick={(event) => {
+                        event.preventDefault();
+                        app.navigate({ kind: 'settings', section: item.id });
+                    }}
                     aria-current={section === item.id ? 'page' : undefined}
                 >
                     {item.label}
-                </button>
+                </a>
             {/each}
         </nav>
     </aside>
@@ -216,7 +227,9 @@
             </h1>
             <p class="m-0 mt-1 text-xs tracking-[0.06em] text-ink-3 uppercase">{subtitle}</p>
         </header>
-        <div class="flex scroll min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+        <div
+            class="flex scroll min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto pr-1"
+        >
             {#if section === 'user'}
                 <section class="rounded-md border border-line bg-surface px-5 py-4">
                     <h2
@@ -541,54 +554,6 @@
                         class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
                     >
                         <div class="flex flex-col gap-0.5">
-                            <strong class="text-sm">Input device</strong><span
-                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                                >Leave empty for the system default</span
-                            >
-                        </div>
-                        <select
-                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
-                            value={value('calls.input_device')}
-                            onchange={(event) =>
-                                setValue(
-                                    'calls.input_device',
-                                    (event.currentTarget as HTMLSelectElement).value,
-                                )}
-                        >
-                            <option value="">System default</option>
-                            {#each inputDevices as device (device.id)}
-                                <option value={device.id}>{device.name}</option>
-                            {/each}
-                        </select>
-                    </div>
-                    <div
-                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
-                    >
-                        <div class="flex flex-col gap-0.5">
-                            <strong class="text-sm">Output device</strong><span
-                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
-                                >Leave empty for the system default</span
-                            >
-                        </div>
-                        <select
-                            class="min-h-9 w-full max-w-80 shrink-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
-                            value={value('calls.output_device')}
-                            onchange={(event) =>
-                                setValue(
-                                    'calls.output_device',
-                                    (event.currentTarget as HTMLSelectElement).value,
-                                )}
-                        >
-                            <option value="">System default</option>
-                            {#each outputDevices as device (device.id)}
-                                <option value={device.id}>{device.name}</option>
-                            {/each}
-                        </select>
-                    </div>
-                    <div
-                        class="flex items-center justify-between gap-6 border-b border-line/55 py-[9px] last:border-b-0"
-                    >
-                        <div class="flex flex-col gap-0.5">
                             <strong class="text-sm">Mute shortcut</strong><span
                                 class="text-xs tracking-[0.04em] text-ink-3 uppercase"
                                 >Example: Ctrl+M. Empty disables it</span
@@ -622,6 +587,125 @@
                                     (event.currentTarget as HTMLInputElement).value,
                                 )}
                         />
+                    </div>
+                </section>
+            {:else if section === 'audio'}
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Input
+                    </h2>
+                    <div
+                        class="flex min-w-0 items-center justify-between gap-6 border-b border-line/55 py-[9px]"
+                    >
+                        <div class="flex min-w-0 flex-col gap-0.5">
+                            <strong class="text-sm">Microphone</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Leave empty for the system default</span
+                            >
+                        </div>
+                        <div class="w-80 max-w-full min-w-0 shrink-0 overflow-hidden">
+                            <select
+                                class="min-h-9 w-full min-w-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
+                                aria-label="Microphone"
+                                value={value('calls.input_device')}
+                                onchange={(event) =>
+                                    setValue(
+                                        'calls.input_device',
+                                        (event.currentTarget as HTMLSelectElement).value,
+                                    )}
+                            >
+                                <option value="">System default</option>
+                                {#each inputDevices as device (device.id)}
+                                    <option value={device.id}>{device.name}</option>
+                                {/each}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2 py-[9px]">
+                        <div class="flex items-center justify-between gap-6">
+                            <strong class="text-sm">Input volume</strong>
+                            <span class="text-step-xs text-ink-2 tabular-nums"
+                                >{value('audio.input_volume', '100')}%</span
+                            >
+                        </div>
+                        <input
+                            class="h-8 w-full accent-accent"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={value('audio.input_volume', '100')}
+                            aria-label="Input volume"
+                            oninput={(event) =>
+                                setValue(
+                                    'audio.input_volume',
+                                    (event.currentTarget as HTMLInputElement).value,
+                                )}
+                        />
+                        <span class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                            >Applied to calls and voice messages</span
+                        >
+                    </div>
+                </section>
+                <section class="rounded-md border border-line bg-surface px-5 py-4">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Output
+                    </h2>
+                    <div
+                        class="flex min-w-0 items-center justify-between gap-6 border-b border-line/55 py-[9px]"
+                    >
+                        <div class="flex min-w-0 flex-col gap-0.5">
+                            <strong class="text-sm">Speakers</strong><span
+                                class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                                >Leave empty for the system default</span
+                            >
+                        </div>
+                        <div class="w-80 max-w-full min-w-0 shrink-0 overflow-hidden">
+                            <select
+                                class="min-h-9 w-full min-w-0 rounded-sm border border-line bg-base px-3 py-2 text-ink hover:border-line-strong"
+                                aria-label="Speakers"
+                                value={value('calls.output_device')}
+                                onchange={(event) =>
+                                    setValue(
+                                        'calls.output_device',
+                                        (event.currentTarget as HTMLSelectElement).value,
+                                    )}
+                            >
+                                <option value="">System default</option>
+                                {#each outputDevices as device (device.id)}
+                                    <option value={device.id}>{device.name}</option>
+                                {/each}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex flex-col gap-2 py-[9px]">
+                        <div class="flex items-center justify-between gap-6">
+                            <strong class="text-sm">Output volume</strong>
+                            <span class="text-step-xs text-ink-2 tabular-nums"
+                                >{value('audio.output_volume', '100')}%</span
+                            >
+                        </div>
+                        <input
+                            class="h-8 w-full accent-accent"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={value('audio.output_volume', '100')}
+                            aria-label="Output volume"
+                            oninput={(event) =>
+                                setValue(
+                                    'audio.output_volume',
+                                    (event.currentTarget as HTMLInputElement).value,
+                                )}
+                        />
+                        <span class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                            >Per-user levels scale this output</span
+                        >
                     </div>
                 </section>
             {:else if section === 'remote'}

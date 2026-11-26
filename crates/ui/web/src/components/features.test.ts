@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -266,6 +266,62 @@ describe('feature surfaces', () => {
         expect(app.settingsDraft['discovery.beacon_interval_secs']).toBe('30');
     });
 
+    it('opens the audio pane from the settings rail', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'calls' };
+        render(SettingsView, { app });
+
+        const audioLink = screen.getByRole('link', { name: 'Audio' });
+        expect(audioLink.getAttribute('href')).toBe('#/settings/audio');
+        await fireEvent.click(audioLink);
+
+        expect(app.route).toEqual({ kind: 'settings', section: 'audio' });
+        expect(screen.getByLabelText('Input volume')).toBeTruthy();
+        expect(screen.getByLabelText('Output volume')).toBeTruthy();
+
+        await fireEvent.click(screen.getByRole('link', { name: 'Calls' }));
+        expect(app.route).toEqual({ kind: 'settings', section: 'calls' });
+        expect(screen.getByText('Ringing timeout')).toBeTruthy();
+
+        await fireEvent.click(screen.getByRole('link', { name: 'Audio' }));
+        expect(app.route).toEqual({ kind: 'settings', section: 'audio' });
+        expect(screen.getByLabelText('Input volume')).toBeTruthy();
+        expect(screen.getByLabelText('Output volume')).toBeTruthy();
+    });
+
+    it('deduplicates repeated audio device names', () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'audio' };
+        app.audioDevices = [
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'input' },
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'input' },
+            { id: 'PipeWire', name: 'PipeWire', kind: 'input' },
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'output' },
+            { id: 'HDMI', name: 'HDMI', kind: 'output' },
+            { id: 'HDMI', name: 'HDMI', kind: 'output' },
+        ];
+        render(SettingsView, { app });
+
+        const microphone = screen.getByRole('combobox', { name: 'Microphone' });
+        expect(within(microphone).getAllByRole('option')).toHaveLength(3);
+        const speakers = screen.getByRole('combobox', { name: 'Speakers' });
+        expect(within(speakers).getAllByRole('option')).toHaveLength(3);
+    });
+
+    it('edits audio volumes from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'audio' };
+        render(SettingsView, { app });
+
+        const inputVolume = screen.getByLabelText('Input volume');
+        await fireEvent.input(inputVolume, { target: { value: '72' } });
+        expect(app.settingsDraft['audio.input_volume']).toBe('72');
+
+        const outputVolume = screen.getByLabelText('Output volume');
+        await fireEvent.input(outputVolume, { target: { value: '64' } });
+        expect(app.settingsDraft['audio.output_volume']).toBe('64');
+    });
+
     it('shows LAN access state and firewall ports in Settings', () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'about' };
@@ -323,6 +379,19 @@ describe('feature surfaces', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Clear local history' }));
         await fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         expect(clear).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('stores per-user volume from the profile', async () => {
+        const app = makeApp();
+        app.route = { kind: 'profile', id: USER.id };
+        app.details = DETAILS;
+        render(ProfileView, { app });
+
+        const volume = screen.getByLabelText('User volume');
+        await fireEvent.input(volume, { target: { value: '70' } });
+        await fireEvent.change(volume, { target: { value: '70' } });
+        expect(app.userVolume(USER.id)).toBe(70);
+        expect(screen.getByText('70%')).toBeTruthy();
     });
 
     it('tracks dirty and saved settings state', async () => {
@@ -791,6 +860,8 @@ describe('feature surfaces', () => {
             resume = vi.fn(async () => undefined);
             close = vi.fn(async () => undefined);
             createMediaStreamSource = vi.fn(() => ({ connect }));
+            createGain = vi.fn(() => ({ connect, gain: { value: 1 } }));
+            createMediaStreamDestination = vi.fn(() => ({ connect, stream }));
             createAnalyser = vi.fn(() => analyser);
         }
         vi.stubGlobal('AudioContext', FakeAudioContext);

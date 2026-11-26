@@ -69,6 +69,7 @@ pub trait Daemon {
         input_muted: bool,
         output_muted: bool,
     ) -> zbus::Result<()>;
+    fn set_call_volume(&self, call_id: &str, volume: u32) -> zbus::Result<()>;
     fn get_call_state(&self) -> zbus::Result<HashMap<String, OwnedVariant>>;
     fn list_call_logs(
         &self,

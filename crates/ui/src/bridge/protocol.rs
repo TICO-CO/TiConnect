@@ -297,6 +297,11 @@ async fn dispatch_inner(
                 .await?;
             Ok(Value::Null)
         }
+        "set_call_volume" => {
+            let input: SetCallVolume = params(value)?;
+            link.set_call_volume(input.call_id, input.volume).await?;
+            Ok(Value::Null)
+        }
         "call_state" => Ok(json!(link.call_state().await?)),
         "call_metrics" => Ok(json!(link.call_metrics().await?)),
         "list_call_logs" => {
@@ -490,6 +495,12 @@ struct SetCallMuted {
     call_id: String,
     input_muted: bool,
     output_muted: bool,
+}
+
+#[derive(Deserialize)]
+struct SetCallVolume {
+    call_id: String,
+    volume: u32,
 }
 
 #[derive(Deserialize)]

@@ -18,6 +18,17 @@ pub const OPUS_SAMPLE_RATE: u32 = 48_000;
 pub const OPUS_CHANNELS: u8 = 1;
 pub const OPUS_FRAME_MS: u32 = 20;
 pub const OPUS_FRAME_SAMPLES: usize = (OPUS_SAMPLE_RATE as usize / 1000) * OPUS_FRAME_MS as usize;
+pub const AUDIO_VOLUME_MAX_PERCENT: u32 = 100;
+
+pub fn percent_gain(percent: u32) -> f32 {
+    percent.min(AUDIO_VOLUME_MAX_PERCENT) as f32 / AUDIO_VOLUME_MAX_PERCENT as f32
+}
+
+pub fn apply_gain(samples: &mut [f32], gain: f32) {
+    for sample in samples {
+        *sample *= gain;
+    }
+}
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct AudioMetrics {
@@ -233,6 +244,26 @@ impl SharedBuffer {
 
     pub fn underruns(&self) -> u64 {
         self.underruns.load(Ordering::Relaxed)
+    }
+}
+
+#[cfg(test)]
+mod gain_tests {
+    use super::*;
+
+    #[test]
+    fn percent_gain_maps_and_clamps() {
+        assert_eq!(percent_gain(0), 0.0);
+        assert_eq!(percent_gain(50), 0.5);
+        assert_eq!(percent_gain(100), 1.0);
+        assert_eq!(percent_gain(140), 1.0);
+    }
+
+    #[test]
+    fn apply_gain_scales_samples_in_place() {
+        let mut samples = [0.5, -0.25, 0.0];
+        apply_gain(&mut samples, 0.5);
+        assert_eq!(samples, [0.25, -0.125, 0.0]);
     }
 }
 

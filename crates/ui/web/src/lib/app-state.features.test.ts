@@ -162,18 +162,23 @@ describe('AppState feature behavior', () => {
         });
         const analyser = { fftSize: 0, getByteTimeDomainData };
         const connect = vi.fn();
+        const gainNode = { connect, gain: { value: 0 } };
         class FakeAudioContext {
             state: AudioContextState = 'running';
             resume = vi.fn(async () => undefined);
             close = vi.fn(async () => undefined);
             createMediaStreamSource = vi.fn(() => ({ connect }));
+            createGain = vi.fn(() => gainNode);
+            createMediaStreamDestination = vi.fn(() => ({ connect, stream }));
             createAnalyser = vi.fn(() => analyser);
         }
         vi.stubGlobal('AudioContext', FakeAudioContext);
+        app.settings = { 'audio.input_volume': '50' };
         const sendFile = vi.spyOn(app, 'sendFile').mockResolvedValue(undefined);
 
         await app.startRecording();
         expect(app.recording).toBe(true);
+        expect(gainNode.gain.value).toBe(0.5);
         await vi.advanceTimersByTimeAsync(350);
 
         expect(app.recordingLevel).toBeGreaterThan(0.5);
@@ -262,6 +267,38 @@ describe('AppState feature behavior', () => {
         await app.loadAudioDevices();
         expect(app.callLogs).toEqual([CALL_LOG]);
         expect(app.audioDevices).toEqual([{ id: 'Mic', name: 'Mic', kind: 'input' }]);
+    });
+
+    it('stores per-user volume and syncs the active call', async () => {
+        const { app, client } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'outgoing',
+            state: 'in_call',
+            started_at: 1,
+            connected_at: 2,
+            input_muted: false,
+            output_muted: false,
+        };
+
+        await app.setUserVolume('user-1', 86);
+
+        expect(app.userVolume('user-1')).toBe(86);
+        expect(client.request).toHaveBeenCalledWith('set_call_volume', {
+            call_id: 'call-1',
+            volume: 86,
+        });
+        expect(app.userVolume('user-2')).toBe(100);
+    });
+
+    it('multiplies user volume with global output volume', async () => {
+        const { app } = makeApp();
+        app.settings = { 'audio.output_volume': '50' };
+        await app.setUserVolume('user-1', 80);
+
+        expect(app.messageOutputVolume('user-1')).toBeCloseTo(0.4);
+        expect(app.messageOutputVolume('user-2')).toBeCloseTo(0.5);
     });
 
     it('toggles call mute through the bridge', async () => {

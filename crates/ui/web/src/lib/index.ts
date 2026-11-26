@@ -32,7 +32,14 @@ export {
 export type { AnchorRect, MenuAlignment, MenuAnchor } from './message-menu';
 export { messageMenuAlignment, placeMessageMenu } from './message-menu';
 export type { Preferences } from './preferences';
-export { DEFAULT_PREFERENCES, loadPreferences, savePreferences } from './preferences';
+export {
+    clampVolume,
+    DEFAULT_PREFERENCES,
+    DEFAULT_USER_VOLUME,
+    loadPreferences,
+    MAX_VOLUME,
+    savePreferences,
+} from './preferences';
 export type { Result } from './result';
 export { attempt, attemptAsync, err, ok } from './result';
 export type { Route, SettingsSection } from './routes';

@@ -200,6 +200,13 @@
         void loadVoice(transfer?.failed ?? '');
     });
 
+    $effect(() => {
+        const gain = app.messageOutputVolume(message.sender_id);
+        if (audioElement !== null) {
+            audioElement.volume = gain;
+        }
+    });
+
     onMount(() => {
         if (waveLane !== null && typeof ResizeObserver !== 'undefined') {
             const observer = new ResizeObserver((entries) => {

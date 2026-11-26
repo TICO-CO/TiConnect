@@ -136,6 +136,22 @@ impl Default for CallsSettings {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct AudioSettings {
+    pub input_volume: u32,
+    pub output_volume: u32,
+}
+
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            input_volume: DEFAULT_AUDIO_VOLUME_PERCENT,
+            output_volume: DEFAULT_AUDIO_VOLUME_PERCENT,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct RemoteSettings {
     pub session_timeout_secs: u32,
     pub request_timeout_secs: u32,
@@ -252,6 +268,8 @@ pub const SETTING_KEYS: &[&str] = &[
     "calls.output_device",
     "calls.mute_shortcut",
     "calls.output_mute_shortcut",
+    "audio.input_volume",
+    "audio.output_volume",
     "remote.session_timeout_secs",
     "remote.request_timeout_secs",
     "video.bitrate_kbps",
@@ -276,6 +294,9 @@ pub const CALL_TIMEOUT_MIN_SECS: u32 = 5;
 pub const CALL_TIMEOUT_MAX_SECS: u32 = 300;
 pub const DEFAULT_CALL_MUTE_SHORTCUT: &str = "Ctrl+M";
 pub const DEFAULT_CALL_OUTPUT_MUTE_SHORTCUT: &str = "Ctrl+Shift+M";
+pub const DEFAULT_AUDIO_VOLUME_PERCENT: u32 = 100;
+pub const AUDIO_VOLUME_MIN_PERCENT: u32 = 0;
+pub const AUDIO_VOLUME_MAX_PERCENT: u32 = 100;
 pub const DEFAULT_REMOTE_REQUEST_TIMEOUT_SECS: u32 = 300;
 pub const REMOTE_REQUEST_TIMEOUT_MIN_SECS: u32 = 30;
 pub const REMOTE_REQUEST_TIMEOUT_MAX_SECS: u32 = 3600;
@@ -418,6 +439,16 @@ settings_schema! {
         };
         set(&mut self, value: CallsSettings) -> set_calls as active {
             active.calls = value;
+        };
+    };
+
+    #[serde(default)]
+    audio: AudioSettings = AudioSettings::default() => {
+        get(&self) -> &AudioSettings as active {
+            &active.audio
+        };
+        set(&mut self, value: AudioSettings) -> set_audio as active {
+            active.audio = value;
         };
     };
 
@@ -622,6 +653,24 @@ impl Settings {
         self.active.calls.output_mute_shortcut = value;
     }
 
+    pub fn audio_input_volume(&self) -> u32 {
+        self.active.audio.input_volume
+    }
+
+    pub fn audio_output_volume(&self) -> u32 {
+        self.active.audio.output_volume
+    }
+
+    pub fn set_audio_input_volume(&mut self, value: u32) {
+        self.changes.audio = true;
+        self.active.audio.input_volume = value;
+    }
+
+    pub fn set_audio_output_volume(&mut self, value: u32) {
+        self.changes.audio = true;
+        self.active.audio.output_volume = value;
+    }
+
     pub fn remote_session_timeout_secs(&self) -> u32 {
         self.active.remote.session_timeout_secs
     }
@@ -716,6 +765,8 @@ impl Settings {
             "calls.output_mute_shortcut" => Ok(SettingValue::String(
                 self.call_output_mute_shortcut().to_owned(),
             )),
+            "audio.input_volume" => Ok(SettingValue::Integer(self.audio_input_volume())),
+            "audio.output_volume" => Ok(SettingValue::Integer(self.audio_output_volume())),
             "remote.session_timeout_secs" => {
                 Ok(SettingValue::Integer(self.remote_session_timeout_secs()))
             }
@@ -838,6 +889,24 @@ impl Settings {
             "calls.output_mute_shortcut" => {
                 self.set_call_output_mute_shortcut(value.trim().to_owned());
             }
+            "audio.input_volume" => {
+                let volume = parse_bounded_u32(
+                    key,
+                    value,
+                    AUDIO_VOLUME_MIN_PERCENT,
+                    AUDIO_VOLUME_MAX_PERCENT,
+                )?;
+                self.set_audio_input_volume(volume);
+            }
+            "audio.output_volume" => {
+                let volume = parse_bounded_u32(
+                    key,
+                    value,
+                    AUDIO_VOLUME_MIN_PERCENT,
+                    AUDIO_VOLUME_MAX_PERCENT,
+                )?;
+                self.set_audio_output_volume(volume);
+            }
             "remote.session_timeout_secs" => {
                 let secs = parse_u32(key, value)?;
                 self.set_remote_session_timeout_secs(secs);
@@ -936,6 +1005,28 @@ impl Settings {
                 value: self.call_timeout_secs().to_string(),
                 reason: format!(
                     "expected a value between {CALL_TIMEOUT_MIN_SECS} and {CALL_TIMEOUT_MAX_SECS}"
+                ),
+            });
+        }
+        if !(AUDIO_VOLUME_MIN_PERCENT..=AUDIO_VOLUME_MAX_PERCENT)
+            .contains(&self.audio_input_volume())
+        {
+            return Err(Error::InvalidSetting {
+                key: "audio.input_volume".to_owned(),
+                value: self.audio_input_volume().to_string(),
+                reason: format!(
+                    "expected a value between {AUDIO_VOLUME_MIN_PERCENT} and {AUDIO_VOLUME_MAX_PERCENT}"
+                ),
+            });
+        }
+        if !(AUDIO_VOLUME_MIN_PERCENT..=AUDIO_VOLUME_MAX_PERCENT)
+            .contains(&self.audio_output_volume())
+        {
+            return Err(Error::InvalidSetting {
+                key: "audio.output_volume".to_owned(),
+                value: self.audio_output_volume().to_string(),
+                reason: format!(
+                    "expected a value between {AUDIO_VOLUME_MIN_PERCENT} and {AUDIO_VOLUME_MAX_PERCENT}"
                 ),
             });
         }

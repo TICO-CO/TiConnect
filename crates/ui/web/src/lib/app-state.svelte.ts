@@ -5,8 +5,11 @@ import { demoScreen } from './demo';
 import { sessionClock } from './format';
 import { bridgeFromWindow, demoParameter } from './location';
 import {
+    clampVolume,
     DEFAULT_PREFERENCES,
+    DEFAULT_USER_VOLUME,
     loadPreferences,
+    MAX_VOLUME,
     type Preferences,
     savePreferences,
 } from './preferences';
@@ -193,6 +196,7 @@ export class AppState {
     private recordingStream: MediaStream | null = null;
     private recordingTimer: number | null = null;
     private recordingContext: AudioContext | null = null;
+    private recordingSource: MediaStreamAudioSourceNode | null = null;
     private recordingLevelTimer: number | null = null;
     private discardRecording = false;
 
@@ -637,7 +641,7 @@ export class AppState {
             if (this.route.section === 'storage') {
                 await this.loadStorageUsage();
             }
-            if (this.route.section === 'calls') {
+            if (this.route.section === 'calls' || this.route.section === 'audio') {
                 await this.loadAudioDevices();
             }
             return;
@@ -941,6 +945,7 @@ export class AppState {
         const callResult = await this.client.request<Call | null>('call_state');
         this.call = callResult.ok ? callResult.value : null;
         this.syncCallLevelPolling();
+        void this.syncCallVolume();
     }
 
     private syncCallLevelPolling(): void {
@@ -1241,12 +1246,13 @@ export class AppState {
         }
         const stream = streamResult.value;
         this.recordingStream = stream;
+        const recordingInput = await this.prepareRecordingInput(stream);
         const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus'];
         const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
         this.recorder =
             mimeType === undefined
-                ? new MediaRecorder(this.recordingStream)
-                : new MediaRecorder(this.recordingStream, { mimeType });
+                ? new MediaRecorder(recordingInput)
+                : new MediaRecorder(recordingInput, { mimeType });
         this.recordingChunks = [];
         this.discardRecording = false;
         this.recorder.ondataavailable = (event) => {
@@ -1302,35 +1308,46 @@ export class AppState {
         }
     }
 
-    private async startRecordingLevel(): Promise<void> {
+    private async prepareRecordingInput(stream: MediaStream): Promise<MediaStream> {
         if (typeof AudioContext === 'undefined') {
-            return;
-        }
-        const stream = this.recordingStream;
-        if (stream === null) {
-            return;
+            return stream;
         }
         const contextResult = attempt(() => new AudioContext());
         if (!contextResult.ok) {
-            return;
+            return stream;
         }
         const context = contextResult.value;
         const resumeResult = await attemptAsync(() => context.resume());
         if (!resumeResult.ok || context.state === 'suspended') {
             void context.close();
             this.notice = 'Microphone level is unavailable.';
-            return;
+            return stream;
         }
         const sourceResult = attempt(() => context.createMediaStreamSource(stream));
-        if (!sourceResult.ok) {
+        const gainResult = attempt(() => context.createGain());
+        const destinationResult = attempt(() => context.createMediaStreamDestination());
+        if (!sourceResult.ok || !gainResult.ok || !destinationResult.ok) {
             void context.close();
+            return stream;
+        }
+        gainResult.value.gain.value = this.audioInputVolume() / MAX_VOLUME;
+        sourceResult.value.connect(gainResult.value);
+        gainResult.value.connect(destinationResult.value);
+        this.recordingContext = context;
+        this.recordingSource = sourceResult.value;
+        return destinationResult.value.stream;
+    }
+
+    private async startRecordingLevel(): Promise<void> {
+        const context = this.recordingContext;
+        const source = this.recordingSource;
+        if (context === null || source === null) {
             return;
         }
         const analyser = context.createAnalyser();
         analyser.fftSize = 512;
-        sourceResult.value.connect(analyser);
+        source.connect(analyser);
         const samples = new Uint8Array(analyser.fftSize);
-        this.recordingContext = context;
         this.recordingLevelTimer = window.setInterval(() => {
             analyser.getByteTimeDomainData(samples);
             const energy = samples.reduce((total, sample) => {
@@ -1354,6 +1371,7 @@ export class AppState {
             window.clearInterval(this.recordingLevelTimer);
             this.recordingLevelTimer = null;
         }
+        this.recordingSource = null;
         if (this.recordingContext !== null) {
             void this.recordingContext.close();
             this.recordingContext = null;
@@ -1705,6 +1723,19 @@ export class AppState {
             return;
         }
         await this.client.request('set_typing', { user_id: this.route.id, typing: active });
+    }
+
+    async setUserVolume(userId: string, volume: number): Promise<void> {
+        const next = clampVolume(volume);
+        this.preferences = {
+            ...this.preferences,
+            userVolumes: { ...this.preferences.userVolumes, [userId]: next },
+        };
+        savePreferences(this.preferences);
+        if (this.client === null || this.call?.user_id !== userId) {
+            return;
+        }
+        await this.syncCallVolume();
     }
 
     async updatePolicy(userId: string, policy: UserPolicy): Promise<void> {
@@ -2462,6 +2493,7 @@ export class AppState {
                     this.call = { ...this.call, state: String(event.state ?? this.call.state) };
                 }
                 this.syncCallLevelPolling();
+                void this.syncCallVolume();
                 break;
             case 'call_mute_changed':
                 if (this.call !== null && this.call.id === String(event.call_id ?? '')) {
@@ -2677,4 +2709,43 @@ export class AppState {
     userById(userId: string): User | null {
         return this.users.find((user) => user.id === userId) ?? null;
     }
+
+    userVolume(userId: string): number {
+        return clampVolume(this.preferences.userVolumes[userId] ?? DEFAULT_USER_VOLUME);
+    }
+
+    audioInputVolume(): number {
+        return settingVolume(this.settings['audio.input_volume']);
+    }
+
+    audioOutputVolume(): number {
+        return settingVolume(this.settings['audio.output_volume']);
+    }
+
+    messageOutputVolume(senderId: string): number {
+        const userLevel = this.isSelf(senderId) ? DEFAULT_USER_VOLUME : this.userVolume(senderId);
+        return (this.audioOutputVolume() / MAX_VOLUME) * (userLevel / MAX_VOLUME);
+    }
+
+    private async syncCallVolume(): Promise<void> {
+        const call = this.call;
+        if (this.client === null || call === null || call.state !== 'in_call') {
+            return;
+        }
+        const volumeResult = await this.client.request('set_call_volume', {
+            call_id: call.id,
+            volume: this.userVolume(call.user_id),
+        });
+        if (!volumeResult.ok) {
+            this.notice = volumeResult.error.message;
+        }
+    }
+}
+
+function settingVolume(value: string | undefined): number {
+    if (value === undefined) {
+        return MAX_VOLUME;
+    }
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? clampVolume(parsed) : MAX_VOLUME;
 }

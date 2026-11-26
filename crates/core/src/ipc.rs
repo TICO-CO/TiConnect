@@ -221,6 +221,7 @@ pub mod methods {
     pub const DECLINE_CALL: &str = "DeclineCall";
     pub const HANGUP_CALL: &str = "HangupCall";
     pub const SET_CALL_MUTED: &str = "SetCallMuted";
+    pub const SET_CALL_VOLUME: &str = "SetCallVolume";
     pub const GET_CALL_STATE: &str = "GetCallState";
     pub const LIST_CALL_LOGS: &str = "ListCallLogs";
     pub const LIST_AUDIO_DEVICES: &str = "ListAudioDevices";

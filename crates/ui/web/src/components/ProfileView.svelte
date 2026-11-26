@@ -13,8 +13,16 @@
     let confirmRequest = $state<ConfirmRequest | null>(null);
     let confirmPending = $state(false);
     let confirmError = $state('');
+    let volumeDraft = $state(100);
     const details = $derived(app.details);
     const user = $derived(details?.user ?? app.userById(app.selectedUserId));
+
+    $effect(() => {
+        const selected = user;
+        if (selected !== null) {
+            volumeDraft = app.userVolume(selected.id);
+        }
+    });
 
     function startCall() {
         if (user !== null) {
@@ -332,6 +340,42 @@
                             </dd>
                         </div>
                     </dl>
+                </section>
+                <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
+                    <h2
+                        class="m-0 mb-3 font-text text-xs leading-4 font-bold tracking-[0.06em] text-ink-3 uppercase"
+                    >
+                        Audio
+                    </h2>
+                    <div class="flex flex-col gap-2 border-b border-line/55 py-2.5">
+                        <div class="flex items-center justify-between gap-4">
+                            <span>User volume</span>
+                            <span class="text-step-xs text-accent tabular-nums">{volumeDraft}%</span
+                            >
+                        </div>
+                        <input
+                            class="h-8 w-full accent-accent"
+                            type="range"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value={volumeDraft}
+                            aria-label="User volume"
+                            oninput={(event) => {
+                                volumeDraft = Number(
+                                    (event.currentTarget as HTMLInputElement).value,
+                                );
+                            }}
+                            onchange={() => {
+                                if (user !== null) {
+                                    void app.setUserVolume(user.id, volumeDraft);
+                                }
+                            }}
+                        />
+                        <span class="text-xs tracking-[0.04em] text-ink-3 uppercase"
+                            >Scales calls, voice messages, and shared audio from this user</span
+                        >
+                    </div>
                 </section>
                 <section class="rounded-md border border-line bg-surface px-5 py-[18px]">
                     <h2

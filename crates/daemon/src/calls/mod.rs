@@ -154,11 +154,23 @@ impl CallService {
     }
 
     pub fn apply_settings(&self, settings: Settings) {
+        let input_volume = settings.audio_input_volume();
+        let output_volume = settings.audio_output_volume();
         *self
             .inner
             .settings
             .write()
             .unwrap_or_else(PoisonError::into_inner) = settings;
+        if let Some(media) = self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_mut()
+        {
+            media.set_input_volume(input_volume);
+            media.set_output_volume(output_volume);
+        }
     }
 
     pub fn settings(&self) -> Settings {
@@ -299,6 +311,34 @@ impl CallService {
             media.set_output_muted(output_muted);
         }
         self.emit(CallEvent::StateChanged(info.clone()));
+        Ok(info)
+    }
+
+    pub fn set_user_volume(&self, call_id: CallId, volume: u32) -> Result<CallInfo, CallError> {
+        let info = {
+            let registry = self
+                .inner
+                .registry
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            match registry.active() {
+                Some(call) if call.id == call_id => call.info(),
+                Some(_) => return Err(CallError::InvalidState),
+                None => return Err(CallError::UnknownCall(call_id)),
+            }
+        };
+        let mut media = self
+            .inner
+            .media
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let Some(session) = media.as_mut() else {
+            return Err(CallError::InvalidState);
+        };
+        if session.call_id() != call_id {
+            return Err(CallError::InvalidState);
+        }
+        session.set_user_volume(volume);
         Ok(info)
     }
 
@@ -681,8 +721,12 @@ impl CallService {
             session,
             settings.call_input_device(),
             settings.call_output_device(),
-            call.input_muted,
-            call.output_muted,
+            session::MediaSessionSettings {
+                input_muted: call.input_muted,
+                output_muted: call.output_muted,
+                input_volume: settings.audio_input_volume(),
+                output_volume: settings.audio_output_volume(),
+            },
             self.inner.metrics.clone(),
         )
         .map_err(|error| {

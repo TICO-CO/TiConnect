@@ -147,6 +147,11 @@ enum Command {
         output_muted: bool,
         reply: Reply<()>,
     },
+    SetCallVolume {
+        call_id: String,
+        volume: u32,
+        reply: Reply<()>,
+    },
     GetCallState(Reply<Option<Call>>),
     GetCallMetrics(Reply<CallMetrics>),
     ListCallLogs {
@@ -491,6 +496,15 @@ impl LinkHandle {
             call_id,
             input_muted,
             output_muted,
+            reply,
+        })
+        .await
+    }
+
+    pub async fn set_call_volume(&self, call_id: String, volume: u32) -> Result<()> {
+        self.request(|reply| Command::SetCallVolume {
+            call_id,
+            volume,
             reply,
         })
         .await
@@ -1408,6 +1422,17 @@ async fn handle_command(proxy: &DaemonProxy<'_>, command: Command) {
         } => {
             let result = proxy
                 .set_call_muted(&call_id, input_muted, output_muted)
+                .await
+                .map_err(bus_error);
+            let _ = reply.send(result);
+        }
+        Command::SetCallVolume {
+            call_id,
+            volume,
+            reply,
+        } => {
+            let result = proxy
+                .set_call_volume(&call_id, volume)
                 .await
                 .map_err(bus_error);
             let _ = reply.send(result);

@@ -54,6 +54,7 @@ fails to acquire the name and exits non-zero.
 | `DeclineCall` | `(s) -> ()` | Declines an incoming ringing call. |
 | `HangupCall` | `(s) -> ()` | Ends an active call; also cancels an outgoing connecting or ringing call. |
 | `SetCallMuted` | `(sbb) -> ()` | Sets microphone and output mute for the active call. |
+| `SetCallVolume` | `(su) -> ()` | Sets the active call's per-user output scale; valid range `0..=100`. |
 | `GetCallState` | `() -> a{sv}` | Returns the active call, or an empty map when idle. |
 | `ListCallLogs` | `(su) -> aa{sv}` | Returns persisted call logs for one user, or all when the user id is empty. |
 | `ListAudioDevices` | `() -> aa{sv}` | Returns discovered input and output devices. |

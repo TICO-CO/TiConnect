@@ -110,13 +110,32 @@ trap cleanup EXIT INT TERM HUP
 
 start_bus() {
     local bus="$1"
-    dbus-daemon --session --nofork --nopidfile --nosyslog \
-        --address="unix:path=$bus" >"$WORK/dbus.log" 2>&1 &
-    PIDS+=("$!")
-    for _ in $(seq 1 100); do
+    local name="${bus##*/}"
+    local log="$WORK/dbus-$name.log"
+    local dbus_bin config_file pid
+    command -v dbus-daemon >/dev/null 2>&1 || fail "dbus-daemon missing"
+    dbus_bin="$(command -v dbus-daemon)"
+    config_file="${dbus_bin%/*}/../share/dbus-1/session.conf"
+    if [ -r "$config_file" ]; then
+        dbus-daemon --config-file="$config_file" --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    else
+        dbus-daemon --session --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    fi
+    pid=$!
+    PIDS+=("$pid")
+    for _ in $(seq 1 400); do
         [ -S "$bus" ] && return 0
+        if ! kill -0 "$pid" 2>/dev/null; then
+            printf 'lab: private D-Bus exited before creating %s\n' "$bus" >&2
+            tail -n 80 "$log" >&2 || true
+            fail "private D-Bus did not start"
+        fi
         sleep 0.05
     done
+    printf 'lab: private D-Bus did not create %s within 20s\n' "$bus" >&2
+    tail -n 80 "$log" >&2 || true
     fail "private D-Bus did not start"
 }
 

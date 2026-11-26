@@ -75,16 +75,42 @@ CONF
     fi
 }
 
+start_private_bus() {
+    local bus="$1"
+    local name="${bus##*/}"
+    local log="$WORK/dbus-$name.log"
+    local dbus_bin config_file pid
+    command -v dbus-daemon >/dev/null 2>&1 || fail "dbus-daemon missing"
+    dbus_bin="$(command -v dbus-daemon)"
+    config_file="${dbus_bin%/*}/../share/dbus-1/session.conf"
+    if [ -r "$config_file" ]; then
+        dbus-daemon --config-file="$config_file" --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    else
+        dbus-daemon --session --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    fi
+    pid=$!
+    PIDS+=("$pid")
+    for _ in $(seq 1 400); do
+        [ -S "$bus" ] && return 0
+        if ! kill -0 "$pid" 2>/dev/null; then
+            printf 'local: private D-Bus exited before creating %s\n' "$bus" >&2
+            tail -n 80 "$log" >&2 || true
+            fail "private D-Bus did not start"
+        fi
+        sleep 0.05
+    done
+    printf 'local: private D-Bus did not create %s within 20s\n' "$bus" >&2
+    tail -n 80 "$log" >&2 || true
+    fail "private D-Bus did not start"
+}
+
 start_bus() {
     mkdir -p "$WORK"
     configure_audio
-    dbus-daemon --session --fork --nopidfile --nosyslog --address="unix:path=$BUS_A" >/dev/null
-    dbus-daemon --session --fork --nopidfile --nosyslog --address="unix:path=$BUS_B" >/dev/null
-    for _ in $(seq 1 50); do
-        [ -S "$BUS_A" ] && [ -S "$BUS_B" ] && return
-        sleep 0.05
-    done
-    fail "private D-Bus did not start"
+    start_private_bus "$BUS_A"
+    start_private_bus "$BUS_B"
 }
 
 start_session() {

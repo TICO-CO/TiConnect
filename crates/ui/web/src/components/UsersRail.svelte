@@ -88,7 +88,7 @@
             {:else}
                 {#each filteredUsers as user (user.id)}
                     <button
-                        class="flex h-12 w-full shrink-0 items-center justify-center rounded-none border-0 bg-transparent hover:bg-surface data-selected:bg-ink data-selected:hover:bg-ink"
+                        class="flex h-12 w-full shrink-0 items-center justify-center rounded-none border-0 bg-transparent transition-colors duration-150 ease-soft hover:bg-surface data-selected:bg-ink data-selected:hover:bg-[color-mix(in_srgb,var(--color-ink),black_20%)]"
                         data-selected={app.selectedUserId === user.id ? '' : undefined}
                         onclick={() => selectUser(user.id)}
                         aria-label={shortName(user)}
@@ -190,7 +190,7 @@
                     {@const addressChanged =
                         summary?.last_body.includes('Address changed') ?? false}
                     <button
-                        class="group flex h-16 w-full shrink-0 items-center gap-2.5 rounded-none border-0 bg-transparent px-6 text-left text-ink hover:bg-surface data-selected:bg-ink data-selected:text-base data-selected:hover:bg-ink"
+                        class="group flex h-16 w-full shrink-0 items-center gap-2.5 rounded-none border-0 bg-transparent px-6 text-left text-ink transition-colors duration-150 ease-soft hover:bg-surface data-selected:bg-ink data-selected:text-base data-selected:hover:bg-[color-mix(in_srgb,var(--color-ink),black_20%)]"
                         data-selected={selected ? '' : undefined}
                         onclick={() => selectUser(user.id)}
                         aria-current={selected ? 'page' : undefined}

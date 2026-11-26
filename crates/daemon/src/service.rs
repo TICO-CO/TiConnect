@@ -908,6 +908,21 @@ impl DaemonService {
         Ok(())
     }
 
+    async fn set_call_volume(&self, call_id: &str, volume: u32) -> Result<(), ServiceError> {
+        let max = ticonnect_settings::AUDIO_VOLUME_MAX_PERCENT;
+        if volume > max {
+            return Err(ServiceError::Failed(format!(
+                "call volume must be at most {max}"
+            )));
+        }
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .set_user_volume(call_id, volume)
+            .map_err(call_error)?;
+        Ok(())
+    }
+
     async fn list_call_logs(
         &self,
         user_id: &str,

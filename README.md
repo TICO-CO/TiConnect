@@ -404,6 +404,8 @@ Settings keys:
 | `calls.output_device` | string | empty | Optional output device name |
 | `calls.mute_shortcut` | string | `Ctrl+M` | Microphone mute shortcut; empty disables |
 | `calls.output_mute_shortcut` | string | `Ctrl+Shift+M` | Output mute shortcut; empty disables |
+| `audio.input_volume` | integer | `100` | Microphone gain percentage; valid range `0..=100` |
+| `audio.output_volume` | integer | `100` | Playback gain percentage; valid range `0..=100` |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
 | `remote.request_timeout_secs` | integer | `300` | Consent request expiry; valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
@@ -538,10 +540,15 @@ confirms before calling it.
 - Input and output devices are selected from devices discovered by the daemon.
   An unavailable configured device fails the call with an error instead of
   silently switching devices.
+- `audio.input_volume` applies microphone gain to calls and voice recordings;
+  `audio.output_volume` applies playback gain to calls, voice messages, and the
+  watch-party player. Per-user levels scale this output rather than overriding
+  it.
 - Call history is stored in SQLite and survives restarts.
 - D-Bus: `StartCall`, `AcceptCall`, `DeclineCall`, `HangupCall`,
-  `SetCallMuted`, `GetCallState`, `ListCallLogs`, `ListAudioDevices`; signals
-  `IncomingCall`, `CallStateChanged`, `CallMuteChanged`, `CallEnded`.
+  `SetCallMuted`, `SetCallVolume`, `GetCallState`, `ListCallLogs`,
+  `ListAudioDevices`; signals `IncomingCall`, `CallStateChanged`,
+  `CallMuteChanged`, `CallEnded`.
 
 ## Remote desktop
 
