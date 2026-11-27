@@ -2,10 +2,12 @@ import { attempt } from './result';
 
 const STORAGE_KEY = 'ticonnect.preferences';
 
+export const DEFAULT_USER_VOLUME = 100;
+export const MAX_VOLUME = 100;
+
 export interface Preferences {
     userDescription: string;
     presence: string;
-    sounds: boolean;
     autoplay: boolean;
     queueLimit: number;
     playerPosition: string;
@@ -15,12 +17,12 @@ export interface Preferences {
     acceptInvites: boolean;
     storageRetention: number;
     previousAddresses: Record<string, string>;
+    userVolumes: Record<string, number>;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
     userDescription: '',
     presence: 'online',
-    sounds: true,
     autoplay: true,
     queueLimit: 3,
     playerPosition: 'Bot-right, above message toasts',
@@ -30,6 +32,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
     acceptInvites: true,
     storageRetention: 30,
     previousAddresses: {},
+    userVolumes: {},
 };
 
 export function loadPreferences(): Preferences {
@@ -50,4 +53,11 @@ export function savePreferences(preferences: Preferences): boolean {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(preferences)),
     );
     return writeResult.ok;
+}
+
+export function clampVolume(value: number): number {
+    if (!Number.isFinite(value)) {
+        return DEFAULT_USER_VOLUME;
+    }
+    return Math.min(MAX_VOLUME, Math.max(0, Math.round(value)));
 }

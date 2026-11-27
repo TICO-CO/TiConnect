@@ -146,24 +146,26 @@ impl CallRegistry {
         if call.user_id != user_id {
             return Err(CallStateError::InvalidTransition);
         }
-        if call.state == CallState::Ringing {
-            return Ok(None);
+        match call.state {
+            CallState::Connecting => {
+                call.state = CallState::Ringing;
+                Ok(Some(CallTransition::Ringing(call.clone())))
+            }
+            CallState::Ringing | CallState::InCall => Ok(None),
+            _ => Err(CallStateError::InvalidTransition),
         }
-        if call.state != CallState::Connecting {
-            return Err(CallStateError::InvalidTransition);
-        }
-        call.state = CallState::Ringing;
-        Ok(Some(CallTransition::Ringing(call.clone())))
     }
 
     pub fn accept(&mut self, id: CallId, now: i64) -> Result<CallTransition, CallStateError> {
         let call = self.active_mut(id)?;
-        if call.state != CallState::Ringing {
-            return Err(CallStateError::InvalidTransition);
+        match call.state {
+            CallState::Connecting | CallState::Ringing => {
+                call.state = CallState::InCall;
+                call.connected_at = Some(now);
+                Ok(CallTransition::InCall(call.clone()))
+            }
+            _ => Err(CallStateError::InvalidTransition),
         }
-        call.state = CallState::InCall;
-        call.connected_at = Some(now);
-        Ok(CallTransition::InCall(call.clone()))
     }
 
     pub fn accept_or_current(
@@ -172,15 +174,15 @@ impl CallRegistry {
         now: i64,
     ) -> Result<(ActiveCall, bool), CallStateError> {
         let call = self.active_mut(id)?;
-        if call.state == CallState::InCall {
-            return Ok((call.clone(), false));
+        match call.state {
+            CallState::InCall => Ok((call.clone(), false)),
+            CallState::Connecting | CallState::Ringing => {
+                call.state = CallState::InCall;
+                call.connected_at = Some(now);
+                Ok((call.clone(), true))
+            }
+            _ => Err(CallStateError::InvalidTransition),
         }
-        if call.state != CallState::Ringing {
-            return Err(CallStateError::InvalidTransition);
-        }
-        call.state = CallState::InCall;
-        call.connected_at = Some(now);
-        Ok((call.clone(), true))
     }
 
     pub fn set_muted(
@@ -360,6 +362,30 @@ mod tests {
         assert!(!started);
         assert_eq!(current.state, CallState::InCall);
         assert_eq!(current.connected_at, Some(2));
+    }
+
+    #[test]
+    fn accept_before_ringing_connects_the_call() {
+        let mut registry = CallRegistry::default();
+        let CallTransition::Connecting(call) = registry.start("user", 1).expect("start") else {
+            panic!("expected connecting");
+        };
+        let (accepted, started) = registry
+            .accept_or_current(call.id, 2)
+            .expect("accept before ringing");
+        assert!(started);
+        assert_eq!(accepted.state, CallState::InCall);
+        assert_eq!(accepted.connected_at, Some(2));
+        assert_eq!(
+            registry
+                .mark_ringing(call.id, "user")
+                .expect("late ringing"),
+            None
+        );
+        assert_eq!(
+            registry.active().expect("active call").state,
+            CallState::InCall
+        );
     }
 
     #[test]

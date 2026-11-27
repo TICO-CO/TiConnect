@@ -162,18 +162,23 @@ describe('AppState feature behavior', () => {
         });
         const analyser = { fftSize: 0, getByteTimeDomainData };
         const connect = vi.fn();
+        const gainNode = { connect, gain: { value: 0 } };
         class FakeAudioContext {
             state: AudioContextState = 'running';
             resume = vi.fn(async () => undefined);
             close = vi.fn(async () => undefined);
             createMediaStreamSource = vi.fn(() => ({ connect }));
+            createGain = vi.fn(() => gainNode);
+            createMediaStreamDestination = vi.fn(() => ({ connect, stream }));
             createAnalyser = vi.fn(() => analyser);
         }
         vi.stubGlobal('AudioContext', FakeAudioContext);
+        app.settings = { 'audio.input_volume': '50' };
         const sendFile = vi.spyOn(app, 'sendFile').mockResolvedValue(undefined);
 
         await app.startRecording();
         expect(app.recording).toBe(true);
+        expect(gainNode.gain.value).toBe(0.5);
         await vi.advanceTimersByTimeAsync(350);
 
         expect(app.recordingLevel).toBeGreaterThan(0.5);
@@ -264,13 +269,45 @@ describe('AppState feature behavior', () => {
         expect(app.audioDevices).toEqual([{ id: 'Mic', name: 'Mic', kind: 'input' }]);
     });
 
+    it('stores per-user volume and syncs the active call', async () => {
+        const { app, client } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'outgoing',
+            state: 'in-call',
+            started_at: 1,
+            connected_at: 2,
+            input_muted: false,
+            output_muted: false,
+        };
+
+        await app.setUserVolume('user-1', 86);
+
+        expect(app.userVolume('user-1')).toBe(86);
+        expect(client.request).toHaveBeenCalledWith('set_call_volume', {
+            call_id: 'call-1',
+            volume: 86,
+        });
+        expect(app.userVolume('user-2')).toBe(100);
+    });
+
+    it('multiplies user volume with global output volume', async () => {
+        const { app } = makeApp();
+        app.settings = { 'audio.output_volume': '50' };
+        await app.setUserVolume('user-1', 80);
+
+        expect(app.messageOutputVolume('user-1')).toBeCloseTo(0.4);
+        expect(app.messageOutputVolume('user-2')).toBeCloseTo(0.5);
+    });
+
     it('toggles call mute through the bridge', async () => {
         const { app, client } = makeApp();
         app.call = {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'outgoing',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -309,7 +346,7 @@ describe('AppState feature behavior', () => {
                 return pendingAccept;
             }
             if (method === 'call_state') {
-                return ok({ ...ringingCall, state: 'in_call' });
+                return ok({ ...ringingCall, state: 'in-call' });
             }
             return ok(null);
         });
@@ -323,7 +360,7 @@ describe('AppState feature behavior', () => {
         releaseAccept(ok(null));
         await first;
         await second;
-        expect(app.call?.state).toBe('in_call');
+        expect(app.call?.state).toBe('in-call');
     });
 
     it('maps call metrics to the waveform level', async () => {
@@ -332,7 +369,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'incoming',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -363,7 +400,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'incoming',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -411,6 +448,30 @@ describe('AppState feature behavior', () => {
             value: 'dark',
         });
         expect(document.documentElement.dataset.theme).toBe('dark');
+    });
+
+    it('saves live volume changes after the debounce', async () => {
+        vi.useFakeTimers();
+        const { app, client } = makeApp();
+        app.settings = { 'audio.output_volume': '100' };
+        app.settingsDraft = { 'audio.output_volume': '100' };
+
+        app.setDraftSettingLive('audio.output_volume', '70');
+        app.setDraftSettingLive('audio.output_volume', '35');
+
+        expect(client.request).not.toHaveBeenCalledWith('settings_save', {
+            key: 'audio.output_volume',
+            value: '35',
+        });
+
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(client.request).toHaveBeenCalledWith('settings_save', {
+            key: 'audio.output_volume',
+            value: '35',
+        });
+        expect(app.settings['audio.output_volume']).toBe('35');
+        expect(app.settingsSave).toBe('saved');
     });
 
     it('applies system, light, and dark appearance', () => {
@@ -679,6 +740,27 @@ describe('AppState feature behavior', () => {
         expect(app.toasts).toHaveLength(0);
     });
 
+    it('applies the daemon in-call state string', () => {
+        const { app } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'incoming',
+            state: 'ringing',
+            started_at: 1_000,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({ type: 'call_state_changed', call_id: 'call-1', state: 'in-call' });
+
+        expect(app.call?.state).toBe('in-call');
+    });
+
     it('auto-dismisses call ended toasts after the overlay timeout', () => {
         vi.useFakeTimers();
         const { app } = makeApp();
@@ -687,7 +769,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'outgoing',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1_000,
             connected_at: 2_000,
             input_muted: false,
@@ -763,7 +845,8 @@ describe('group watch party behavior', () => {
             settings: {},
             appearance: 'system',
             autostart: false,
-            version: '0.0.6',
+            version: '0.1.1',
+            dev_build: false,
             online: true,
         };
         client.request.mockImplementation(async (method: string) => {

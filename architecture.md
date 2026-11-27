@@ -37,7 +37,9 @@ D-Bus is the control plane:
   Config writes go through `ticonnect-settings`, not D-Bus. Signals for inbound
   events and config reloads.
 - `org.ticonnect.UI` — owned by `ticonnect ui`. The overlay activates it by
-  calling `Activate(view)`, which raises the window on the relevant screen.
+  calling `Activate(view)`, which raises the window on the relevant screen. The
+  daemon calls `IsActive()` to suppress message chimes while the window is
+  focused.
 - The overlay subscribes to daemon signals directly and does not depend on the
   UI being open.
 
@@ -216,8 +218,9 @@ messages it sent, and the receiver cannot delete or modify the sender's copy.
 
 - Per-user `accept` / `mute` / `ignore`, plus a global DND mode.
   `mute` stores messages silently; `ignore` drops them with no notification.
-- The daemon plays a bundled notification chime for notifiable messages so it
-  rings with the UI closed. Mute, ignore, and DND silence it with notifications.
+- The daemon plays a bundled notification chime for notifiable messages when the
+  UI is closed or its window is not focused. Mute, ignore, DND, and
+  `notifications.message_sounds = false` silence it with notifications.
 - Policy changes are exposed over D-Bus and through the tray menu.
 
 ### Schema sketch

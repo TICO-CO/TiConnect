@@ -18,11 +18,12 @@ DBUS_PID=""
 UI_PID=""
 OVL_PID=""
 PORTAL_PIDS=()
+CALL_UI_PIDS=()
 
 cleanup() {
     local status=$?
     trap - EXIT
-    for pid in "$UI_PID" "$OVL_PID" "${PIDS[@]}"; do
+    for pid in "$UI_PID" "$OVL_PID" "${CALL_UI_PIDS[@]}" "${PIDS[@]}"; do
         [ -n "$pid" ] || continue
         kill "$pid" 2>/dev/null || true
     done
@@ -59,6 +60,18 @@ command -v dbus-daemon >/dev/null || fail "dbus-daemon missing"
 export TICONNECT_LOG_LEVEL="${TICONNECT_LOG_LEVEL:-info}"
 
 configure_audio() {
+    if [ "${TICONNECT_TEST_AUDIO:-}" = "null" ]; then
+        cat >"$WORK/asound-null.conf" <<'CONF'
+pcm.!default {
+    type null
+}
+ctl.!default {
+    type null
+}
+CONF
+        export ALSA_CONFIG_PATH="$WORK/asound-null.conf"
+        return 0
+    fi
     local plugin_dir
     plugin_dir="$(ls -d /nix/store/*alsa-plugins*/lib/alsa-lib 2>/dev/null | head -n 1 || true)"
     if [ -n "$plugin_dir" ]; then
@@ -75,16 +88,42 @@ CONF
     fi
 }
 
+start_private_bus() {
+    local bus="$1"
+    local name="${bus##*/}"
+    local log="$WORK/dbus-$name.log"
+    local dbus_bin config_file pid
+    command -v dbus-daemon >/dev/null 2>&1 || fail "dbus-daemon missing"
+    dbus_bin="$(command -v dbus-daemon)"
+    config_file="${dbus_bin%/*}/../share/dbus-1/session.conf"
+    if [ -r "$config_file" ]; then
+        dbus-daemon --config-file="$config_file" --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    else
+        dbus-daemon --session --nofork --nopidfile --nosyslog \
+            --address="unix:path=$bus" >"$log" 2>&1 &
+    fi
+    pid=$!
+    PIDS+=("$pid")
+    for _ in $(seq 1 400); do
+        [ -S "$bus" ] && return 0
+        if ! kill -0 "$pid" 2>/dev/null; then
+            printf 'local: private D-Bus exited before creating %s\n' "$bus" >&2
+            tail -n 80 "$log" >&2 || true
+            fail "private D-Bus did not start"
+        fi
+        sleep 0.05
+    done
+    printf 'local: private D-Bus did not create %s within 20s\n' "$bus" >&2
+    tail -n 80 "$log" >&2 || true
+    fail "private D-Bus did not start"
+}
+
 start_bus() {
     mkdir -p "$WORK"
     configure_audio
-    dbus-daemon --session --fork --nopidfile --nosyslog --address="unix:path=$BUS_A" >/dev/null
-    dbus-daemon --session --fork --nopidfile --nosyslog --address="unix:path=$BUS_B" >/dev/null
-    for _ in $(seq 1 50); do
-        [ -S "$BUS_A" ] && [ -S "$BUS_B" ] && return
-        sleep 0.05
-    done
-    fail "private D-Bus did not start"
+    start_private_bus "$BUS_A"
+    start_private_bus "$BUS_B"
 }
 
 start_session() {
@@ -320,6 +359,59 @@ scenario_call() {
     log "call ok"
 }
 
+wait_bridge_file() {
+    local file="$1"
+    local pid="$2"
+    for _ in $(seq 1 100); do
+        [ -s "$file" ] && return 0
+        kill -0 "$pid" 2>/dev/null || fail "UI exited before writing $file"
+        sleep 0.1
+    done
+    fail "UI did not write bridge file $file"
+}
+
+start_call_ui() {
+    local node="$1"
+    local dir="$WORK/node-$node"
+    local bus="$BUS_A"
+    [ "$node" = b ] && bus="$BUS_B"
+    rm -f "$dir/bridge.url"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$bus" \
+    TICONNECT_CONFIG_DIR="$dir/config" \
+    TICONNECT_DATA_DIR="$dir/data" \
+    TICONNECT_NO_AUTOSTART=1 \
+    TICONNECT_UI_BRIDGE_FILE="$dir/bridge.url" \
+    TICONNECT_LOG_LEVEL=info \
+    WEBKIT_DISABLE_DMABUF_RENDERER=1 \
+    WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+        "$ROOT/target/debug/ticonnect" ui >"$dir/ui-call.log" 2>&1 &
+    local pid=$!
+    CALL_UI_PIDS+=("$pid")
+    wait_bridge_file "$dir/bridge.url" "$pid"
+    log "call UI $node ready"
+}
+
+scenario_call_ui() {
+    log "main-window call both directions"
+    start_call_ui a
+    start_call_ui b
+    command -v bun >/dev/null 2>&1 ||
+        fail "bun is required for the main-window call test"
+    BRIDGE_A_FILE="$WORK/node-a/bridge.url" \
+    BRIDGE_B_FILE="$WORK/node-b/bridge.url" \
+    NODE_A_ID="$A_ID" \
+    NODE_B_ID="$B_ID" \
+        bun "$ROOT/tests/local/bridge_call.mjs" ||
+        fail "main-window call e2e failed"
+    for pid in "${CALL_UI_PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+        wait "$pid" 2>/dev/null || true
+    done
+    CALL_UI_PIDS=()
+    log "main-window call ok"
+}
+
 scenario_remote() {
     log "remote consent/kill switch"
     monitor_start a remote-signals
@@ -364,13 +456,17 @@ scenario_ui() {
     log "UI and overlay startup"
     [ -x "$ROOT/target/debug/ticonnect" ] || fail "ticonnect binary missing"
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
+    TICONNECT_NO_AUTOSTART=1 \
     WEBKIT_DISABLE_DMABUF_RENDERER=1 \
     WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
     TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect" ui >"$WORK/ui.log" 2>&1 &
     UI_PID=$!
     DBUS_SESSION_BUS_ADDRESS="unix:path=$BUS_A" \
+    TICONNECT_IPC_BUS_ADDRESS="unix:path=$BUS_A" \
     TICONNECT_CONFIG_DIR="$NODE_A/config" TICONNECT_DATA_DIR="$NODE_A/data" \
+    TICONNECT_NO_AUTOSTART=1 \
     WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
     TICONNECT_LOG_LEVEL=off "$ROOT/target/debug/ticonnect-ovl" >"$WORK/overlay.log" 2>&1 &
     OVL_PID=$!
@@ -406,6 +502,10 @@ scenario_ui() {
     if [ "$SESSION" = x11 ]; then
         command -v xdotool >/dev/null && xdotool search --sync --name 'TiConnect' >/dev/null || true
     fi
+    kill "$UI_PID" "$OVL_PID" 2>/dev/null || true
+    wait "$UI_PID" "$OVL_PID" 2>/dev/null || true
+    UI_PID=""
+    OVL_PID=""
     log "ui ok"
 }
 
@@ -421,11 +521,13 @@ case "$SCENARIO" in
         scenario_attachments
         scenario_ui
         scenario_call
+        scenario_call_ui
         scenario_remote
         ;;
     messaging) scenario_messaging ;;
     attachments) scenario_attachments ;;
     call) scenario_call ;;
+    call-ui) scenario_call_ui ;;
     remote) scenario_remote ;;
     ui) scenario_ui ;;
     *) fail "unknown scenario $SCENARIO" ;;

@@ -10,6 +10,10 @@ describe('routes', () => {
             kind: 'settings',
             section: 'media',
         });
+        expect(parseRoute('#/settings/audio')).toEqual({
+            kind: 'settings',
+            section: 'audio',
+        });
         expect(parseRoute('#/call/user-1')).toEqual({ kind: 'call', id: 'user-1' });
         expect(parseRoute('#/remote/user-1')).toEqual({ kind: 'remote', id: 'user-1' });
         expect(parseRoute('#/watch-party')).toEqual({ kind: 'watch-party' });
@@ -28,6 +32,7 @@ describe('routes', () => {
             { kind: 'chat' as const, id: 'user-1' },
             { kind: 'profile' as const, id: 'user-1' },
             { kind: 'settings' as const, section: 'calls' as const },
+            { kind: 'settings' as const, section: 'audio' as const },
             { kind: 'call' as const, id: 'user-1' },
             { kind: 'remote' as const, id: 'user-1' },
             { kind: 'watch-party' as const },

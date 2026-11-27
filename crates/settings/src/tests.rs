@@ -422,13 +422,70 @@ fn invalid_outbox_ttl_is_rejected_on_load() {
 }
 
 #[test]
+fn audio_volumes_round_trip_and_reject_out_of_range() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        let path = jail.directory().join("config.toml");
+        let mut settings = Settings::load_from(&path).expect("valid settings");
+        assert_eq!(settings.audio_input_volume(), 100);
+        assert_eq!(settings.audio_output_volume(), 100);
+
+        settings
+            .set_setting("audio.input_volume", "72")
+            .expect("set input volume");
+        settings
+            .set_setting("audio.output_volume", "64")
+            .expect("set output volume");
+        settings.save().expect("save");
+
+        let mut settings = Settings::load_from(&path).expect("reload");
+        assert_eq!(settings.audio_input_volume(), 72);
+        assert_eq!(settings.audio_output_volume(), 64);
+        assert!(settings.set_setting("audio.output_volume", "101").is_err());
+        Ok(())
+    });
+}
+
+#[test]
+fn invalid_audio_volume_is_rejected_on_load() {
+    Jail::expect_with(|jail| {
+        jail.clear_env();
+        jail.create_file("config.toml", "[audio]\ninput_volume = 101\n")?;
+
+        let path = jail.directory().join("config.toml");
+        let error = Settings::load_from(&path).expect_err("invalid audio volume");
+
+        assert!(matches!(error, crate::Error::InvalidSetting { .. }));
+        Ok(())
+    });
+}
+
+#[test]
 fn key_api_sets_and_reads_typed_values() {
     Jail::expect_with(|jail| {
         jail.clear_env();
         let path = jail.directory().join("config.toml");
         let mut settings = Settings::load_from(&path).expect("valid settings");
 
+        assert_eq!(
+            settings
+                .get_setting("notifications.message_sounds")
+                .expect("get sounds"),
+            crate::SettingValue::Bool(true)
+        );
+        assert_eq!(
+            settings
+                .get_setting("notifications.call_sounds")
+                .expect("get call sounds"),
+            crate::SettingValue::Bool(true)
+        );
         settings.set_setting("dnd.enabled", "yes").expect("set dnd");
+        settings
+            .set_setting("notifications.message_sounds", "false")
+            .expect("set sounds");
+        settings
+            .set_setting("notifications.call_sounds", "false")
+            .expect("set call sounds");
         settings
             .set_setting("outbox.ttl_days", "30")
             .expect("set ttl");
@@ -444,6 +501,18 @@ fn key_api_sets_and_reads_typed_values() {
         assert_eq!(
             settings.get_setting("dnd.enabled").expect("get dnd"),
             crate::SettingValue::Bool(true)
+        );
+        assert_eq!(
+            settings
+                .get_setting("notifications.message_sounds")
+                .expect("get sounds"),
+            crate::SettingValue::Bool(false)
+        );
+        assert_eq!(
+            settings
+                .get_setting("notifications.call_sounds")
+                .expect("get call sounds"),
+            crate::SettingValue::Bool(false)
         );
         assert_eq!(
             settings.get_setting("outbox.ttl_days").expect("get ttl"),
@@ -527,6 +596,14 @@ fn key_api_rejects_unknown_and_invalid_values() {
         ));
         assert!(matches!(
             settings.set_setting("dnd.enabled", "maybe"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("notifications.message_sounds", "maybe"),
+            Err(crate::Error::InvalidSetting { .. })
+        ));
+        assert!(matches!(
+            settings.set_setting("notifications.call_sounds", "maybe"),
             Err(crate::Error::InvalidSetting { .. })
         ));
         assert!(matches!(

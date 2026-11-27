@@ -23,7 +23,10 @@ const PARTY: WatchParty = {
 };
 
 function makeApp(stream: string | null): AppState {
-    return { youtubeStream: vi.fn().mockResolvedValue(stream) } as unknown as AppState;
+    return {
+        youtubeStream: vi.fn().mockResolvedValue(stream),
+        audioOutputVolume: () => 100,
+    } as unknown as AppState;
 }
 
 interface FakeMedia {
@@ -88,6 +91,7 @@ describe('youtube player', () => {
         });
         const app = {
             youtubeStream: vi.fn(() => stream),
+            audioOutputVolume: () => 100,
         } as unknown as AppState;
         render(YoutubePlayer, { app, party: PARTY, selfId: 'node-1', onPublish: () => {} });
 
@@ -171,6 +175,33 @@ describe('youtube player', () => {
 
         await fireEvent.click(screen.getByRole('button', { name: 'Unmute' }));
         expect(video.muted).toBe(false);
+    });
+
+    it('scales local volume by global output volume', async () => {
+        const app = {
+            youtubeStream: vi.fn().mockResolvedValue('https://example.com/video.mp4'),
+            audioOutputVolume: () => 50,
+        } as unknown as AppState;
+        const { container } = render(YoutubePlayer, {
+            app,
+            party: PARTY,
+            selfId: 'node-1',
+            onPublish: () => {},
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Play video' }));
+        await waitFor(() => expect(container.querySelector('video')).not.toBeNull());
+        const video = container.querySelector<HTMLVideoElement>('video');
+        expect(video).not.toBeNull();
+        if (video === null) {
+            return;
+        }
+        installFakeMedia(video);
+        await fireEvent.loadedMetadata(video);
+
+        const volume = screen.getByRole('slider', { name: 'Volume' });
+        await fireEvent.input(volume, { target: { value: '0.8' } });
+        expect(video.volume).toBeCloseTo(0.4);
     });
 
     it('disables seeking until metadata is available', async () => {

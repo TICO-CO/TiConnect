@@ -908,6 +908,21 @@ impl DaemonService {
         Ok(())
     }
 
+    async fn set_call_volume(&self, call_id: &str, volume: u32) -> Result<(), ServiceError> {
+        let max = ticonnect_settings::AUDIO_VOLUME_MAX_PERCENT;
+        if volume > max {
+            return Err(ServiceError::Failed(format!(
+                "call volume must be at most {max}"
+            )));
+        }
+        let call_id = parse_call_id(call_id)?;
+        self.state
+            .calls()
+            .set_user_volume(call_id, volume)
+            .map_err(call_error)?;
+        Ok(())
+    }
+
     async fn list_call_logs(
         &self,
         user_id: &str,
@@ -956,6 +971,14 @@ impl DaemonService {
             (
                 ipc::CALL_PACKETS_LOST.to_owned(),
                 OwnedVariant::from(metrics.packets_lost),
+            ),
+            (
+                ipc::CALL_PACKETS_CONCEALED.to_owned(),
+                OwnedVariant::from(metrics.packets_concealed),
+            ),
+            (
+                ipc::CALL_PLAYBACK_UNDERRUNS.to_owned(),
+                OwnedVariant::from(metrics.playback_underruns),
             ),
             (
                 ipc::CALL_BYTES_SENT.to_owned(),
@@ -2219,8 +2242,28 @@ mod tests {
 
         let settings = service.list_settings().await.expect("settings");
         assert!(settings.contains_key("dnd.enabled"));
+        assert!(settings.contains_key("notifications.message_sounds"));
+        assert!(settings.contains_key("notifications.call_sounds"));
         assert!(
             !bool::try_from(service.get_setting("dnd.enabled").await.expect("dnd")).expect("bool")
+        );
+        assert!(
+            bool::try_from(
+                service
+                    .get_setting("notifications.message_sounds")
+                    .await
+                    .expect("sounds")
+            )
+            .expect("bool")
+        );
+        assert!(
+            bool::try_from(
+                service
+                    .get_setting("notifications.call_sounds")
+                    .await
+                    .expect("call sounds")
+            )
+            .expect("bool")
         );
     }
 

@@ -30,6 +30,7 @@ function makeApp(overrides: Record<string, unknown> = {}): AppState {
     return {
         transferFor: () => null,
         attachmentUrl: async () => 'blob:voice',
+        messageOutputVolume: () => 1,
         ...overrides,
     } as unknown as AppState;
 }
@@ -80,6 +81,18 @@ describe('VoiceMessage', () => {
         expect(voiceBars(container)).toHaveLength(30);
         expect(screen.queryByText('voice.webm')).toBeNull();
         expect(container.querySelector('audio')?.getAttribute('src')).toBe('blob:voice');
+    });
+
+    it('applies the resolved user output volume', async () => {
+        stubDecodableAudio();
+        const { container } = render(VoiceMessage, {
+            app: makeApp({ messageOutputVolume: () => 0.4 }),
+            message: MESSAGE,
+        });
+
+        await waitFor(() => expect(container.querySelector('audio')).not.toBeNull());
+        const audio = container.querySelector<HTMLAudioElement>('audio');
+        expect(audio?.volume).toBeCloseTo(0.4);
     });
 
     it('plays, pauses, and seeks with the cursor', async () => {

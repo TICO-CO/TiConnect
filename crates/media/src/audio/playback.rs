@@ -13,16 +13,23 @@ pub trait PlaybackSink: Send {
     fn depth(&self) -> usize;
 }
 
+const INITIAL_SCRATCH_FRAMES: usize = 16_384;
+
 pub struct PlaybackHandle {
     stop: Arc<AtomicBool>,
     stream: cpal::Stream,
     buffer: SharedBuffer,
+    name: String,
     sample_rate: u32,
     channels: u16,
     sample_format: SampleFormat,
 }
 
 impl PlaybackHandle {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
@@ -45,6 +52,10 @@ impl PlaybackHandle {
 
     pub fn depth(&self) -> usize {
         self.buffer.depth()
+    }
+
+    pub fn underruns(&self) -> u64 {
+        self.buffer.underruns()
     }
 
     pub fn stop(&self) {
@@ -78,6 +89,10 @@ pub fn start_playback(device_name: Option<&str>) -> Result<PlaybackHandle, Playb
             .ok_or(DeviceError::Missing)?,
         None => host.default_output_device().ok_or(DeviceError::Missing)?,
     };
+    let name = device.description().map_or_else(
+        |_| "unknown output".to_owned(),
+        |description| description.name().to_owned(),
+    );
     let supported = device.default_output_config().map_err(cpal_error)?;
     let sample_rate = supported.sample_rate();
     let channels = supported.channels();
@@ -96,6 +111,7 @@ pub fn start_playback(device_name: Option<&str>) -> Result<PlaybackHandle, Playb
         stop,
         stream,
         buffer,
+        name,
         sample_rate,
         channels,
         sample_format,
@@ -112,9 +128,13 @@ fn build_stream(
     match sample_format {
         SampleFormat::F32 => build_typed::<f32>(device, config, channels, buffer),
         SampleFormat::F64 => build_typed::<f64>(device, config, channels, buffer),
+        SampleFormat::I8 => build_typed::<i8>(device, config, channels, buffer),
         SampleFormat::I16 => build_typed::<i16>(device, config, channels, buffer),
+        SampleFormat::I24 => build_typed::<cpal::I24>(device, config, channels, buffer),
         SampleFormat::I32 => build_typed::<i32>(device, config, channels, buffer),
+        SampleFormat::U8 => build_typed::<u8>(device, config, channels, buffer),
         SampleFormat::U16 => build_typed::<u16>(device, config, channels, buffer),
+        SampleFormat::U24 => build_typed::<cpal::U24>(device, config, channels, buffer),
         SampleFormat::U32 => build_typed::<u32>(device, config, channels, buffer),
         other => Err(PlaybackError::UnsupportedSampleFormat(other.to_string())),
     }
@@ -131,27 +151,54 @@ where
     T: FromSample<f32>,
 {
     let channel_count = usize::from(channels).max(1);
+    let mut scratch = vec![0.0_f32; INITIAL_SCRATCH_FRAMES];
+    let mut last = 0.0_f32;
     device
         .build_output_stream(
             config,
-            move |data: &mut [T], _| fill_output(data, channel_count, &buffer),
+            move |data: &mut [T], _| {
+                fill_output(data, channel_count, &buffer, &mut scratch, &mut last);
+            },
             |error| tracing::warn!(%error, "audio playback stream error"),
             None,
         )
         .map_err(cpal_error)
 }
 
-fn fill_output<T>(data: &mut [T], channels: usize, buffer: &SharedBuffer)
-where
+fn fill_output<T>(
+    data: &mut [T],
+    channels: usize,
+    buffer: &SharedBuffer,
+    scratch: &mut Vec<f32>,
+    last: &mut f32,
+) where
     T: Sample + Copy + FromSample<f32>,
 {
     let frames = data.len() / channels;
-    let samples = buffer.drain(frames);
+    if scratch.len() < frames {
+        scratch.resize(frames, 0.0);
+    }
+    let filled = buffer.drain_into(&mut scratch[..frames]);
+    if filled > 0 {
+        *last = scratch[filled - 1];
+    }
+    let missing = frames - filled;
     for (index, frame) in data.chunks_mut(channels).enumerate() {
-        let value = T::from_sample(samples.get(index).copied().unwrap_or(0.0));
+        let value = if index < filled {
+            scratch[index]
+        } else if missing == 0 {
+            0.0
+        } else {
+            let remaining = frames - index;
+            *last * (remaining.saturating_sub(1) as f32 / missing as f32)
+        };
+        let value = T::from_sample(value);
         for sample in frame {
             *sample = value;
         }
+    }
+    if missing > 0 {
+        *last = 0.0;
     }
 }
 
@@ -179,16 +226,33 @@ mod tests {
     fn expands_mono_samples_to_every_output_channel() {
         let buffer = SharedBuffer::new();
         buffer.push(&[0.25, -0.5]);
+        let mut scratch = vec![0.0; 8];
+        let mut last = 0.0;
         let mut data = [0.0_f32; 4];
-        fill_output(&mut data, 2, &buffer);
+        fill_output(&mut data, 2, &buffer, &mut scratch, &mut last);
         assert_eq!(data, [0.25, 0.25, -0.5, -0.5]);
+        assert_eq!(buffer.underruns(), 0);
     }
 
     #[test]
-    fn missing_samples_are_silent() {
+    fn missing_samples_fade_and_count_underruns() {
         let buffer = SharedBuffer::new();
+        buffer.push(&[0.5]);
+        let mut scratch = vec![0.0; 8];
+        let mut last = 0.0;
+        let mut data = [1.0_f32; 6];
+        fill_output(&mut data, 2, &buffer, &mut scratch, &mut last);
+        assert_eq!(data, [0.5, 0.5, 0.25, 0.25, 0.0, 0.0]);
+        assert_eq!(buffer.underruns(), 1);
+    }
+
+    #[test]
+    fn missing_samples_are_silent_when_last_is_zero() {
+        let buffer = SharedBuffer::new();
+        let mut scratch = vec![0.0; 8];
+        let mut last = 0.0;
         let mut data = [1.0_f32; 4];
-        fill_output(&mut data, 2, &buffer);
+        fill_output(&mut data, 2, &buffer, &mut scratch, &mut last);
         assert_eq!(data, [0.0, 0.0, 0.0, 0.0]);
     }
 }

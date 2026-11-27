@@ -1,5 +1,5 @@
 export type SettingsSection =
-    'user' | 'notifications' | 'calls' | 'remote' | 'media' | 'storage' | 'about';
+    'user' | 'notifications' | 'calls' | 'audio' | 'remote' | 'media' | 'storage' | 'about';
 
 export type Route =
     | { kind: 'chat'; id: string }
@@ -16,6 +16,7 @@ export const SETTINGS_SECTIONS: ReadonlyArray<{
     { id: 'user', label: 'User' },
     { id: 'notifications', label: 'Notifications' },
     { id: 'calls', label: 'Calls' },
+    { id: 'audio', label: 'Audio' },
     { id: 'remote', label: 'Remote desktop' },
     { id: 'media', label: 'Media' },
     { id: 'storage', label: 'Storage' },

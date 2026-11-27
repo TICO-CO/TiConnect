@@ -15,12 +15,17 @@ pub trait CaptureSource: Send {
 pub struct CaptureHandle {
     stop: Arc<AtomicBool>,
     stream: cpal::Stream,
+    name: String,
     sample_rate: u32,
     channels: u16,
     sample_format: SampleFormat,
 }
 
 impl CaptureHandle {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
@@ -75,6 +80,16 @@ pub fn start_capture(
             .ok_or(DeviceError::Missing)?,
         None => host.default_input_device().ok_or(DeviceError::Missing)?,
     };
+    let name = device.description().map_or_else(
+        |_| "unknown input".to_owned(),
+        |description| description.name().to_owned(),
+    );
+    if name.to_ascii_lowercase().contains("monitor") {
+        tracing::warn!(
+            device = %name,
+            "call capture is using an output monitor instead of a microphone"
+        );
+    }
     let supported = device.default_input_config().map_err(cpal_error)?;
     let sample_rate = supported.sample_rate();
     let channels = supported.channels();
@@ -91,6 +106,7 @@ pub fn start_capture(
     Ok(CaptureHandle {
         stop,
         stream,
+        name,
         sample_rate,
         channels,
         sample_format,
@@ -107,9 +123,13 @@ fn build_stream(
     match sample_format {
         SampleFormat::F32 => build_typed::<f32>(device, config, channels, callback),
         SampleFormat::F64 => build_typed::<f64>(device, config, channels, callback),
+        SampleFormat::I8 => build_typed::<i8>(device, config, channels, callback),
         SampleFormat::I16 => build_typed::<i16>(device, config, channels, callback),
+        SampleFormat::I24 => build_typed::<cpal::I24>(device, config, channels, callback),
         SampleFormat::I32 => build_typed::<i32>(device, config, channels, callback),
+        SampleFormat::U8 => build_typed::<u8>(device, config, channels, callback),
         SampleFormat::U16 => build_typed::<u16>(device, config, channels, callback),
+        SampleFormat::U24 => build_typed::<cpal::U24>(device, config, channels, callback),
         SampleFormat::U32 => build_typed::<u32>(device, config, channels, callback),
         other => Err(CaptureError::UnsupportedSampleFormat(other.to_string())),
     }

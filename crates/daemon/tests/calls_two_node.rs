@@ -3,7 +3,7 @@ mod support;
 use std::time::Duration;
 
 use support::{TestNode, connect_pair, wait_true};
-use ticonnect_core::call::CallState;
+use ticonnect_core::call::{CallSignalFrame, CallState};
 use ticonnect_daemon::calls::{CallError, CallEvent};
 
 #[tokio::test]
@@ -112,6 +112,94 @@ async fn place_answer_and_hangup_call_between_two_nodes() {
         .await
         .expect("clear call logs");
     assert_eq!(cleared, 1);
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
+async fn accept_that_overtakes_ringing_still_connects_both_sides() {
+    let first = TestNode::start("call-reorder-first").await;
+    let second = TestNode::start("call-reorder-second").await;
+    connect_pair(&first, &second).await;
+
+    let call = first
+        .calls
+        .start_call(&second.node_id().to_string())
+        .await
+        .expect("start call");
+    let callee = first
+        .transport
+        .session_by_node_id(second.node_id())
+        .expect("callee session")
+        .user()
+        .clone();
+
+    first
+        .calls
+        .handle_signal(callee.clone(), CallSignalFrame::Accept(call.id))
+        .await
+        .expect("early accept");
+    first
+        .calls
+        .handle_signal(callee, CallSignalFrame::Ringing(call.id))
+        .await
+        .expect("late ringing");
+
+    let caller = first.calls.state().expect("caller state");
+    assert_eq!(caller.state, CallState::InCall);
+    assert!(caller.connected_at.is_some());
+    assert!(!matches!(
+        first.calls.state(),
+        Some(info) if info.state == CallState::Ended
+    ));
+
+    first.shutdown().await;
+    second.shutdown().await;
+}
+
+#[tokio::test]
+async fn immediate_accept_after_incoming_stays_in_call() {
+    let first = TestNode::start("call-fast-first").await;
+    let second = TestNode::start("call-fast-second").await;
+    connect_pair(&first, &second).await;
+    let mut second_events = second.calls.subscribe();
+
+    let call = first
+        .calls
+        .start_call(&second.node_id().to_string())
+        .await
+        .expect("start call");
+    recv_event(&mut second_events, |event| match event {
+        CallEvent::IncomingCall(info) if info.id == call.id => Some(()),
+        _ => None,
+    })
+    .await
+    .expect("incoming call");
+
+    second.calls.accept_call(call.id).await.expect("accept");
+    wait_true(Duration::from_secs(5), || async {
+        first
+            .calls
+            .state()
+            .is_some_and(|info| info.state == CallState::InCall)
+            && second
+                .calls
+                .state()
+                .is_some_and(|info| info.state == CallState::InCall)
+    })
+    .await
+    .expect("both sides in call");
+
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    assert_eq!(
+        first.calls.state().expect("caller state").state,
+        CallState::InCall
+    );
+    assert_eq!(
+        second.calls.state().expect("callee state").state,
+        CallState::InCall
+    );
 
     first.shutdown().await;
     second.shutdown().await;

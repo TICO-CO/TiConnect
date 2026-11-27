@@ -21,7 +21,9 @@ tests/local/run.sh hyprland all
 - `hyprland`: current Hyprland session; validates layer-shell overlay, portal
   services, and the Wayland session paths.
 
-Scenarios: `messaging`, `attachments`, `ui`, `call`, `remote`, `all`.
+Scenarios: `messaging`, `attachments`, `ui`, `call`, `call-ui`, `remote`, `all`.
+Set `TICONNECT_TEST_AUDIO=null` for headless or CI runs. The `call-ui` scenario
+requires Bun and drives both main-window bridges through a full call.
 
 ## Interactive two-node lab
 
@@ -77,6 +79,10 @@ For real call audio, use headphones and run `call-audio hardware` in both lab
 panes, or start the lab with `LAB_CALL_AUDIO=hardware make lab`. Use
 `call-audio silent` to return to null devices.
 
+On Nix, the lab exports the Nix ALSA plugin directory so daemon sounds such as
+message chimes, ringtones, and dial tones work with the host PipeWire/Pulse
+server. Call voice audio still follows the `LAB_CALL_AUDIO` setting above.
+
 Group watch parties need at least three nodes. The daemon integration test
 starts three nodes itself:
 
@@ -94,8 +100,11 @@ nix develop -c gst-inspect-1.0 appsink
 nix develop -c gst-inspect-1.0 pulsesrc
 ```
 
-Set `LAB_KEEP=1 make lab` to keep the work directory and logs after the lab
-stops. Run the automated harness check with:
+Private D-Bus failures print the relevant `dbus-bus-*.log`; the harness resolves
+the session config next to the `dbus-daemon` binary before falling back to
+`--session`, which matters in Nix environments. Set `LAB_KEEP=1 make lab` to keep
+the work directory and logs after the lab stops. Run the automated harness check
+with:
 
 ```sh
 make lab-smoke
@@ -129,8 +138,9 @@ TICONNECT_BIN="$PWD/result/bin/ticonnect" make lab-smoke
 ## Cross-host dev install
 
 For two real machines, run `make install-dev` on each peer and launch
-`ticonnect-dev` there. Each install has its own config, data, state, and private
-IPC bus, so it can run beside a normal installation. The dev transport port
+**TiConnect Dev** from the app menu or run `ticonnect-dev` there. Each install
+has its own config, data, state, and private IPC bus, so it can run beside a
+normal installation. The dev transport port
 defaults to UDP `45881`; allow UDP `5353` and `45870` for discovery plus `45881`
 for transport between peers. Stop the normal app on both peers for a clean
 two-node test.
@@ -142,7 +152,8 @@ two-node test.
 - text round trip
 - attachment transfer and content storage on disk
 - UI and overlay process under X11 and Wayland
-- call signaling and two-way Opus frame counters through real PipeWire devices
+- call signaling and two-way Opus frame counters through real or virtual devices
+- main-window bridge call accept in both directions
 - remote consent, active state, indicator, kill switch
 - build and run with real `gtk4-layer-shell`
 

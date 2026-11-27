@@ -151,6 +151,52 @@ fn makefile_installs_the_app_menu_surface() {
 }
 
 #[test]
+fn dev_desktop_asset_launches_the_dev_wrapper() {
+    let desktop = read("packaging/dev/org.ticonnect.TiConnect.Dev.desktop");
+    assert!(desktop.contains("Name=TiConnect Dev\n"));
+    assert!(desktop.contains("Exec=ticonnect-dev\n"));
+    assert!(desktop.contains("TryExec=ticonnect-dev\n"));
+    assert!(desktop.contains("Icon=org.ticonnect.TiConnect.Dev\n"));
+    assert!(desktop.contains("StartupWMClass=org.ticonnect.UI.Dev"));
+    assert!(!desktop.contains("NoDisplay=true"));
+}
+
+#[test]
+fn dev_wrapper_marks_the_build_and_sets_its_title() {
+    let wrapper = read("packaging/dev/ticonnect-dev");
+    assert!(wrapper.contains("export TICONNECT_DEV_BUILD=1"));
+    assert!(wrapper.contains("TICONNECT_UI_TITLE"));
+    assert!(wrapper.contains("TiConnect Dev"));
+    assert!(wrapper.contains("NIX_LD_LIBRARY_PATH"));
+}
+
+#[test]
+fn makefile_installs_and_removes_the_dev_menu_surface() {
+    let makefile = read("Makefile");
+    let install_dev = makefile
+        .split("install-dev:")
+        .nth(1)
+        .and_then(|rest| rest.split("\nuninstall-dev:").next())
+        .expect("install-dev target");
+    for path in [
+        "packaging/dev/org.ticonnect.TiConnect.Dev.desktop",
+        "packaging/flatpak/org.ticonnect.TiConnect.svg",
+        "$(DEV_DESKTOP)",
+        "$(DEV_ICON)",
+    ] {
+        assert!(install_dev.contains(path), "missing {path}");
+    }
+
+    let uninstall_dev = makefile
+        .split("uninstall-dev:")
+        .nth(1)
+        .and_then(|rest| rest.split("\nrelease-bin:").next())
+        .expect("uninstall-dev target");
+    assert!(uninstall_dev.contains("$(DEV_DESKTOP)"));
+    assert!(uninstall_dev.contains("$(DEV_ICON)"));
+}
+
+#[test]
 fn appimage_installs_metainfo_and_desktop_asset() {
     let script = read("scripts/package-appimage.sh");
     assert!(script.contains("usr/share/metainfo"));

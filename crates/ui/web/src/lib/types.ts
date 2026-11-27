@@ -45,6 +45,7 @@ export interface Bootstrap {
     appearance: string;
     autostart: boolean;
     version: string;
+    dev_build: boolean;
     online: boolean;
 }
 
@@ -158,6 +159,8 @@ export interface CallMetrics {
     frames_sent: number;
     frames_received: number;
     packets_lost: number;
+    packets_concealed: number;
+    playback_underruns: number;
     bytes_sent: number;
     output_level: number;
 }

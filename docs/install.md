@@ -6,8 +6,8 @@ Download `ticonnect-<tag>-x86_64.AppImage` from the latest release and install
 the per-user app integration:
 
 ```sh
-chmod +x ticonnect-v0.1.0-x86_64.AppImage
-./ticonnect-v0.1.0-x86_64.AppImage --install-user
+chmod +x ticonnect-v0.1.1-x86_64.AppImage
+./ticonnect-v0.1.1-x86_64.AppImage --install-user
 # launch TiConnect from the app menu
 ```
 
@@ -26,16 +26,16 @@ installer refuses to overwrite it unless you pass `--force`.
 Without FUSE, or on NixOS, use the extract-and-run flag:
 
 ```sh
-./ticonnect-v0.1.0-x86_64.AppImage --appimage-extract-and-run --install-user
+./ticonnect-v0.1.1-x86_64.AppImage --appimage-extract-and-run --install-user
 ```
 
-On NixOS, `appimage-run ./ticonnect-v0.1.0-x86_64.AppImage --install-user` also
+On NixOS, `appimage-run ./ticonnect-v0.1.1-x86_64.AppImage --install-user` also
 works.
 
 ## Arch / Manjaro
 
 ```sh
-TAG=v0.1.0
+TAG=v0.1.1
 PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
 curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
 sudo pacman -U "$PKG"
@@ -174,7 +174,7 @@ Flatpak is the recommended tester path. Download
 it:
 
 ```sh
-flatpak install --user ./org.ticonnect.TiConnect-v0.1.0.flatpak
+flatpak install --user ./org.ticonnect.TiConnect-v0.1.1.flatpak
 flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
@@ -187,7 +187,7 @@ access must still be provided by the host desktop. See
 Developers can build the bundle locally:
 
 ```sh
-scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.1.0 dist
+scripts/package-flatpak.sh org.ticonnect.TiConnect packaging/flatpak/org.ticonnect.TiConnect.yml v0.1.1 dist
 ```
 
 ## From source

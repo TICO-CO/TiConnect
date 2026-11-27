@@ -54,7 +54,8 @@ are enough to demo calls.
 - [x] Incoming call has a configurable timeout (default 30 s).
 - [x] Reject calls from untrusted users before any media setup.
 - [x] Reject calls from `ignore` users; `mute` still reports the call.
-- [x] Incoming calls are reported without an audio ringtone.
+- [x] Daemon loops the ringtone for incoming calls and the dial tone for
+  outgoing calls, honoring DND and `notifications.call_sounds`.
 - [x] Emit state changes as D-Bus signals.
 - [x] Clean up audio devices on every terminal transition.
 

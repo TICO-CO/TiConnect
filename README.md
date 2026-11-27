@@ -55,14 +55,18 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo audit
 cargo xtask systems --check
-make lan-test
+make verify
+make verify-full
 ```
 
-`tests/local/run.sh` runs local X11, Weston Wayland, KWin Wayland, and Hyprland
-integration tests. See `docs/local-testing.md`. `make lan-test` runs the
-two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
-(`control`, `discovery`, `trust`, `transport`, `messaging`, `offline-sync`,
-`security`) to run a subset. The GTK4 UI and overlay need development headers:
+`make verify` is the release gate: Rust checks, web checks, generated asset
+freshness, the full local integration suite, and the two-node lab smoke.
+`make verify-full` adds the Docker LAN suite. `tests/local/run.sh` runs local
+X11, Weston Wayland, KWin Wayland, and Hyprland integration tests. See
+`docs/local-testing.md`. `make lan-test` runs the two-container LAN e2e suite;
+Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of
+scenario names (`control`, `discovery`, `trust`, `transport`, `messaging`,
+`calls`, `offline-sync`, `security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
 sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols cmake
@@ -82,29 +86,36 @@ sudo ldconfig
 Architecture docs are generated. After editing `docs/systems/graph/` or
 `docs/systems/state-machines.toml`, run `cargo xtask systems`.
 
+For a release build and user installation, see [From source](#from-source).
+
 ## Install
+
+Release artifacts are attached to
+[GitHub Releases](https://github.com/TICO-CO/TiConnect/releases). Set the tag
+for the release you want, then use the matching section:
+
+```sh
+TAG=v0.1.1
+```
 
 ### AppImage
 
-Download `ticonnect-<tag>-x86_64.AppImage`, then install the per-user app
-integration:
-
 ```sh
-chmod +x ticonnect-v0.1.0-x86_64.AppImage
-./ticonnect-v0.1.0-x86_64.AppImage --install-user
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/ticonnect-${TAG}-x86_64.AppImage"
+chmod +x "ticonnect-${TAG}-x86_64.AppImage"
+"./ticonnect-${TAG}-x86_64.AppImage" --install-user
 ```
 
-Launch TiConnect from the app menu. `--uninstall-user` removes the app
-integration and keeps your configuration, identity, database, attachments, and
-logs. Use `--uninstall-user --purge` to remove those too.
+Launch TiConnect from the app menu. Without FUSE, or on NixOS, add
+`--appimage-extract-and-run` before `--install-user`. `--uninstall-user` removes
+the app integration and keeps your configuration, identity, database,
+attachments, and logs. Use `--uninstall-user --purge` to remove those too.
 
 ### Flatpak
 
-Install the tester bundle from the latest release, then run the preflight check
-and launch the app:
-
 ```sh
-flatpak install --user ./org.ticonnect.TiConnect-<tag>.flatpak
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/org.ticonnect.TiConnect-${TAG}.flatpak"
+flatpak install --user "./org.ticonnect.TiConnect-${TAG}.flatpak"
 flatpak run org.ticonnect.TiConnect doctor
 flatpak run org.ticonnect.TiConnect
 ```
@@ -113,8 +124,14 @@ See `docs/tester-quickstart.md` for the two-machine test checklist.
 
 ### Arch
 
-Install the package from the latest release with `pacman -U`. The package adds
-the app-menu entry, icon, systemd user units, and autostart entries.
+```sh
+PKG="ticonnect-${TAG#v}-1-x86_64.pkg.tar.zst"
+curl -LO "https://github.com/TICO-CO/TiConnect/releases/download/$TAG/$PKG"
+sudo pacman -U "$PKG"
+```
+
+The package adds the app-menu entry, icon, systemd user units, and autostart
+entries. Uninstall with `sudo pacman -Rns ticonnect`.
 
 ### Nix
 
@@ -122,7 +139,31 @@ the app-menu entry, icon, systemd user units, and autostart entries.
 nix profile install github:TICO-CO/TiConnect#ticonnect
 ```
 
-The NixOS module is available at `inputs.ticonnect.nixosModules.default`.
+The NixOS module is available at `inputs.ticonnect.nixosModules.default`. Set
+`services.ticonnect.enable = true` in the module that imports it.
+
+### From source
+
+Build and install the release binary as a user. Nix provides the recommended
+development environment:
+
+```sh
+git clone https://github.com/TICO-CO/TiConnect.git
+cd TiConnect
+nix develop
+cargo build --release --bin ticonnect
+make install-user
+```
+
+Outside Nix, install the dependencies listed in
+[`docs/install.md#from-source`](docs/install.md#from-source); `gtk4-layer-shell`
+is required for the overlay. `make install-user` installs `ticonnect` to
+`~/.local/bin` plus the app-menu entry, icon, metainfo, systemd user units, and
+autostart entries. It does not start or enable services. Ensure `~/.local/bin`
+is on your `PATH`.
+
+For an isolated development install that can run beside the release app, see
+[Dev install](#dev-install).
 
 ## Use
 
@@ -185,26 +226,43 @@ starts the daemon when it is absent.
 
 ### Dev install
 
-`make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`.
-The payload, config, data, state, and private D-Bus live under `*-dev` paths, so
-the dev install can run beside a normal installation without replacing
-`ticonnect`, desktop entries, systemd units, or autostart files. The dev
-transport port defaults to `45881`.
+Enter the Nix development shell, then install and run the isolated dev build:
 
 ```sh
+nix develop
 make install-dev
 ticonnect-dev
+```
+
+`make install-dev` installs the release binary as `~/.local/bin/ticonnect-dev`
+and adds a separate **TiConnect Dev** launcher and icon. Launch it from the app
+menu or run `ticonnect-dev`. The payload, config, data, state, and private D-Bus
+live under `*-dev` paths, so the dev install can run beside a normal
+installation without replacing `ticonnect`, its desktop entry, systemd units,
+or autostart files. The dev transport port defaults to `45881`.
+
+To reuse an existing debug binary instead of rebuilding release:
+
+```sh
+TICONNECT_BIN=target/debug/ticonnect make install-dev
+```
+
+Remove the dev install with:
+
+```sh
 make uninstall-dev
 DEV_PURGE=1 make uninstall-dev
 ```
 
-Paths are overridable with `DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`,
-`DEV_DATA_DIR`, `DEV_STATE_DIR`, `DEV_RUNTIME_DIR`, and `DEV_TRANSPORT_PORT`.
+For a two-node development environment, use `make lab`; see
+[`docs/local-testing.md`](docs/local-testing.md). Paths are overridable with
+`DEV_ROOT`, `DEV_WRAPPER`, `DEV_CONFIG_DIR`, `DEV_DATA_DIR`, `DEV_STATE_DIR`,
+`DEV_RUNTIME_DIR`, `DEV_TRANSPORT_PORT`, `DEV_DESKTOP`, and `DEV_ICON`.
 
 ## Release
 
 Every push to `main` compiles and tests the workspace. Merging a `v*` branch
-(for example `v0.1.0`) into `main` creates the matching tag automatically, then
+(for example `v0.1.1`) into `main` creates the matching tag automatically, then
 builds and publishes `ticonnect-<tag>-x86_64.AppImage`, the Flatpak bundle, the
 Arch package, and `SHA256SUMS.txt`. The tag must match the `version` in
 `Cargo.toml`. The binary tarball is an internal Arch build input and is not
@@ -212,15 +270,15 @@ published. See `docs/install.md` for Flatpak, AppImage, `pacman -U`, and Nix
 instructions.
 
 ```sh
-git switch -c v0.1.0
+git switch -c v0.1.1
 # bump Cargo.toml version, commit, push, open PR, merge into main
 ```
 
 Pushing a tag manually still works:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 ## UI
@@ -233,11 +291,12 @@ in `crates/ui/web`; the committed Vite build in `crates/ui/assets` is embedded i
 the binary.
 
 The UI owns `org.ticonnect.UI` on the TiConnect IPC bus and exposes
-`Activate(s view)`. Views are `chat`, `users`, `settings`, `remote`, and
-`watch-party`; an empty value means `chat`. `Activate("chat:<node-id>")` opens
-one conversation; the tray and overlay use it for notification clicks. The tray
-uses `Activate("chat")`. Starting a second UI forwards activation to the running
-instance.
+`Activate(s view)` and `IsActive()`. Views are `chat`, `users`, `settings`,
+`remote`, and `watch-party`; an empty value means `chat`.
+`Activate("chat:<node-id>")` opens one conversation; the tray and overlay use it
+for notification clicks. The tray uses `Activate("chat")`. `IsActive()` reports
+whether the main window is focused. Starting a second UI forwards activation to
+the running instance.
 
 Frontend styling lives in `crates/ui/web`. Build the bundle with `make
 web-build`. Interactive `make lab` starts Vite automatically and hot-reloads
@@ -350,12 +409,16 @@ Settings keys:
 | `calls.output_device` | string | empty | Optional output device name |
 | `calls.mute_shortcut` | string | `Ctrl+M` | Microphone mute shortcut; empty disables |
 | `calls.output_mute_shortcut` | string | `Ctrl+Shift+M` | Output mute shortcut; empty disables |
+| `audio.input_volume` | integer | `100` | Microphone gain percentage; valid range `0..=100` |
+| `audio.output_volume` | integer | `100` | Master playback gain for calls, messages, media, and sounds; valid range `0..=100` |
 | `remote.session_timeout_secs` | integer | `0` | 0 disables automatic timeout |
 | `remote.request_timeout_secs` | integer | `300` | Consent request expiry; valid range `30..=3600` |
 | `video.bitrate_kbps` | integer | `2500` | Valid range `256..=20000` |
 | `video.fps` | integer | `30` | Valid range `5..=60` |
 | `video.keyframe_interval` | integer | `60` | Valid range `1..=600` |
 | `dnd.enabled` | bool | `false` | Global do-not-disturb |
+| `notifications.message_sounds` | bool | `true` | Chime for new messages when the UI is not focused |
+| `notifications.call_sounds` | bool | `true` | Ringtone for incoming calls and dial tone for outgoing calls |
 | `appearance.color_scheme` | string | `system` | UI appearance: `system`, `light`, or `dark` |
 
 ## Identity
@@ -441,7 +504,9 @@ Settings keys:
   storage, receipt creation, or notification. DND suppresses notifications but
   not storage.
 - The daemon plays the bundled `gotmail.mp3` chime for inbound notifiable
-  messages, so it rings with the UI closed. Mute, ignore, and DND silence it.
+  messages when the UI is closed or its window is not focused. Its volume
+  follows `audio.output_volume`. Mute, ignore, DND, and
+  `notifications.message_sounds = false` silence it.
 - The tray is optional. When StatusNotifierItem support is unavailable the
   daemon continues headless.
 
@@ -476,18 +541,26 @@ confirms before calling it.
 - Audio uses 48 kHz mono Opus with 20 ms frames over QUIC datagrams, a bounded
   jitter buffer, packet-loss concealment, and a playback ring. Microphones open
   only after call acceptance.
-- Incoming calls are shown in the UI and overlay without an audio ringtone.
-  DND suppresses notification sounds but still reports the call.
+- The daemon loops the incoming ringtone while a call is ringing and the
+  outgoing dial tone while an outgoing call is connecting or ringing. Their
+  volume follows `audio.output_volume`. DND and
+  `notifications.call_sounds = false` suppress both sounds but still report the
+  call.
 - Microphone and output mute are daemon-owned; the UI and overlay reflect the
   same state. Mute shortcuts are configurable with `calls.mute_shortcut` and
   `calls.output_mute_shortcut`.
 - Input and output devices are selected from devices discovered by the daemon.
   An unavailable configured device fails the call with an error instead of
   silently switching devices.
+- `audio.input_volume` applies microphone gain to calls and voice recordings;
+  `audio.output_volume` applies playback gain to calls, voice messages, the
+  watch-party player, message chimes, and call tones. Per-user levels scale this
+  output rather than overriding it.
 - Call history is stored in SQLite and survives restarts.
 - D-Bus: `StartCall`, `AcceptCall`, `DeclineCall`, `HangupCall`,
-  `SetCallMuted`, `GetCallState`, `ListCallLogs`, `ListAudioDevices`; signals
-  `IncomingCall`, `CallStateChanged`, `CallMuteChanged`, `CallEnded`.
+  `SetCallMuted`, `SetCallVolume`, `GetCallState`, `ListCallLogs`,
+  `ListAudioDevices`; signals `IncomingCall`, `CallStateChanged`,
+  `CallMuteChanged`, `CallEnded`.
 
 ## Remote desktop
 

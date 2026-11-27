@@ -1,5 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gtk4 as gtk;
@@ -26,6 +28,18 @@ fn window_title_from(label: Option<&str>) -> String {
         .to_owned()
 }
 
+fn application_id_from(dev_build: bool) -> &'static str {
+    if dev_build {
+        "org.ticonnect.UI.Dev"
+    } else {
+        "org.ticonnect.UI"
+    }
+}
+
+fn application_id() -> &'static str {
+    application_id_from(std::env::var_os("TICONNECT_DEV_BUILD").is_some())
+}
+
 fn audio_only_media_allowed(is_audio: bool, is_video: bool) -> bool {
     is_audio && !is_video
 }
@@ -39,6 +53,26 @@ fn youtube_frame(uri: &str) -> bool {
     ]
     .iter()
     .any(|prefix| uri.starts_with(prefix))
+}
+
+fn write_bridge_file(path: &std::path::Path, url: &str) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(url.as_bytes())?;
+    file.write_all(b"\n")
 }
 
 fn apply_appearance(appearance: Appearance) {
@@ -140,10 +174,11 @@ pub fn run() -> anyhow::Result<()> {
     ))?;
     timing::mark("bridge ready");
     let activation_receiver = activation_sender.subscribe();
-    runtime.spawn(activation::serve(activation_sender));
+    let ui_active = Arc::new(AtomicBool::new(false));
+    runtime.spawn(activation::serve(activation_sender, ui_active.clone()));
 
     let app = gtk::Application::builder()
-        .application_id("org.ticonnect.UI")
+        .application_id(application_id())
         .flags(gtk::gio::ApplicationFlags::NON_UNIQUE)
         .build();
     app.connect_startup(move |_| apply_appearance(appearance));
@@ -152,6 +187,11 @@ pub fn run() -> anyhow::Result<()> {
     let url = bridge::Bridge::dev_url()
         .map(|dev| format!("{dev}?bridge=127.0.0.1:{}", bridge.port))
         .unwrap_or_else(|| bridge.url());
+    if let Some(path) = std::env::var_os("TICONNECT_UI_BRIDGE_FILE")
+        && let Err(error) = write_bridge_file(std::path::Path::new(&path), &url)
+    {
+        eprintln!("failed to write UI bridge file: {error}");
+    }
     let origins = Origins::new(bridge.port);
     let window: Rc<RefCell<Option<gtk::ApplicationWindow>>> = Rc::new(RefCell::new(None));
 
@@ -159,6 +199,7 @@ pub fn run() -> anyhow::Result<()> {
         let window = Rc::clone(&window);
         let url = url.clone();
         let origins = origins.clone();
+        let ui_active = Arc::clone(&ui_active);
         app.connect_activate(move |app| {
             if let Some(window) = window.borrow().as_ref() {
                 window.present();
@@ -172,7 +213,12 @@ pub fn run() -> anyhow::Result<()> {
                 .default_height(720)
                 .build();
             *window.borrow_mut() = Some(application_window.clone());
+            let active = Arc::clone(&ui_active);
+            application_window.connect_is_active_notify(move |window| {
+                active.store(window.is_active(), Ordering::Relaxed);
+            });
             application_window.present();
+            ui_active.store(application_window.is_active(), Ordering::Relaxed);
             timing::mark("window presented");
             let url = url.clone();
             let origins = origins.clone();
@@ -228,7 +274,7 @@ fn glib_timeout_add(
 
 #[cfg(test)]
 mod tests {
-    use super::{audio_only_media_allowed, window_title_from, youtube_frame};
+    use super::{application_id_from, audio_only_media_allowed, window_title_from, youtube_frame};
 
     #[test]
     fn media_permissions_allow_only_audio_capture() {
@@ -255,5 +301,11 @@ mod tests {
             window_title_from(Some("TiConnect · Lab Node A")),
             "TiConnect · Lab Node A"
         );
+    }
+
+    #[test]
+    fn dev_build_uses_a_separate_application_id() {
+        assert_eq!(application_id_from(false), "org.ticonnect.UI");
+        assert_eq!(application_id_from(true), "org.ticonnect.UI.Dev");
     }
 }

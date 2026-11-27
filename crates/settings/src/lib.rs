@@ -11,4 +11,7 @@ mod tests;
 
 pub use error::{Error, Result};
 pub use settings::Settings;
-pub use settings::schema::{Appearance, SETTING_KEYS, SettingValue};
+pub use settings::schema::{
+    AUDIO_VOLUME_MAX_PERCENT, AUDIO_VOLUME_MIN_PERCENT, Appearance, DEFAULT_AUDIO_VOLUME_PERCENT,
+    SETTING_KEYS, SettingValue,
+};

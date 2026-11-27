@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { AppState, WatchParty } from '../lib';
-    import { formatPlayerTime } from '../lib';
+    import { formatPlayerTime, MAX_VOLUME } from '../lib';
     import Icon from './Icon.svelte';
 
     interface Props {
@@ -30,9 +30,15 @@
     let requestToken = 0;
 
     const poster = $derived(`https://i.ytimg.com/vi/${party.video_id}/hqdefault.jpg`);
+    const outputGain = $derived(app.audioOutputVolume() / MAX_VOLUME);
     const showPoster = $derived(
         !loadFailed && (!started || !ready || (!playing && position === 0)),
     );
+
+    $effect(() => {
+        outputGain;
+        applyAudio();
+    });
 
     async function begin(auto = false): Promise<void> {
         if (loadFailed) {
@@ -114,7 +120,7 @@
             return;
         }
         video.muted = muted;
-        video.volume = volume;
+        video.volume = Math.min(1, Math.max(0, volume * outputGain));
     }
 
     function publish(nextPosition: number, nextPlaying: boolean): void {

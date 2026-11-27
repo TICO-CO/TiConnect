@@ -79,6 +79,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
     settings: {
         'identity.display_name': 'MIKA-PC',
         'dnd.enabled': 'false',
+        'notifications.call_sounds': 'true',
+        'notifications.message_sounds': 'true',
         'read_receipts.enabled': 'true',
         'typing.enabled': 'true',
         'overlay.enabled': 'true',
@@ -88,6 +90,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
         'calls.output_device': '',
         'calls.mute_shortcut': 'Ctrl+M',
         'calls.output_mute_shortcut': 'Ctrl+Shift+M',
+        'audio.input_volume': '72',
+        'audio.output_volume': '64',
         'remote.session_timeout_secs': '0',
         'remote.request_timeout_secs': '300',
         'video.bitrate_kbps': '2500',
@@ -103,7 +107,8 @@ export const DEMO_BOOTSTRAP: Bootstrap = {
     },
     appearance: 'dark',
     autostart: true,
-    version: '0.0.6',
+    version: '0.1.1',
+    dev_build: true,
     online: true,
 };
 
@@ -234,7 +239,7 @@ export const DEMO_DETAILS: UserDetails = {
     os: 'Linux · Ubuntu 24.04',
     desktop: 'GNOME 48',
     display_server: 'Wayland',
-    app_version: 'TiConnect 0.0.6',
+    app_version: 'TiConnect 0.1.1',
 };
 
 export const DEMO_PARTY: WatchParty = {
@@ -256,7 +261,7 @@ export const DEMO_CALL: Call = {
     id: 'call-demo',
     user_id: demoPeer.id,
     direction: 'outgoing',
-    state: 'in_call',
+    state: 'in-call',
     started_at: now - 252_000,
     connected_at: now - 248_000,
     input_muted: false,

@@ -17,8 +17,37 @@ esac
 
 export TICONNECT_CONFIG_DIR="${TICONNECT_CONFIG_DIR:-$config_dir}"
 export TICONNECT_DATA_DIR="${TICONNECT_DATA_DIR:-$data_dir}"
+export TICONNECT_DEV_BUILD=1
+export TICONNECT_UI_TITLE="${TICONNECT_UI_TITLE:-TiConnect Dev}"
+if [ -z "${LD_LIBRARY_PATH:-}" ] && [ -n "${NIX_LD_LIBRARY_PATH:-}" ]; then
+    export LD_LIBRARY_PATH="$NIX_LD_LIBRARY_PATH"
+fi
 export TICONNECT_LOG_FILE="${TICONNECT_LOG_FILE:-$state_dir/daemon.log}"
 export TICONNECT_TRANSPORT__PORT="${TICONNECT_TRANSPORT__PORT:-$transport_port}"
+
+if [ -z "${ALSA_PLUGIN_DIR:-}" ] && [ -z "${ALSA_CONFIG_PATH:-}" ]; then
+    alsa_plugin_dir="$(
+        ls -d /nix/store/*alsa-plugins*/lib/alsa-lib 2>/dev/null | head -n 1 || true
+    )"
+    if [ -n "$alsa_plugin_dir" ]; then
+        mkdir -p "$runtime_dir"
+        chmod 700 "$runtime_dir"
+        alsa_config="$runtime_dir/asound.conf"
+        (
+            umask 077
+            cat >"$alsa_config" <<'CONF'
+pcm.!default {
+    type pulse
+}
+ctl.!default {
+    type pulse
+}
+CONF
+        )
+        export ALSA_CONFIG_PATH="$alsa_config"
+        export ALSA_PLUGIN_DIR="$alsa_plugin_dir"
+    fi
+fi
 
 if [ -z "${TICONNECT_IPC_BUS_ADDRESS:-}" ]; then
     bus="$runtime_dir/bus"
@@ -30,9 +59,21 @@ if [ -z "${TICONNECT_IPC_BUS_ADDRESS:-}" ]; then
             echo "ticonnect-dev: dbus-daemon not found" >&2
             exit 1
         fi
+        dbus_bin="$(command -v dbus-daemon)"
+        config_file="${dbus_bin%/*}/../share/dbus-1/session.conf"
+        if [ ! -r "$config_file" ]; then
+            config_file=""
+        fi
+        run_dbus_daemon() {
+            if [ -n "$config_file" ]; then
+                dbus-daemon --config-file="$config_file" "$@"
+            else
+                dbus-daemon --session "$@"
+            fi
+        }
         pid_tmp="$runtime_dir/bus.pid.$$"
         rm -f "$pid_tmp"
-        if (umask 077; dbus-daemon --session --fork --nopidfile --nosyslog \
+        if (umask 077; run_dbus_daemon --fork --nopidfile --nosyslog \
             --address="unix:path=$bus" --print-pid=3 3>"$pid_tmp") \
             >/dev/null 2>&1; then
             if [ -s "$pid_tmp" ]; then

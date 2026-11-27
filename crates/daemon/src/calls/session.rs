@@ -1,16 +1,25 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use super::CallMetricsHandle;
 
 use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId};
 use ticonnect_media::audio::{
-    CaptureHandle, OPUS_SAMPLE_RATE, PlaybackHandle, Resampler, start_capture, start_playback,
+    AUDIO_VOLUME_MAX_PERCENT, CaptureHandle, OPUS_SAMPLE_RATE, PlaybackHandle, Resampler,
+    apply_gain, percent_gain, start_capture, start_playback,
 };
-use ticonnect_media::opus_codec::{OpusDecoder, OpusEncoder};
+use ticonnect_media::opus_codec::OpusEncoder;
 use ticonnect_net::transport::Session;
 use tokio::task::JoinHandle;
+
+#[derive(Debug, Clone, Copy)]
+pub struct MediaSessionSettings {
+    pub input_muted: bool,
+    pub output_muted: bool,
+    pub input_volume: u32,
+    pub output_volume: u32,
+}
 
 pub struct MediaSession {
     call_id: CallId,
@@ -19,6 +28,9 @@ pub struct MediaSession {
     output_resampler: Resampler,
     input_muted: Arc<AtomicBool>,
     output_muted: Arc<AtomicBool>,
+    input_volume: Arc<AtomicU32>,
+    output_volume: Arc<AtomicU32>,
+    user_volume: Arc<AtomicU32>,
     encoder_task: JoinHandle<()>,
 }
 
@@ -28,20 +40,29 @@ impl MediaSession {
         session: Session,
         input_device: Option<&str>,
         output_device: Option<&str>,
-        input_muted: bool,
-        output_muted: bool,
+        settings: MediaSessionSettings,
         metrics: Arc<CallMetricsHandle>,
     ) -> Result<Self, MediaError> {
-        let playback = start_playback(output_device)?;
-        let output_rate = playback.sample_rate();
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        let capture = start_capture(input_device, move |samples| {
+        let input_volume_flag = Arc::new(AtomicU32::new(settings.input_volume));
+        let capture_volume = input_volume_flag.clone();
+        let capture = start_capture(input_device, move |mut samples| {
+            apply_gain(
+                &mut samples,
+                percent_gain(capture_volume.load(Ordering::Relaxed)),
+            );
             let _ = sender.send(samples);
         })?;
-        capture.set_muted(input_muted);
+        capture.set_muted(settings.input_muted);
         let input_rate = capture.sample_rate();
-        let input_muted_flag = Arc::new(AtomicBool::new(input_muted));
-        let output_muted_flag = Arc::new(AtomicBool::new(output_muted));
+        let playback = start_playback(output_device)?;
+        let output_rate = playback.sample_rate();
+        let input_resampler = Resampler::new(input_rate, OPUS_SAMPLE_RATE)?;
+        let output_resampler = Resampler::new(OPUS_SAMPLE_RATE, output_rate)?;
+        let input_muted_flag = Arc::new(AtomicBool::new(settings.input_muted));
+        let output_muted_flag = Arc::new(AtomicBool::new(settings.output_muted));
+        let output_volume_flag = Arc::new(AtomicU32::new(settings.output_volume));
+        let user_volume_flag = Arc::new(AtomicU32::new(AUDIO_VOLUME_MAX_PERCENT));
         let encoder_muted = input_muted_flag.clone();
         let encoder_task = tokio::spawn(async move {
             let mut encoder = match OpusEncoder::default_voip() {
@@ -51,14 +72,20 @@ impl MediaSession {
                     return;
                 }
             };
-            let mut resampler = Resampler::new(input_rate, OPUS_SAMPLE_RATE);
+            let mut resampler = input_resampler;
             let mut sequence = 0_u32;
             let mut timestamp = 0_u32;
             while let Some(samples) = receiver.recv().await {
                 if encoder_muted.load(Ordering::Relaxed) {
                     continue;
                 }
-                let samples = resampler.process(&samples);
+                let samples = match resampler.process(&samples) {
+                    Ok(samples) => samples,
+                    Err(error) => {
+                        tracing::debug!(%error, "audio resample failed");
+                        continue;
+                    }
+                };
                 let frames = match encoder.push_samples(&samples) {
                     Ok(frames) => frames,
                     Err(error) => {
@@ -85,9 +112,11 @@ impl MediaSession {
         });
         tracing::info!(
             call_id = %call_id,
+            input_device = capture.name(),
             input_rate = input_rate,
             input_channels = capture.channels(),
             input_format = ?capture.sample_format(),
+            output_device = playback.name(),
             output_rate = output_rate,
             output_channels = playback.channels(),
             output_format = ?playback.sample_format(),
@@ -97,9 +126,12 @@ impl MediaSession {
             call_id,
             capture,
             playback,
-            output_resampler: Resampler::new(OPUS_SAMPLE_RATE, output_rate),
+            output_resampler,
             input_muted: input_muted_flag,
             output_muted: output_muted_flag,
+            input_volume: input_volume_flag,
+            output_volume: output_volume_flag,
+            user_volume: user_volume_flag,
             encoder_task,
         })
     }
@@ -116,24 +148,48 @@ impl MediaSession {
         }
     }
 
+    pub fn set_input_volume(&self, percent: u32) {
+        self.input_volume.store(percent, Ordering::Relaxed);
+    }
+
+    pub fn set_output_volume(&self, percent: u32) {
+        self.output_volume.store(percent, Ordering::Relaxed);
+    }
+
+    pub fn set_user_volume(&self, percent: u32) {
+        self.user_volume.store(percent, Ordering::Relaxed);
+    }
+
     pub fn call_id(&self) -> CallId {
         self.call_id
     }
 
-    pub fn push_audio(&mut self, samples: &[f32]) {
+    pub fn push_audio(&mut self, samples: &[f32]) -> Result<(), MediaError> {
         if self.output_muted.load(Ordering::Relaxed) {
-            return;
+            return Ok(());
         }
-        let samples = self.output_resampler.process(samples);
+        let mut samples = self.output_resampler.process(samples)?;
+        let gain = percent_gain(self.output_volume.load(Ordering::Relaxed))
+            * percent_gain(self.user_volume.load(Ordering::Relaxed));
+        apply_gain(&mut samples, gain);
         self.playback.push(&samples);
+        Ok(())
     }
 
     pub fn output_depth(&self) -> usize {
         self.playback.depth()
     }
 
+    pub fn output_underruns(&self) -> u64 {
+        self.playback.underruns()
+    }
+
     pub fn stop(&self) {
-        tracing::info!(call_id = %self.call_id, "call media session stopped");
+        tracing::info!(
+            call_id = %self.call_id,
+            playback_underruns = self.output_underruns(),
+            "call media session stopped"
+        );
         self.capture.stop();
         self.playback.stop();
         self.encoder_task.abort();
@@ -148,26 +204,6 @@ impl Drop for MediaSession {
     }
 }
 
-pub struct AudioReceiver {
-    decoder: OpusDecoder,
-}
-
-impl AudioReceiver {
-    pub fn new() -> Result<Self, MediaError> {
-        Ok(Self {
-            decoder: OpusDecoder::default_voip()?,
-        })
-    }
-
-    pub fn decode(&mut self, packet: &AudioPacket) -> Result<Vec<f32>, MediaError> {
-        Ok(self.decoder.decode(&packet.payload)?)
-    }
-
-    pub fn conceal(&mut self) -> Result<Vec<f32>, MediaError> {
-        Ok(self.decoder.conceal()?)
-    }
-}
-
 #[derive(Debug, Error)]
 pub enum MediaError {
     #[error(transparent)]
@@ -177,19 +213,13 @@ pub enum MediaError {
     Playback(#[from] ticonnect_media::audio::playback::PlaybackError),
 
     #[error(transparent)]
+    Resample(#[from] ticonnect_media::audio::ResampleError),
+
+    #[error(transparent)]
+    Playout(#[from] ticonnect_media::audio::AudioPlayoutError),
+
+    #[error(transparent)]
     Opus(#[from] ticonnect_media::opus_codec::OpusError),
-}
-
-impl Clone for AudioReceiver {
-    fn clone(&self) -> Self {
-        Self::new().expect("Opus decoder")
-    }
-}
-
-impl std::fmt::Debug for AudioReceiver {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter.write_str("AudioReceiver")
-    }
 }
 
 impl std::fmt::Debug for MediaSession {

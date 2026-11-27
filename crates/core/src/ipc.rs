@@ -145,6 +145,8 @@ pub const CALL_OUTPUT_MUTED: &str = "output_muted";
 pub const CALL_FRAMES_SENT: &str = "frames_sent";
 pub const CALL_FRAMES_RECEIVED: &str = "frames_received";
 pub const CALL_PACKETS_LOST: &str = "packets_lost";
+pub const CALL_PACKETS_CONCEALED: &str = "packets_concealed";
+pub const CALL_PLAYBACK_UNDERRUNS: &str = "playback_underruns";
 pub const CALL_BYTES_SENT: &str = "bytes_sent";
 pub const CALL_OUTPUT_LEVEL: &str = "output_level";
 pub const AUDIO_DEVICE_ID: &str = "id";
@@ -219,6 +221,7 @@ pub mod methods {
     pub const DECLINE_CALL: &str = "DeclineCall";
     pub const HANGUP_CALL: &str = "HangupCall";
     pub const SET_CALL_MUTED: &str = "SetCallMuted";
+    pub const SET_CALL_VOLUME: &str = "SetCallVolume";
     pub const GET_CALL_STATE: &str = "GetCallState";
     pub const LIST_CALL_LOGS: &str = "ListCallLogs";
     pub const LIST_AUDIO_DEVICES: &str = "ListAudioDevices";

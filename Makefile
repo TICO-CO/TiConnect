@@ -17,6 +17,8 @@ DEV_DATA_DIR ?= $(XDG_DATA_HOME)/ticonnect-dev
 DEV_STATE_DIR ?= $(XDG_STATE_HOME)/ticonnect-dev
 DEV_RUNTIME_DIR ?= $(if $(XDG_RUNTIME_DIR),$(XDG_RUNTIME_DIR),/tmp/ticonnect-dev-$(shell id -u))/ticonnect-dev
 DEV_TRANSPORT_PORT ?= 45881
+DEV_DESKTOP ?= $(APPLICATIONS_DIR)/org.ticonnect.TiConnect.Dev.desktop
+DEV_ICON ?= $(ICON_DIR)/org.ticonnect.TiConnect.Dev.svg
 LAB_RUSTC_WRAPPER ?=
 # Keep nix shell RUSTC_WRAPPER (sccache) instead of clearing it.
 # Cached objects may hide env/toolchain changes.
@@ -26,7 +28,10 @@ LAB_CARGO_VERBOSE ?= 0
 
 MAKEFLAGS += --no-print-directory
 
-.PHONY: install-user install-dev uninstall-user uninstall-dev release-bin check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check
+unexport CARGO_BUILD_RUSTFLAGS
+export CARGO_ENCODED_RUSTFLAGS =
+
+.PHONY: install-user install-dev uninstall-user uninstall-dev release-bin check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check verify verify-full
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
@@ -55,8 +60,8 @@ install-dev: $(if $(TICONNECT_BIN),,release-bin)
 	@src="$(if $(TICONNECT_BIN),$(TICONNECT_BIN),target/release/ticonnect)"; \
 	test -x "$$src" || { echo "missing executable: $$src" >&2; exit 1; }; \
 	install -d -m700 "$(DEV_ROOT)/bin" "$(DEV_CONFIG_DIR)" "$(DEV_DATA_DIR)" "$(DEV_STATE_DIR)" "$(DEV_RUNTIME_DIR)"; \
-	install -d -m755 "$(dir $(DEV_WRAPPER))"; \
-	rm -f "$(DEV_BIN)" "$(DEV_WRAPPER)"; \
+	install -d -m755 "$(dir $(DEV_WRAPPER))" "$(APPLICATIONS_DIR)" "$(ICON_DIR)"; \
+	rm -f "$(DEV_BIN)" "$(DEV_WRAPPER)" "$(DEV_DESKTOP)" "$(DEV_ICON)"; \
 	install -Dm755 "$$src" "$(DEV_BIN)"; \
 	sed -e 's|@DEV_BIN@|$(DEV_BIN)|g' \
 		-e 's|@DEV_CONFIG_DIR@|$(DEV_CONFIG_DIR)|g' \
@@ -65,7 +70,9 @@ install-dev: $(if $(TICONNECT_BIN),,release-bin)
 		-e 's|@DEV_RUNTIME_DIR@|$(DEV_RUNTIME_DIR)|g' \
 		-e 's|@DEV_TRANSPORT_PORT@|$(DEV_TRANSPORT_PORT)|g' \
 		packaging/dev/ticonnect-dev > "$(DEV_WRAPPER)"; \
-	chmod 755 "$(DEV_WRAPPER)"
+	chmod 755 "$(DEV_WRAPPER)"; \
+	install -Dm644 packaging/dev/org.ticonnect.TiConnect.Dev.desktop "$(DEV_DESKTOP)"; \
+	install -Dm644 packaging/flatpak/org.ticonnect.TiConnect.svg "$(DEV_ICON)"
 	@echo "==> install-dev: $(DEV_WRAPPER) -> $(DEV_BIN)"
 
 uninstall-dev:
@@ -83,7 +90,7 @@ uninstall-dev:
 			dbus-daemon*ticonnect-dev*) kill "$$pid" 2>/dev/null || true;; \
 		esac; \
 	fi
-	@rm -f "$(DEV_WRAPPER)" "$(DEV_BIN)"
+	@rm -f "$(DEV_WRAPPER)" "$(DEV_BIN)" "$(DEV_DESKTOP)" "$(DEV_ICON)"
 	@rm -rf "$(DEV_ROOT)" "$(DEV_RUNTIME_DIR)"
 	@if [ "$(DEV_PURGE)" = "1" ]; then \
 		for path in "$(DEV_CONFIG_DIR)" "$(DEV_DATA_DIR)" "$(DEV_STATE_DIR)"; do \
@@ -213,3 +220,9 @@ web-build: web-deps
 
 web-check: web-deps
 	cd $(WEB_DIR) && bun run format:check && bun run lint && bun run check && bun run test
+
+verify:
+	scripts/verify.sh
+
+verify-full: verify
+	$(MAKE) lan-test

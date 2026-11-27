@@ -118,6 +118,9 @@ async fn dispatch_inner(
                 "appearance": settings.get("appearance.color_scheme").unwrap_or("system"),
                 "autostart": autostart,
                 "version": env!("CARGO_PKG_VERSION"),
+                "dev_build": cfg!(debug_assertions)
+                    || state.origins.dev_mode()
+                    || std::env::var_os("TICONNECT_DEV_BUILD").is_some(),
                 "online": state.online(),
             }))
         }
@@ -292,6 +295,11 @@ async fn dispatch_inner(
             let input: SetCallMuted = params(value)?;
             link.set_call_muted(input.call_id, input.input_muted, input.output_muted)
                 .await?;
+            Ok(Value::Null)
+        }
+        "set_call_volume" => {
+            let input: SetCallVolume = params(value)?;
+            link.set_call_volume(input.call_id, input.volume).await?;
             Ok(Value::Null)
         }
         "call_state" => Ok(json!(link.call_state().await?)),
@@ -487,6 +495,12 @@ struct SetCallMuted {
     call_id: String,
     input_muted: bool,
     output_muted: bool,
+}
+
+#[derive(Deserialize)]
+struct SetCallVolume {
+    call_id: String,
+    volume: u32,
 }
 
 #[derive(Deserialize)]

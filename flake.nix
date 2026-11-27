@@ -50,7 +50,7 @@
         default = self.packages.${pkgs.stdenv.hostPlatform.system}.ticonnect;
         ticonnect = pkgs.rustPlatform.buildRustPackage {
           pname = "ticonnect";
-          version = "0.1.0";
+          version = "0.1.1";
 
           src = self;
 
@@ -133,6 +133,8 @@
           ];
 
           shellHook = ''
+            unset CARGO_BUILD_RUSTFLAGS
+            export CARGO_ENCODED_RUSTFLAGS=""
             export GST_PLUGIN_SYSTEM_PATH_1_0="${gstPluginPath}"
             export GST_PLUGIN_SYSTEM_PATH="$GST_PLUGIN_SYSTEM_PATH_1_0"
             export GIO_EXTRA_MODULES="${pkgs.glib-networking}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"

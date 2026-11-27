@@ -41,6 +41,7 @@ jobs:
       - name: Packaging validation
         run: |
           desktop-file-validate packaging/flatpak/org.ticonnect.TiConnect.desktop
+          desktop-file-validate packaging/dev/org.ticonnect.TiConnect.Dev.desktop
           appstreamcli validate --no-net packaging/flatpak/org.ticonnect.TiConnect.metainfo.xml
           units="$(mktemp -d)"
           for unit in packaging/systemd/*.service; do
@@ -144,13 +145,22 @@ jobs:
       - name: Local X11 integration
         env:
           WEBKIT_DISABLE_DMABUF_RENDERER: "1"
+          TICONNECT_TEST_AUDIO: "null"
         run: |
           Xvfb :99 -screen 0 1280x720x24 >/tmp/xvfb.log 2>&1 &
           export DISPLAY=:99
-          tests/local/run.sh x11 messaging
-          tests/local/run.sh x11 attachments
-          tests/local/run.sh x11 ui
-          tests/local/run.sh x11 remote
+          tests/local/run.sh x11 all
+
+      - name: Upload local integration logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-integration-logs
+          path: /tmp/ticonnect-local.*
+          if-no-files-found: ignore
+
+      - name: Lab smoke
+        run: make lab-smoke
 
       - name: Audit
         uses: taiki-e/install-action@cargo-audit

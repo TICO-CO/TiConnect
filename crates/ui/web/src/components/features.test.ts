@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
@@ -14,6 +14,7 @@ import { AppState, dateLabel } from '../lib';
 import AppLifecycleView from './AppLifecycleView.svelte';
 import CallView from './CallView.svelte';
 import ChatView from './ChatView.svelte';
+import OverlayLayer from './OverlayLayer.svelte';
 import ProfileView from './ProfileView.svelte';
 import RemoteView from './RemoteView.svelte';
 import SettingsView from './SettingsView.svelte';
@@ -40,7 +41,7 @@ const DETAILS: UserDetails = {
     os: 'Linux',
     desktop: 'GNOME',
     display_server: 'Wayland',
-    app_version: '0.0.6',
+    app_version: '0.1.1',
 };
 const STORAGE: StorageUsage = {
     message_count: 4,
@@ -49,7 +50,7 @@ const STORAGE: StorageUsage = {
     database_bytes: 4096,
 };
 
-function makeApp(): AppState {
+function makeApp(devBuild = false): AppState {
     const app = new AppState();
     const bootstrap: Bootstrap = {
         identity: {
@@ -95,10 +96,13 @@ function makeApp(): AppState {
             'discovery.mdns': 'true',
             'discovery.broadcast': 'true',
             'discovery.beacon_interval_secs': '5',
+            'notifications.call_sounds': 'true',
+            'notifications.message_sounds': 'true',
         },
         appearance: 'system',
         autostart: false,
-        version: '0.0.6',
+        version: '0.1.1',
+        dev_build: devBuild,
         online: true,
     };
     app.bootstrap = bootstrap;
@@ -246,6 +250,24 @@ describe('feature surfaces', () => {
         expect(themeColor.content).toBe('#182b2f');
     });
 
+    it('edits message sounds from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'notifications' };
+        render(SettingsView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Message sounds' }));
+        expect(app.settingsDraft['notifications.message_sounds']).toBe('false');
+    });
+
+    it('edits call sounds from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'notifications' };
+        render(SettingsView, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Call sounds' }));
+        expect(app.settingsDraft['notifications.call_sounds']).toBe('false');
+    });
+
     it('edits discovery controls from Settings', async () => {
         const app = makeApp();
         app.route = { kind: 'settings', section: 'about' };
@@ -263,6 +285,64 @@ describe('feature surfaces', () => {
         const interval = screen.getByDisplayValue('5');
         await fireEvent.input(interval, { target: { value: '30' } });
         expect(app.settingsDraft['discovery.beacon_interval_secs']).toBe('30');
+    });
+
+    it('opens the audio pane from the settings rail', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'calls' };
+        render(SettingsView, { app });
+
+        const audioLink = screen.getByRole('link', { name: 'Audio' });
+        expect(audioLink.getAttribute('href')).toBe('#/settings/audio');
+        await fireEvent.click(audioLink);
+
+        expect(app.route).toEqual({ kind: 'settings', section: 'audio' });
+        expect(screen.getByLabelText('Input volume')).toBeTruthy();
+        expect(screen.getByLabelText('Output volume')).toBeTruthy();
+
+        await fireEvent.click(screen.getByRole('link', { name: 'Calls' }));
+        expect(app.route).toEqual({ kind: 'settings', section: 'calls' });
+        expect(screen.getByText('Ringing timeout')).toBeTruthy();
+
+        await fireEvent.click(screen.getByRole('link', { name: 'Audio' }));
+        expect(app.route).toEqual({ kind: 'settings', section: 'audio' });
+        expect(screen.getByLabelText('Input volume')).toBeTruthy();
+        expect(screen.getByLabelText('Output volume')).toBeTruthy();
+    });
+
+    it('deduplicates repeated audio device names', () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'audio' };
+        app.audioDevices = [
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'input' },
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'input' },
+            { id: 'PipeWire', name: 'PipeWire', kind: 'input' },
+            { id: 'HDA Intel PCH', name: 'HDA Intel PCH', kind: 'output' },
+            { id: 'HDMI', name: 'HDMI', kind: 'output' },
+            { id: 'HDMI', name: 'HDMI', kind: 'output' },
+        ];
+        render(SettingsView, { app });
+
+        const microphone = screen.getByRole('combobox', { name: 'Microphone' });
+        expect(within(microphone).getAllByRole('option')).toHaveLength(3);
+        const speakers = screen.getByRole('combobox', { name: 'Speakers' });
+        expect(within(speakers).getAllByRole('option')).toHaveLength(3);
+    });
+
+    it('edits audio volumes from Settings', async () => {
+        const app = makeApp();
+        app.route = { kind: 'settings', section: 'audio' };
+        render(SettingsView, { app });
+
+        const inputVolume = screen.getByLabelText('Input volume');
+        await fireEvent.input(inputVolume, { target: { value: '72' } });
+        expect(app.settingsDraft['audio.input_volume']).toBe('72');
+        expect(app.settings['audio.input_volume']).toBe('72');
+
+        const outputVolume = screen.getByLabelText('Output volume');
+        await fireEvent.input(outputVolume, { target: { value: '64' } });
+        expect(app.settingsDraft['audio.output_volume']).toBe('64');
+        expect(app.settings['audio.output_volume']).toBe('64');
     });
 
     it('shows LAN access state and firewall ports in Settings', () => {
@@ -322,6 +402,19 @@ describe('feature surfaces', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'Clear local history' }));
         await fireEvent.click(screen.getByRole('button', { name: 'Clear history' }));
         expect(clear).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('stores per-user volume from the profile', async () => {
+        const app = makeApp();
+        app.route = { kind: 'profile', id: USER.id };
+        app.details = DETAILS;
+        render(ProfileView, { app });
+
+        const volume = screen.getByLabelText('User volume');
+        await fireEvent.input(volume, { target: { value: '70' } });
+        await fireEvent.change(volume, { target: { value: '70' } });
+        expect(app.userVolume(USER.id)).toBe(70);
+        expect(screen.getByText('70%')).toBeTruthy();
     });
 
     it('tracks dirty and saved settings state', async () => {
@@ -408,6 +501,32 @@ describe('feature surfaces', () => {
         ).toBeTruthy();
     });
 
+    it('shows the version beside the logo in the expanded rail only', () => {
+        const app = makeApp();
+        const expanded = render(UsersRail, { app });
+
+        const version = screen.getByText('0.1.1');
+        const logo = screen.getByRole('img', { name: 'TiConnect' });
+        expect(
+            logo.compareDocumentPosition(version) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(screen.queryByText('· DEV')).toBeNull();
+        expanded.unmount();
+
+        app.collapsed = true;
+        render(UsersRail, { app });
+
+        expect(screen.queryByText('0.1.1')).toBeNull();
+    });
+
+    it('marks development builds beside the version', () => {
+        const app = makeApp(true);
+        render(UsersRail, { app });
+
+        expect(screen.getByText('0.1.1')).toBeTruthy();
+        expect(screen.getByText('· DEV')).toBeTruthy();
+    });
+
     it('shows message timeline loading and failure states', async () => {
         const app = makeApp();
         app.messagesLoad = 'loading';
@@ -422,6 +541,27 @@ describe('feature surfaces', () => {
         expect(screen.getByText('Messages did not load')).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         expect(retry).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('accepts an incoming call from the main-window overlay', async () => {
+        const app = makeApp();
+        app.route = { kind: 'chat', id: USER.id };
+        app.call = {
+            id: 'call-1',
+            user_id: USER.id,
+            direction: 'incoming',
+            state: 'ringing',
+            started_at: CREATED_AT,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        const accept = vi.spyOn(app, 'acceptCall').mockResolvedValue(undefined);
+        render(OverlayLayer, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+        expect(accept).toHaveBeenCalledTimes(1);
     });
 
     it('shows the connecting call state before the remote rings', () => {
@@ -764,6 +904,8 @@ describe('feature surfaces', () => {
             resume = vi.fn(async () => undefined);
             close = vi.fn(async () => undefined);
             createMediaStreamSource = vi.fn(() => ({ connect }));
+            createGain = vi.fn(() => ({ connect, gain: { value: 1 } }));
+            createMediaStreamDestination = vi.fn(() => ({ connect, stream }));
             createAnalyser = vi.fn(() => analyser);
         }
         vi.stubGlobal('AudioContext', FakeAudioContext);
