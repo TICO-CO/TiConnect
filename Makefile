@@ -31,7 +31,7 @@ MAKEFLAGS += --no-print-directory
 unexport CARGO_BUILD_RUSTFLAGS
 export CARGO_ENCODED_RUSTFLAGS =
 
-.PHONY: install-user install-dev uninstall-user uninstall-dev release-bin check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check
+.PHONY: install-user install-dev uninstall-user uninstall-dev release-bin check-user-surface build-bin lab lab-smoke lan-test web-install web-deps web-dev web-build web-check verify verify-full
 
 install-user: target/release/ticonnect
 	install -Dm755 target/release/ticonnect $(BINDIR)/ticonnect
@@ -220,3 +220,9 @@ web-build: web-deps
 
 web-check: web-deps
 	cd $(WEB_DIR) && bun run format:check && bun run lint && bun run check && bun run test
+
+verify:
+	scripts/verify.sh
+
+verify-full: verify
+	$(MAKE) lan-test

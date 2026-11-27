@@ -177,10 +177,10 @@ impl CallToneSound for RodioCallToneSound {
     }
 
     fn stop(&self) {
-        let player = self.player.lock().unwrap_or_else(PoisonError::into_inner);
-        if let Some(player) = player.as_ref() {
-            player.stop();
-        }
+        let mut player = self.player.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut stream = self.stream.lock().unwrap_or_else(PoisonError::into_inner);
+        *player = None;
+        *stream = None;
     }
 }
 
@@ -222,5 +222,13 @@ mod tests {
             .expect("null call tone");
         NullCallToneSound.set_volume(60);
         NullCallToneSound.stop();
+    }
+
+    #[test]
+    fn stopping_an_idle_call_tone_releases_nothing() {
+        let tone = RodioCallToneSound::new();
+        tone.stop();
+        tone.stop();
+        tone.set_volume(50);
     }
 }

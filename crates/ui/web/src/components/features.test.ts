@@ -14,6 +14,7 @@ import { AppState, dateLabel } from '../lib';
 import AppLifecycleView from './AppLifecycleView.svelte';
 import CallView from './CallView.svelte';
 import ChatView from './ChatView.svelte';
+import OverlayLayer from './OverlayLayer.svelte';
 import ProfileView from './ProfileView.svelte';
 import RemoteView from './RemoteView.svelte';
 import SettingsView from './SettingsView.svelte';
@@ -540,6 +541,27 @@ describe('feature surfaces', () => {
         expect(screen.getByText('Messages did not load')).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
         expect(retry).toHaveBeenCalledWith(USER.id);
+    });
+
+    it('accepts an incoming call from the main-window overlay', async () => {
+        const app = makeApp();
+        app.route = { kind: 'chat', id: USER.id };
+        app.call = {
+            id: 'call-1',
+            user_id: USER.id,
+            direction: 'incoming',
+            state: 'ringing',
+            started_at: CREATED_AT,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        const accept = vi.spyOn(app, 'acceptCall').mockResolvedValue(undefined);
+        render(OverlayLayer, { app });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'Accept' }));
+
+        expect(accept).toHaveBeenCalledTimes(1);
     });
 
     it('shows the connecting call state before the remote rings', () => {

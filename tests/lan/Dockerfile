@@ -33,6 +33,7 @@ RUN apt-get update \
 
 COPY --from=builder /out/ticonnectd /out/ticonnect-cli /usr/local/bin/
 COPY tests/lan/entrypoint.sh /usr/local/bin/ticonnect-lan-entrypoint
+COPY tests/lan/asound.conf /etc/asound.conf
 RUN chmod +x /usr/local/bin/ticonnect-lan-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/ticonnect-lan-entrypoint"]

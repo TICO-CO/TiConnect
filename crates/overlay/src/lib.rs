@@ -316,7 +316,7 @@ impl State {
         let Some(call) = call else {
             return;
         };
-        if call.state != "in_call" && call.state != "connecting" {
+        if call.state != "in-call" && call.state != "connecting" {
             return;
         }
         self.remove(&format!("call:{}", call.id));

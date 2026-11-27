@@ -55,14 +55,18 @@ cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all -- --check
 cargo audit
 cargo xtask systems --check
-make lan-test
+make verify
+make verify-full
 ```
 
-`tests/local/run.sh` runs local X11, Weston Wayland, KWin Wayland, and Hyprland
-integration tests. See `docs/local-testing.md`. `make lan-test` runs the
-two-container LAN e2e suite; Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of scenario names
-(`control`, `discovery`, `trust`, `transport`, `messaging`, `offline-sync`,
-`security`) to run a subset. The GTK4 UI and overlay need development headers:
+`make verify` is the release gate: Rust checks, web checks, generated asset
+freshness, the full local integration suite, and the two-node lab smoke.
+`make verify-full` adds the Docker LAN suite. `tests/local/run.sh` runs local
+X11, Weston Wayland, KWin Wayland, and Hyprland integration tests. See
+`docs/local-testing.md`. `make lan-test` runs the two-container LAN e2e suite;
+Docker Compose is required. Set `LAN_TEST_SCENARIO` to a comma-separated list of
+scenario names (`control`, `discovery`, `trust`, `transport`, `messaging`,
+`calls`, `offline-sync`, `security`) to run a subset. The GTK4 UI and overlay need development headers:
 
 ```sh
 sudo apt install libgtk-4-dev libwebkitgtk-6.0-dev libasound2-dev libwayland-dev wayland-protocols cmake

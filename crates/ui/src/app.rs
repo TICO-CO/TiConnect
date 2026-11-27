@@ -55,6 +55,26 @@ fn youtube_frame(uri: &str) -> bool {
     .any(|prefix| uri.starts_with(prefix))
 }
 
+fn write_bridge_file(path: &std::path::Path, url: &str) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(url.as_bytes())?;
+    file.write_all(b"\n")
+}
+
 fn apply_appearance(appearance: Appearance) {
     let Some(settings) = gtk::Settings::default() else {
         return;
@@ -167,6 +187,11 @@ pub fn run() -> anyhow::Result<()> {
     let url = bridge::Bridge::dev_url()
         .map(|dev| format!("{dev}?bridge=127.0.0.1:{}", bridge.port))
         .unwrap_or_else(|| bridge.url());
+    if let Some(path) = std::env::var_os("TICONNECT_UI_BRIDGE_FILE")
+        && let Err(error) = write_bridge_file(std::path::Path::new(&path), &url)
+    {
+        eprintln!("failed to write UI bridge file: {error}");
+    }
     let origins = Origins::new(bridge.port);
     let window: Rc<RefCell<Option<gtk::ApplicationWindow>>> = Rc::new(RefCell::new(None));
 

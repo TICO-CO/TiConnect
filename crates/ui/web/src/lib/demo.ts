@@ -261,7 +261,7 @@ export const DEMO_CALL: Call = {
     id: 'call-demo',
     user_id: demoPeer.id,
     direction: 'outgoing',
-    state: 'in_call',
+    state: 'in-call',
     started_at: now - 252_000,
     connected_at: now - 248_000,
     input_muted: false,

@@ -275,7 +275,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'outgoing',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -307,7 +307,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'outgoing',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -346,7 +346,7 @@ describe('AppState feature behavior', () => {
                 return pendingAccept;
             }
             if (method === 'call_state') {
-                return ok({ ...ringingCall, state: 'in_call' });
+                return ok({ ...ringingCall, state: 'in-call' });
             }
             return ok(null);
         });
@@ -360,7 +360,7 @@ describe('AppState feature behavior', () => {
         releaseAccept(ok(null));
         await first;
         await second;
-        expect(app.call?.state).toBe('in_call');
+        expect(app.call?.state).toBe('in-call');
     });
 
     it('maps call metrics to the waveform level', async () => {
@@ -369,7 +369,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'incoming',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -400,7 +400,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'incoming',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1,
             connected_at: 2,
             input_muted: false,
@@ -740,6 +740,27 @@ describe('AppState feature behavior', () => {
         expect(app.toasts).toHaveLength(0);
     });
 
+    it('applies the daemon in-call state string', () => {
+        const { app } = makeApp();
+        app.call = {
+            id: 'call-1',
+            user_id: 'user-1',
+            direction: 'incoming',
+            state: 'ringing',
+            started_at: 1_000,
+            connected_at: 0,
+            input_muted: false,
+            output_muted: false,
+        };
+        const handle = (app as unknown as { handleEvent(event: unknown): void }).handleEvent.bind(
+            app,
+        );
+
+        handle({ type: 'call_state_changed', call_id: 'call-1', state: 'in-call' });
+
+        expect(app.call?.state).toBe('in-call');
+    });
+
     it('auto-dismisses call ended toasts after the overlay timeout', () => {
         vi.useFakeTimers();
         const { app } = makeApp();
@@ -748,7 +769,7 @@ describe('AppState feature behavior', () => {
             id: 'call-1',
             user_id: 'user-1',
             direction: 'outgoing',
-            state: 'in_call',
+            state: 'in-call',
             started_at: 1_000,
             connected_at: 2_000,
             input_muted: false,

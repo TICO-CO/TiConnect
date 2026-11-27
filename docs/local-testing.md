@@ -21,7 +21,9 @@ tests/local/run.sh hyprland all
 - `hyprland`: current Hyprland session; validates layer-shell overlay, portal
   services, and the Wayland session paths.
 
-Scenarios: `messaging`, `attachments`, `ui`, `call`, `remote`, `all`.
+Scenarios: `messaging`, `attachments`, `ui`, `call`, `call-ui`, `remote`, `all`.
+Set `TICONNECT_TEST_AUDIO=null` for headless or CI runs. The `call-ui` scenario
+requires Bun and drives both main-window bridges through a full call.
 
 ## Interactive two-node lab
 
@@ -150,7 +152,8 @@ two-node test.
 - text round trip
 - attachment transfer and content storage on disk
 - UI and overlay process under X11 and Wayland
-- call signaling and two-way Opus frame counters through real PipeWire devices
+- call signaling and two-way Opus frame counters through real or virtual devices
+- main-window bridge call accept in both directions
 - remote consent, active state, indicator, kill switch
 - build and run with real `gtk4-layer-shell`
 

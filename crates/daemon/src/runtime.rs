@@ -317,6 +317,7 @@ pub async fn run(state: Arc<DaemonState>) -> Result<()> {
         }
     });
     let call_tone = Arc::new(RodioCallToneSound::new());
+    state.calls().set_call_tone(call_tone.clone());
     let call_tone_player = Arc::clone(&call_tone);
     let call_tone_state = Arc::clone(&state);
     let mut call_tone_events = state.calls().subscribe();

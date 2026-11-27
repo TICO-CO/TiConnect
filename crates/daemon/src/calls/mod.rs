@@ -9,6 +9,7 @@ use thiserror::Error;
 use ticonnect_core::call::{AudioPacket, CallId, CallSignalFrame, CallState};
 use ticonnect_core::id::NodeId;
 use ticonnect_media::audio::{AudioPlayout, LevelMeter};
+use ticonnect_media::notification::CallToneSound;
 use ticonnect_net::transport::{Session, Transport, TransportError, UserInfo};
 use ticonnect_settings::Settings;
 use tokio::task::JoinHandle;
@@ -118,6 +119,7 @@ struct Inner {
     media: Mutex<Option<MediaSession>>,
     audio: Mutex<Option<AudioPlayout>>,
     playout_task: Mutex<Option<JoinHandle<()>>>,
+    call_tone: Mutex<Option<Arc<dyn CallToneSound>>>,
     media_enabled: std::sync::atomic::AtomicBool,
     metrics: Arc<CallMetricsHandle>,
 }
@@ -143,6 +145,7 @@ impl CallService {
                 media: Mutex::new(None),
                 audio: Mutex::new(None),
                 playout_task: Mutex::new(None),
+                call_tone: Mutex::new(None),
                 media_enabled: std::sync::atomic::AtomicBool::new(true),
                 metrics: Arc::new(CallMetricsHandle::default()),
             }),
@@ -185,6 +188,26 @@ impl CallService {
         self.inner
             .media_enabled
             .store(enabled, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn set_call_tone(&self, tone: Arc<dyn CallToneSound>) {
+        *self
+            .inner
+            .call_tone
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = Some(tone);
+    }
+
+    fn stop_call_tone(&self) {
+        if let Some(tone) = self
+            .inner
+            .call_tone
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+        {
+            tone.stop();
+        }
     }
 
     pub fn metrics(&self) -> CallMetrics {
@@ -704,32 +727,66 @@ impl CallService {
         {
             return Ok(());
         }
+        self.stop_call_tone();
         let session = parse_user(&call.user_id)
             .ok()
             .and_then(|node_id| self.inner.transport.session_by_node_id(node_id))
             .ok_or(CallError::UserOffline)?;
         let settings = self.settings();
+        let configured_input = settings.call_input_device();
+        let configured_output = settings.call_output_device();
         tracing::info!(
             call_id = %call.id,
             user_id = %call.user_id,
-            input_device = settings.call_input_device().unwrap_or("system default"),
-            output_device = settings.call_output_device().unwrap_or("system default"),
+            input_device = configured_input.unwrap_or("system default"),
+            output_device = configured_output.unwrap_or("system default"),
             "starting call media"
         );
-        let media = MediaSession::start(
-            call.id,
-            session,
-            settings.call_input_device(),
-            settings.call_output_device(),
-            session::MediaSessionSettings {
-                input_muted: call.input_muted,
-                output_muted: call.output_muted,
-                input_volume: settings.audio_input_volume(),
-                output_volume: settings.audio_output_volume(),
-            },
-            self.inner.metrics.clone(),
-        )
-        .map_err(|error| {
+        let media_settings = session::MediaSessionSettings {
+            input_muted: call.input_muted,
+            output_muted: call.output_muted,
+            input_volume: settings.audio_input_volume(),
+            output_volume: settings.audio_output_volume(),
+        };
+        let mut attempts = Vec::new();
+        if configured_input.is_some() || configured_output.is_some() {
+            attempts.push((configured_input, configured_output));
+        }
+        attempts.push((None, None));
+        let mut media = None;
+        let mut last_error = None;
+        for (input, output) in attempts {
+            match MediaSession::start(
+                call.id,
+                session.clone(),
+                input,
+                output,
+                media_settings,
+                self.inner.metrics.clone(),
+            ) {
+                Ok(started) => {
+                    media = Some(started);
+                    break;
+                }
+                Err(error) => {
+                    if input.is_some() || output.is_some() {
+                        tracing::warn!(
+                            call_id = %call.id,
+                            user_id = %call.user_id,
+                            %error,
+                            "configured call audio devices failed; retrying defaults"
+                        );
+                    }
+                    last_error = Some(error);
+                }
+            }
+        }
+        let media = media.ok_or_else(|| {
+            let error = last_error.unwrap_or_else(|| {
+                MediaError::Capture(ticonnect_media::audio::capture::CaptureError::Host(
+                    "no audio devices were attempted".to_owned(),
+                ))
+            });
             tracing::warn!(call_id = %call.id, user_id = %call.user_id, %error, "failed to start call media");
             CallError::Media(error)
         })?;

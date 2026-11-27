@@ -958,7 +958,7 @@ export class AppState {
             this.callLevel = 0;
             return;
         }
-        if (this.call === null || this.call.state !== 'in_call') {
+        if (this.call === null || this.call.state !== 'in-call') {
             this.stopCallLevelPolling();
             this.callLevel = 0;
             return;
@@ -988,7 +988,7 @@ export class AppState {
         const callId = this.call?.id ?? '';
         const metricsResult = await this.client.request<CallMetrics>('call_metrics');
         this.callLevelPending = false;
-        if (this.call === null || this.call.state !== 'in_call' || this.call.id !== callId) {
+        if (this.call === null || this.call.state !== 'in-call' || this.call.id !== callId) {
             this.stopCallLevelPolling();
             this.callLevel = 0;
             return;
@@ -1812,7 +1812,7 @@ export class AppState {
         if (!acceptResult.ok) {
             await this.loadCall();
             if (this.call?.id !== callId) {
-                this.notice = 'This call is no longer available.';
+                this.notice = `Call failed: ${acceptResult.error.message}`;
                 return;
             }
             this.notice = acceptResult.error.message;
@@ -2786,7 +2786,7 @@ export class AppState {
 
     private async syncCallVolume(): Promise<void> {
         const call = this.call;
-        if (this.client === null || call === null || call.state !== 'in_call') {
+        if (this.client === null || call === null || call.state !== 'in-call') {
             return;
         }
         const volumeResult = await this.client.request('set_call_volume', {
